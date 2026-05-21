@@ -14,7 +14,7 @@ function DemoScreen() {
         bottom={80}
         style={[styles.box, { height: 300 }]}
       >
-        <ScrollView>
+        <ScrollView nestedScrollEnabled>
           {ITEMS.map((item) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowText}>{item}</Text>
@@ -33,7 +33,11 @@ function DemoScreen() {
           color="#010101"
           style={StyleSheet.absoluteFill}
         >
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+          >
             {ITEMS.map((item) => (
               <View key={item} style={styles.chip}>
                 <Text style={styles.text}>{item}</Text>
@@ -52,7 +56,11 @@ function DemoScreen() {
           curve="gentle"
           style={StyleSheet.absoluteFill}
         >
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+          >
             {ITEMS.map((item) => (
               <View key={item} style={styles.chip}>
                 <Text style={styles.text}>{item}</Text>
@@ -74,7 +82,7 @@ function DemoScreen() {
         curve={{ type: 'cubicBezier', x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 }}
         style={styles.tallBox}
       >
-        <ScrollView>
+        <ScrollView nestedScrollEnabled>
           {ITEMS.map((item) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowText}>{item}</Text>
@@ -92,7 +100,7 @@ function DemoScreen() {
         curve={{ type: 'cubicBezier', x1: 0.42, y1: 0, x2: 0.58, y2: 1 }}
         style={styles.tallBox}
       >
-        <ScrollView>
+        <ScrollView nestedScrollEnabled>
           {ITEMS.map((item) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowText}>{item}</Text>
@@ -110,7 +118,7 @@ function DemoScreen() {
         curve={{ type: 'stops', values: [1, 0.9, 0.6, 0.2, 0] }}
         style={styles.tallBox}
       >
-        <ScrollView>
+        <ScrollView nestedScrollEnabled>
           {ITEMS.map((item) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowText}>{item}</Text>
@@ -128,7 +136,7 @@ function DemoScreen() {
         curve={{ type: 'stops', values: [1, 0.5, 0.5, 0.5, 0] }}
         style={styles.tallBox}
       >
-        <ScrollView>
+        <ScrollView nestedScrollEnabled>
           {ITEMS.map((item) => (
             <View key={item} style={styles.row}>
               <Text style={styles.rowText}>{item}</Text>
