@@ -1,0 +1,1 @@
+export { EdgeFadeView } from './EdgeFadeView';
