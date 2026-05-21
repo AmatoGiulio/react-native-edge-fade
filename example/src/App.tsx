@@ -1,267 +1,418 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
 import BenchmarkScreen from './BenchmarkScreen';
 
-const ITEMS = Array.from({ length: 30 }, (_, i) => `Item ${i + 1}`);
+// ── Palette ───────────────────────────────────────────────────────────────────
 
-function DemoScreen() {
+const C = {
+  bg: '#0d0d0d',
+  surface: '#161616',
+  border: '#222',
+  text: '#f0f0f0',
+  sub: '#888',
+  muted: '#444',
+};
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+
+const avatar = (seed: string, size = 80) =>
+  `https://api.dicebear.com/9.x/glass/png?seed=${seed}&size=${size}`;
+
+const PEOPLE = [
+  { seed: 'Christian', name: 'Christian', role: 'Design', accent: '#818cf8' },
+  { seed: 'Alex', name: 'Alex', role: 'iOS', accent: '#34d399' },
+  { seed: 'Jordan', name: 'Jordan', role: 'Product', accent: '#fb923c' },
+  { seed: 'Morgan', name: 'Morgan', role: 'PM', accent: '#f472b6' },
+  { seed: 'Casey', name: 'Casey', role: 'Backend', accent: '#60a5fa' },
+  { seed: 'Riley', name: 'Riley', role: 'QA', accent: '#a78bfa' },
+  { seed: 'Taylor', name: 'Taylor', role: 'DevOps', accent: '#fbbf24' },
+  { seed: 'Sam', name: 'Sam', role: 'Data', accent: '#2dd4bf' },
+] as const;
+
+const MESSAGES = [
+  {
+    seed: 'Morgan',
+    name: 'Morgan',
+    text: 'The new fade animation looks incredible 🔥',
+    time: '2m',
+    unread: 3,
+  },
+  {
+    seed: 'Casey',
+    name: 'Casey',
+    text: 'Backend changes are shipped, ready for QA',
+    time: '14m',
+    unread: 0,
+  },
+  {
+    seed: 'Alex',
+    name: 'Alex',
+    text: 'iOS build passed, no animation glitches ✅',
+    time: '1h',
+    unread: 1,
+  },
+  {
+    seed: 'Riley',
+    name: 'Riley',
+    text: 'All regression tests are green',
+    time: '3h',
+    unread: 0,
+  },
+  {
+    seed: 'Jordan',
+    name: 'Jordan',
+    text: 'Can we increase the fade size on the header?',
+    time: '5h',
+    unread: 0,
+  },
+  {
+    seed: 'Taylor',
+    name: 'Taylor',
+    text: 'Deploy pipeline is ready to go',
+    time: '8h',
+    unread: 0,
+  },
+  {
+    seed: 'Sam',
+    name: 'Sam',
+    text: 'Metrics are looking great after the update 📈',
+    time: '1d',
+    unread: 0,
+  },
+  {
+    seed: 'Christian',
+    name: 'Christian',
+    text: "Let's ship v1.0 tomorrow!",
+    time: '1d',
+    unread: 2,
+  },
+  {
+    seed: 'Morgan',
+    name: 'Morgan',
+    text: 'Agreed — everything looks solid',
+    time: '2d',
+    unread: 0,
+  },
+  {
+    seed: 'Alex',
+    name: 'Alex',
+    text: 'AGSL shader performance is insane on API 33+ 🚀',
+    time: '2d',
+    unread: 0,
+  },
+] as const;
+
+// ── Person card ───────────────────────────────────────────────────────────────
+
+function PersonCard({ seed, name, role, accent }: (typeof PEOPLE)[number]) {
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.label}>Mask — bottom fade</Text>
-      <EdgeFadeView
-        mode="mask"
-        bottom={80}
-        style={[styles.box, { height: 300 }]}
-      >
-        <ScrollView nestedScrollEnabled>
-          {ITEMS.map((item) => (
-            <View key={item} style={styles.row}>
-              <Text style={styles.rowText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
-
-      <Text style={styles.label}>Overlay — left + right</Text>
-      <View style={styles.box}>
-        <EdgeFadeView
-          mode="overlay"
-          left={120}
-          right={120}
-          curve="gentle"
-          color="#010101"
-          style={StyleSheet.absoluteFill}
-        >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            {ITEMS.map((item) => (
-              <View key={item} style={styles.chip}>
-                <Text style={styles.text}>{item}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </EdgeFadeView>
+    <View style={[card.root, { borderColor: accent + '30' }]}>
+      <View style={[card.ring, { borderColor: accent + '80' }]}>
+        <Image source={{ uri: avatar(seed) }} style={card.avatar} />
       </View>
-
-      <Text style={styles.label}>Mask — left + right</Text>
-      <View style={styles.box}>
-        <EdgeFadeView
-          mode="mask"
-          left={120}
-          right={120}
-          curve="gentle"
-          style={StyleSheet.absoluteFill}
-        >
-          <ScrollView
-            horizontal
-            nestedScrollEnabled
-            showsHorizontalScrollIndicator={false}
-          >
-            {ITEMS.map((item) => (
-              <View key={item} style={styles.chip}>
-                <Text style={styles.text}>{item}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </EdgeFadeView>
+      <Text style={card.name} numberOfLines={1}>
+        {name}
+      </Text>
+      <View style={[card.badge, { backgroundColor: accent + '18' }]}>
+        <Text style={[card.role, { color: accent }]}>{role}</Text>
       </View>
-
-      {/* ── Custom curve demos ── */}
-      <Text style={styles.sectionHeader}>
-        Custom curves (AGSL LUT on API 33+)
-      </Text>
-
-      <Text style={styles.label}>cubicBezier(0.25, 0.1, 0.25, 1) — ease</Text>
-      <EdgeFadeView
-        mode="mask"
-        bottom={80}
-        curve={{ type: 'cubicBezier', x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 }}
-        style={styles.tallBox}
-      >
-        <ScrollView nestedScrollEnabled>
-          {ITEMS.map((item) => (
-            <View key={item} style={styles.row}>
-              <Text style={styles.rowText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
-
-      <Text style={styles.label}>
-        cubicBezier(0.42, 0, 0.58, 1) — ease-in-out (symmetric)
-      </Text>
-      <EdgeFadeView
-        mode="mask"
-        bottom={80}
-        curve={{ type: 'cubicBezier', x1: 0.42, y1: 0, x2: 0.58, y2: 1 }}
-        style={styles.tallBox}
-      >
-        <ScrollView nestedScrollEnabled>
-          {ITEMS.map((item) => (
-            <View key={item} style={styles.row}>
-              <Text style={styles.rowText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
-
-      <Text style={styles.label}>
-        stops [1, 0.9, 0.6, 0.2, 0] — concave step
-      </Text>
-      <EdgeFadeView
-        mode="mask"
-        bottom={80}
-        curve={{ type: 'stops', values: [1, 0.9, 0.6, 0.2, 0] }}
-        style={styles.tallBox}
-      >
-        <ScrollView nestedScrollEnabled>
-          {ITEMS.map((item) => (
-            <View key={item} style={styles.row}>
-              <Text style={styles.rowText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
-
-      <Text style={styles.label}>
-        stops [1, 0.5, 0.5, 0.5, 0] — shelf / plateau
-      </Text>
-      <EdgeFadeView
-        mode="mask"
-        bottom={80}
-        curve={{ type: 'stops', values: [1, 0.5, 0.5, 0.5, 0] }}
-        style={styles.tallBox}
-      >
-        <ScrollView nestedScrollEnabled>
-          {ITEMS.map((item) => (
-            <View key={item} style={styles.row}>
-              <Text style={styles.rowText}>{item}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
-    </ScrollView>
-  );
-}
-
-const TABS = ['Demo', 'Benchmark'] as const;
-type Tab = (typeof TABS)[number];
-
-export default function App() {
-  const [tab, setTab] = useState<Tab>('Demo');
-
-  return (
-    <View style={{ flex: 1, backgroundColor: '#010101' }}>
-      {/* Tab bar */}
-      <View style={tabs.bar}>
-        {TABS.map((t) => (
-          <Pressable
-            key={t}
-            style={[tabs.tab, t === tab && tabs.active]}
-            onPress={() => setTab(t)}
-          >
-            <Text style={[tabs.text, t === tab && tabs.activeText]}>{t}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {tab === 'Demo' && <DemoScreen />}
-      {tab === 'Benchmark' && <BenchmarkScreen />}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const card = StyleSheet.create({
   root: {
-    flex: 1,
-    backgroundColor: '#010101',
-  },
-  content: {
-    paddingTop: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-    gap: 8,
-  },
-  text: {
-    fontSize: 16,
-    color: '#fff',
-  },
-  sectionHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#444',
-    marginTop: 24,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 16,
-  },
-  tallBox: {
-    height: 200,
-  },
-  box: {
-    height: 100,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  row: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#030303',
-  },
-  rowText: {
-    fontSize: 15,
-    color: '#fff',
-  },
-  chip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#030303',
-    backgroundColor: '#333',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    width: 80,
+    width: 84,
     alignItems: 'center',
-    paddingVertical: 10,
-    marginLeft: 8,
-    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginHorizontal: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: C.surface,
+    gap: 6,
+  },
+  ring: {
+    borderRadius: 24,
+    borderWidth: 2,
+    padding: 2,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 22,
+    backgroundColor: '#222',
+  },
+  name: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: C.text,
+    letterSpacing: 0.1,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
+  role: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });
 
-const tabs = StyleSheet.create({
-  bar: {
+// ── Message row ───────────────────────────────────────────────────────────────
+
+function MessageRow({
+  seed,
+  name,
+  text,
+  time,
+  unread,
+}: (typeof MESSAGES)[number]) {
+  return (
+    <View style={msg.root}>
+      <Image source={{ uri: avatar(seed, 48) }} style={msg.avatar} />
+      <View style={msg.body}>
+        <View style={msg.header}>
+          <Text style={msg.name}>{name}</Text>
+          <Text style={msg.time}>{time}</Text>
+        </View>
+        <Text style={[msg.text, unread > 0 && msg.textBold]} numberOfLines={1}>
+          {text}
+        </Text>
+      </View>
+      {unread > 0 && (
+        <View style={msg.pill}>
+          <Text style={msg.pillText}>{unread}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const msg = StyleSheet.create({
+  root: {
     flexDirection: 'row',
-    paddingTop: 56,
+    alignItems: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    paddingBottom: 8,
-    gap: 8,
+    gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#1a1a1a',
-    backgroundColor: '#010101',
+    borderBottomColor: C.border,
   },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: '#222',
   },
-  active: {
-    backgroundColor: '#1a1a1a',
+  body: {
+    flex: 1,
+    gap: 3,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: C.text,
+  },
+  time: {
+    fontSize: 12,
+    color: C.muted,
   },
   text: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 13,
+    color: C.sub,
+  },
+  textBold: {
+    color: C.text,
     fontWeight: '500',
   },
-  activeText: {
+  pill: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#818cf8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  pillText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: '#fff',
+  },
+});
+
+// ── Demo screen ───────────────────────────────────────────────────────────────
+
+function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
+  return (
+    <View style={s.screen}>
+      {/* Header */}
+      <View style={s.header}>
+        <View>
+          <Text style={s.title}>Messages</Text>
+          <Text style={s.subtitle}>10 conversations</Text>
+        </View>
+        <Pressable style={s.benchBtn} onPress={onBenchmark}>
+          <Text style={s.benchText}>Benchmark</Text>
+        </Pressable>
+      </View>
+
+      {/* Team strip */}
+      <Text style={s.section}>Team</Text>
+      <EdgeFadeView left={20} right={20} curve="gentle" style={s.strip}>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.stripContent}
+        >
+          {PEOPLE.map((p) => (
+            <PersonCard key={p.seed} {...p} />
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
+
+      {/* Divider */}
+      <View style={s.divider} />
+
+      {/* Messages list */}
+      <Text style={s.section}>Recent</Text>
+      <EdgeFadeView top={40} bottom={80} curve="smooth" style={s.list}>
+        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          {MESSAGES.map((m) => (
+            <MessageRow key={m.seed + m.time} {...m} />
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
+    </View>
+  );
+}
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [screen, setScreen] = useState<'demo' | 'benchmark'>('demo');
+
+  return (
+    <View style={s.root}>
+      {screen === 'demo' ? (
+        <DemoScreen onBenchmark={() => setScreen('benchmark')} />
+      ) : (
+        <View style={{ flex: 1 }}>
+          <Pressable style={s.backBtn} onPress={() => setScreen('demo')}>
+            <Text style={s.backText}>← Demo</Text>
+          </Pressable>
+          <BenchmarkScreen />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+  screen: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? 48 : 60,
+  },
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: C.text,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: C.muted,
+    marginTop: 2,
+  },
+  benchBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  benchText: {
+    fontSize: 12,
+    color: C.sub,
+    fontWeight: '500',
+  },
+
+  // Section label
+  section: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: C.muted,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+
+  // People strip
+  strip: {
+    height: 128,
+    marginBottom: 4,
+  },
+  stripContent: {
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+
+  // Divider
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginHorizontal: 20,
+    marginVertical: 16,
+  },
+
+  // Messages list
+  list: {
+    flex: 1,
+  },
+
+  // Back button (benchmark → demo)
+  backBtn: {
+    paddingTop: Platform.OS === 'android' ? 48 : 60,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  backText: {
+    fontSize: 14,
+    color: C.sub,
+    fontWeight: '500',
   },
 });

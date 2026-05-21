@@ -1,191 +1,309 @@
 # react-native-edge-fade
 
-Smooth, customizable edge fading for React Native.
+Smooth, customisable edge fading for React Native — mask and overlay modes, per-pixel AGSL shaders on Android API 33+, zero extra dependencies.
+
+[![npm](https://img.shields.io/npm/v/react-native-edge-fade)](https://www.npmjs.com/package/react-native-edge-fade)
+[![license](https://img.shields.io/npm/l/react-native-edge-fade)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20web-lightgrey)](#platform-notes)
+
+---
+
+## Features
+
+- **Two render modes** — `mask` (alpha transparency) and `overlay` (painted color)
+- **Per-pixel AGSL shaders** on Android API 33+ — zero discrete-stop banding, exact curve math
+- **Custom curve LUT** — `cubicBezier` and `stops` curves rendered via AGSL uniform array on API 33+
+- **Five preset curves** — `smooth`, `sharp`, `gentle`, `soft`, `linear`
+- **Per-edge control** — independent `size`, `curve`, and `color` per edge
+- **Rounded corners** — `radius` prop applies a native clip path
+- **Web support** — CSS `mask-image` with `mask-composite: intersect` for zero-banding in browsers
+- **Fabric / New Architecture** — built with `codegenNativeComponent`, no Paper renderer
+- **Zero extra dependencies** — only `react` and `react-native`
+
+---
 
 ## Installation
 
 ```sh
+yarn add react-native-edge-fade
+# or
 npm install react-native-edge-fade
 ```
 
-## Usage
+**iOS** — install pods after adding the package:
+
+```sh
+cd ios && pod install
+```
+
+> **Requires React Native New Architecture (Fabric).** The Paper renderer is not supported.
+
+---
+
+## Quick start
 
 ```tsx
-import { ScrollView } from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
 
-export function Example() {
-  return (
-    <EdgeFadeView bottom={80} curve="smooth" style={{ height: 300 }}>
-      <ScrollView>{/* content */}</ScrollView>
-    </EdgeFadeView>
-  );
-}
-```
+// Mask — fade the bottom of a scrollable list
+<EdgeFadeView bottom={80} style={{ flex: 1 }}>
+  <ScrollView>{/* content */}</ScrollView>
+</EdgeFadeView>
 
-Enable any edge with `top`, `bottom`, `left`, or `right`. Each edge accepts `true`,
-a size in dp, or an object with per-edge options:
-
-```tsx
-<EdgeFadeView
-  top={{ size: 32, curve: 'gentle' }}
-  bottom={{ size: 96, curve: 'sharp' }}
-/>
-```
-
-## Mask vs Overlay
-
-`react-native-edge-fade` supports two rendering modes.
-
-### Mask mode
-
-Mask mode is the default. It attenuates the alpha of the wrapped content, so the content
-fades into real transparency and whatever is behind the component is revealed.
-
-```tsx
-<EdgeFadeView mode="mask" bottom={80}>
-  <ScrollView />
+// Overlay — fade left and right edges into a background color
+<EdgeFadeView mode="overlay" left={120} right={120} color="#000" curve="gentle">
+  <ScrollView horizontal>{/* content */}</ScrollView>
 </EdgeFadeView>
 ```
 
-Use this for general-purpose composition, especially over images, gradients, blur,
-video, or dynamic backgrounds.
-
-### Overlay mode
-
-Overlay mode paints a colored gradient over the content. The content itself does not
-become transparent.
-
-```tsx
-<EdgeFadeView mode="overlay" bottom={80} color="#fff">
-  <ScrollView />
-</EdgeFadeView>
-```
-
-Use this when the fade should blend into a known solid color, such as a toolbar,
-header, footer, or fixed panel background.
-
-If `mode` is omitted and a `color` is provided, the component uses overlay mode.
-Without a `color`, it uses mask mode.
-
-## Curves
-
-Preset curves:
-
-- `smooth` - default
-- `sharp`
-- `gentle`
-- `soft`
-- `linear`
-
-Custom curves are serializable and work across native platforms and web:
-
-```tsx
-<EdgeFadeView
-  bottom={{
-    size: 96,
-    curve: { type: 'cubicBezier', x1: 0.16, y1: 1, x2: 0.3, y2: 1 },
-  }}
-/>
-
-<EdgeFadeView
-  bottom={{
-    size: 96,
-    curve: { type: 'stops', values: [1, 0.92, 0.7, 0.32, 0] },
-  }}
-/>
-```
-
-## Android AGSL Rendering
-
-On Android API 33+, preset curves are rendered with an AGSL `RuntimeShader`.
-Instead of approximating the fade with discrete gradient stops, Android evaluates the
-curve per pixel:
-
-```text
-overlayAlpha = t ^ n
-maskAlpha    = 1 - (t ^ n)
-```
-
-This keeps mask and overlay visually complementary while avoiding stop-based banding.
-For the `soft` curve, Android uses the same complementary shape with `sin(t * PI / 2)`.
-
-The shader also applies subtle deterministic alpha dithering inside the fade range. AGSL
-removes banding caused by discrete gradient stops; dithering mitigates the remaining
-8-bit alpha/display quantization that can still be visible on dark backgrounds or in
-compressed screenshots.
-
-Android API < 33 and custom serialized curves fall back to a dense `LinearGradient`
-implementation for compatibility.
-
-Important: "zero-banding" here means no stop-based banding in the Android API 33+
-preset path. Extremely dark, low-contrast fades can still expose device, screenshot, or
-compositor quantization, so the implementation uses dithering to make those residual
-steps less perceptible.
-
-## Platform Notes
-
-- iOS uses native Core Animation layers for masking and overlay rendering.
-- Android uses a native `FrameLayout` with canvas compositing. API 33+ uses AGSL for
-  preset curves; older Android versions use the compatibility gradient path.
-- Web uses CSS masks for mask mode and absolutely positioned gradient views for overlay
-  mode.
+---
 
 ## Props
 
+| Prop     | Type                                  | Default    | Description                                          |
+| -------- | ------------------------------------- | ---------- | ---------------------------------------------------- |
+| `top`    | `boolean \| number \| EdgeConfig`     | `false`    | Top edge fade                                        |
+| `bottom` | `boolean \| number \| EdgeConfig`     | `false`    | Bottom edge fade                                     |
+| `left`   | `boolean \| number \| EdgeConfig`     | `false`    | Left edge fade                                       |
+| `right`  | `boolean \| number \| EdgeConfig`     | `false`    | Right edge fade                                      |
+| `size`   | `number`                              | `80`       | Default fade depth (dp) for all active edges         |
+| `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
+| `mode`   | `'mask' \| 'overlay'`                 | auto       | Render mode; inferred from `color` when omitted      |
+| `color`  | `ColorValue`                          | —          | Global overlay color (implies `mode="overlay"`)      |
+| `radius` | `number`                              | —          | Corner radius, applied as a native clip path         |
+| `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
+
+### Edge prop forms
+
+```tsx
+// boolean — enables edge at the global default size (80 dp)
+<EdgeFadeView bottom />
+
+// number — enables edge at an explicit size
+<EdgeFadeView bottom={120} />
+
+// EdgeConfig — full per-edge control
+<EdgeFadeView bottom={{ size: 120, curve: 'sharp', color: '#000' }} />
+```
+
+### EdgeConfig
+
 ```ts
-import type { ColorValue } from 'react-native';
-
-type CurvePreset = 'smooth' | 'sharp' | 'gentle' | 'soft' | 'linear';
-
-type EdgeFadeCurve =
-  | CurvePreset
-  | { type: 'cubicBezier'; x1: number; y1: number; x2: number; y2: number }
-  | { type: 'stops'; values: [number, number, ...number[]] };
-
 type EdgeConfig = {
-  size?: number;
-  curve?: EdgeFadeCurve;
-  color?: ColorValue;
-};
-
-type EdgeFadeViewProps = {
-  top?: boolean | number | EdgeConfig;
-  bottom?: boolean | number | EdgeConfig;
-  left?: boolean | number | EdgeConfig;
-  right?: boolean | number | EdgeConfig;
-  size?: number;
-  curve?: EdgeFadeCurve;
-  mode?: 'mask' | 'overlay';
-  color?: ColorValue;
-  radius?: number;
+  size?:  number;         // overrides global size for this edge
+  curve?: EdgeFadeCurve;  // overrides global curve for this edge
+  color?: ColorValue;     // per-edge overlay color (overlay mode)
 };
 ```
+
+---
+
+## Render modes
+
+### `mode="mask"` _(default when no `color`)_
+
+Attenuates the alpha of the wrapped content using `DST_IN` compositing. Content is fully
+visible at the inner edge (alpha = 1) and transparent at the outer edge (alpha = 0).
+Whatever is behind the component is revealed through the fade.
+
+Use this for content over images, gradients, blur, video, or dynamic backgrounds.
+
+```tsx
+<EdgeFadeView bottom={80} style={{ flex: 1 }}>
+  <ScrollView>{/* … */}</ScrollView>
+</EdgeFadeView>
+```
+
+### `mode="overlay"` _(default when `color` is set)_
+
+Paints a color gradient over the content from transparent (inner) to opaque (outer).
+The content itself does not become transparent.
+
+Use this when the fade should blend content into a known solid background color.
+
+```tsx
+<EdgeFadeView mode="overlay" bottom={80} color="#fff">
+  <ScrollView>{/* … */}</ScrollView>
+</EdgeFadeView>
+```
+
+### Per-edge colors
+
+In overlay mode each edge can have its own independent color:
+
+```tsx
+<EdgeFadeView
+  top={{ color: '#1a1a2e' }}
+  bottom={{ color: '#16213e' }}
+/>
+```
+
+---
+
+## Curves
+
+### Presets
+
+| Name       | Shape                                |
+| ---------- | ------------------------------------ |
+| `'smooth'` | Cubic ease-out — default             |
+| `'sharp'`  | Quintic ease-out — aggressive        |
+| `'gentle'` | Quadratic ease-out — soft            |
+| `'soft'`   | Sinusoidal — very gradual            |
+| `'linear'` | Linear — constant rate               |
+
+### `cubicBezier`
+
+Standard CSS `cubic-bezier()` easing, sampled at 32 evenly-spaced positions:
+
+```tsx
+// ease-in-out
+<EdgeFadeView
+  bottom={{ curve: { type: 'cubicBezier', x1: 0.42, y1: 0, x2: 0.58, y2: 1 } }}
+/>
+
+// ease
+<EdgeFadeView
+  bottom={{ curve: { type: 'cubicBezier', x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 } }}
+/>
+```
+
+### `stops`
+
+Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
+
+```tsx
+// Concave — quick drop-off near the outer edge
+<EdgeFadeView bottom={{ curve: { type: 'stops', values: [1, 0.9, 0.6, 0.2, 0] } }} />
+
+// Plateau — holds at 50% before the final cut
+<EdgeFadeView bottom={{ curve: { type: 'stops', values: [1, 0.5, 0.5, 0.5, 0] } }} />
+```
+
+> On **Android API 33+**, both `cubicBezier` and `stops` are rendered via an AGSL
+> `RuntimeShader` with a 32-entry LUT uniform and per-pixel linear interpolation —
+> no discrete banding regardless of curve shape.
+
+---
+
+## Examples
+
+### Fading both ends of a vertical list
+
+```tsx
+<EdgeFadeView top={40} bottom={80} style={{ flex: 1 }}>
+  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+    {items.map((item) => <Row key={item.id} {...item} />)}
+  </ScrollView>
+</EdgeFadeView>
+```
+
+### Horizontal strip with overlay fade
+
+```tsx
+<View style={{ height: 48 }}>
+  <EdgeFadeView
+    mode="overlay"
+    left={32}
+    right={32}
+    color={backgroundColor}
+    curve="gentle"
+    style={StyleSheet.absoluteFill}
+  >
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      showsHorizontalScrollIndicator={false}
+    >
+      {tags.map((tag) => <Tag key={tag} label={tag} />)}
+    </ScrollView>
+  </EdgeFadeView>
+</View>
+```
+
+### Rounded card with faded overlay
+
+```tsx
+<EdgeFadeView bottom={60} radius={16} style={{ height: 200 }}>
+  <Image source={coverImage} style={StyleSheet.absoluteFill} />
+</EdgeFadeView>
+```
+
+### All four edges simultaneously
+
+```tsx
+<EdgeFadeView top={40} bottom={80} left={24} right={24} curve="gentle">
+  <ScrollView nestedScrollEnabled>
+    {/* horizontal + vertical content */}
+  </ScrollView>
+</EdgeFadeView>
+```
+
+---
+
+## Platform notes
+
+| Platform          | Implementation                                                              |
+| ----------------- | --------------------------------------------------------------------------- |
+| Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
+| Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
+| iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeMultiply`)                  |
+| Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
+
+### Android — nested scrolling
+
+When `EdgeFadeView` wraps a `ScrollView` that is itself inside another `ScrollView`,
+add `nestedScrollEnabled` to the inner view so touch events are not intercepted by
+the parent:
+
+```tsx
+<ScrollView>
+  <EdgeFadeView bottom={80} style={{ height: 300 }}>
+    <ScrollView nestedScrollEnabled>  {/* required on Android */}
+      {/* … */}
+    </ScrollView>
+  </EdgeFadeView>
+</ScrollView>
+```
+
+### Android — AGSL dithering
+
+On API 33+, the AGSL shader applies subtle deterministic alpha dithering within the
+fade region. AGSL eliminates stop-based banding; dithering mitigates the residual
+8-bit alpha/display quantization that can still appear on dark backgrounds or in
+compressed screenshots.
+
+---
+
+## TypeScript
+
+All types are exported from the package root:
+
+```ts
+import type {
+  EdgeFadeViewProps,
+  EdgeFadeCurve,
+  EdgeFadeMode,
+  EdgeConfig,
+  CubicBezierCurve,
+  StopsCurve,
+} from 'react-native-edge-fade';
+```
+
+---
 
 ## Development
 
 ```sh
-yarn
-yarn typecheck
-yarn lint
-yarn test
+yarn                  # install dependencies
+yarn typecheck        # TypeScript check
+yarn lint             # ESLint + Prettier
+yarn test             # Jest unit tests
+yarn prepare          # build the library (outputs to lib/)
 ```
-
-The repository uses Lefthook for commit hooks. Lefthook command jobs run through `sh`,
-so Windows commit tools need a working Unix shell environment, such as Git Bash. If a
-GUI commit fails with `execvpe(/bin/bash) failed`, commit from a Git Bash or PowerShell
-terminal with hooks installed correctly, or fix the GUI shell integration.
-
-## Contributing
-
-- [Development workflow](CONTRIBUTING.md#development-workflow)
-- [Sending a pull request](CONTRIBUTING.md#sending-a-pull-request)
-- [Code of conduct](CODE_OF_CONDUCT.md)
-
-## License
-
-MIT
 
 ---
 
-Made with [create-react-native-library](https://github.com/callstack/react-native-builder-bob)
+## License
+
+MIT © [Giulio Amato](https://github.com/AmatoGiulio)
