@@ -1,3 +1,5 @@
+<img src="docs/banner.png" alt="react-native-edge-fade" />
+
 # react-native-edge-fade
 
 Smooth, customisable edge fading for React Native — mask and overlay modes, per-pixel AGSL shaders on Android API 33+, zero extra dependencies.
@@ -272,6 +274,43 @@ On API 33+, the AGSL shader applies subtle deterministic alpha dithering within 
 fade region. AGSL eliminates stop-based banding; dithering mitigates the residual
 8-bit alpha/display quantization that can still appear on dark backgrounds or in
 compressed screenshots.
+
+---
+
+## Scroll-driven fades
+
+Use `AnimatedEdgeFadeView` — a pre-wrapped `Animated.createAnimatedComponent(EdgeFadeView)` — to drive any numeric edge prop from an `Animated.Value` or interpolation. No extra dependencies required.
+
+```tsx
+import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
+
+function FeedScreen() {
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Top fade: invisible at the top, ramps to 60 dp after 80 px of scroll.
+  const topFade = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, 60],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <AnimatedEdgeFadeView top={topFade} bottom={80} style={{ flex: 1 }}>
+      <ScrollView
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+      >
+        {/* content */}
+      </ScrollView>
+    </AnimatedEdgeFadeView>
+  );
+}
+```
+
+> **Note** — `useNativeDriver: false` is required because the fade size is resolved in JS before reaching the native view. All five numeric props (`top`, `bottom`, `left`, `right`, `size`, `radius`) accept animated values.
 
 ---
 

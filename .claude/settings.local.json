@@ -6,7 +6,26 @@
       "Bash(yarn prepare *)",
       "Bash(npx tsc *)",
       "Bash(.\\\\gradlew compileDebugKotlin)",
-      "Bash(./gradlew compileDebugKotlin)"
+      "Bash(./gradlew compileDebugKotlin)",
+      "PowerShell(adb -s R52X30FPSGV exec-out screencap -p > \"C:\\\\Dev\\\\react-native-edge-fade\\\\screen.png\" 2>&1; Write-Host \"exit: $LASTEXITCODE\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(yarn prettier *)",
+      "Bash(yarn eslint *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('react-native-builder-bob', d.get\\('bob', {}\\)\\), indent=2\\)\\)\")",
+      "Bash(adb -s emulator-5554 shell input keyevent 82)",
+      "Bash(adb -s emulator-5554 reverse tcp:8081 tcp:8081)",
+      "Bash(adb -s emulator-5554 shell screencap -p /sdcard/screen.png)",
+      "Bash(adb -s emulator-5554 pull /sdcard/screen.png /tmp/screen_after_fix.png)",
+      "Bash(adb -s emulator-5554 exec-out screencap -p > /tmp/screen_after_fix.png 2>&1 && echo \"OK\")",
+      "Bash(adb -s emulator-5554 exec-out screencap -p)",
+      "Bash(mkdir C:/Temp)",
+      "Bash(adb -s emulator-5554 exec-out screencap -p > /mnt/c/Temp/screen.png 2>&1 && echo \"OK\")",
+      "Bash(adb -s emulator-5554 shell screencap /sdcard/Download/sc.png)",
+      "Bash(adb -s emulator-5554 pull /sdcard/Download/sc.png \"C:\\\\\\\\Dev\\\\\\\\react-native-edge-fade\\\\\\\\docs\\\\\\\\screen_current.png\")",
+      "Bash(adb -s emulator-5554 shell input tap 135 755)",
+      "Bash(npx expo *)",
+      "Bash(adb -s emulator-5554 shell am start -a android.intent.action.VIEW -d \"exp+react-native-edge-fade-example://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081\")"
     ]
   }
 }

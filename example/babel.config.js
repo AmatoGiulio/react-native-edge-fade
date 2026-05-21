@@ -10,6 +10,9 @@ module.exports = function (api) {
   return getConfig(
     {
       presets: ['babel-preset-expo'],
+      // Required for Reanimated worklet transforms (useAnimatedProps,
+      // useAnimatedScrollHandler, etc.).  Must be last in the plugins list.
+      plugins: ['react-native-reanimated/plugin'],
     },
     { root, pkg }
   );

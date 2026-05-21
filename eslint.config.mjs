@@ -15,18 +15,37 @@ const compat = new FlatCompat({
 });
 
 export default defineConfig([
+  ...fixupConfigRules(compat.extends('@react-native', 'prettier')),
   {
-    extends: fixupConfigRules(compat.extends('@react-native', 'prettier')),
     plugins: { prettier },
     rules: {
       'react/react-in-jsx-scope': 'off',
       'prettier/prettier': 'error',
+    },
+  },
+  {
+    files: ['**/*.{js,jsx,mjs,cjs}'],
+    rules: {
       // Allow destructure-to-ignore variables prefixed with _ (e.g. top: _t)
-      '@typescript-eslint/no-unused-vars': [
+      'no-unused-vars': [
         'error',
         { varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
       ],
-      'no-unused-vars': 'off', // superseded by @typescript-eslint/no-unused-vars
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      // Allow destructure-to-ignore variables prefixed with _ (e.g. top: _t)
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
+      'no-unused-vars': 'off',
     },
   },
   {

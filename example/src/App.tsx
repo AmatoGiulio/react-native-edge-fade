@@ -8,299 +8,421 @@ import {
   Text,
   View,
 } from 'react-native';
-import { EdgeFadeView } from 'react-native-edge-fade';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedProps,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { EdgeFadeView, NativeEdgeFadeView } from 'react-native-edge-fade';
 import BenchmarkScreen from './BenchmarkScreen';
+
+// ── Animated EdgeFadeView for Reanimated ──────────────────────────────────────
+//
+// We wrap NativeEdgeFadeView (the raw Fabric component), NOT the JS EdgeFadeView
+// wrapper.  Reason: Reanimated's useAnimatedProps fires a UI-thread worklet that
+// mutates the shadow node directly.  If we animate `top` on the JS wrapper, the
+// mutation lands on Yoga's `top` layout property (shifting the view down).
+// Animating `fadeTop` on the native component targets the registered @ReactProp
+// instead — no layout side-effects.
+//
+// Created at module level so Reanimated never re-registers the component.
+
+const AnimatedEdgeFadeView =
+  Animated.createAnimatedComponent(NativeEdgeFadeView);
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
 const C = {
-  bg: '#0d0d0d',
-  surface: '#161616',
-  border: '#222',
-  text: '#f0f0f0',
-  sub: '#888',
-  muted: '#444',
+  bg: '#080808',
+  surface: '#111',
+  border: '#1e1e1e',
+  text: '#f2f2f2',
+  sub: '#777',
+  muted: '#333',
 };
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
-const avatar = (seed: string, size = 80) =>
-  `https://api.dicebear.com/9.x/glass/png?seed=${seed}&size=${size}`;
+const img = (id: string) =>
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=400&q=80`;
 
-const PEOPLE = [
-  { seed: 'Christian', name: 'Christian', role: 'Design', accent: '#818cf8' },
-  { seed: 'Alex', name: 'Alex', role: 'iOS', accent: '#34d399' },
-  { seed: 'Jordan', name: 'Jordan', role: 'Product', accent: '#fb923c' },
-  { seed: 'Morgan', name: 'Morgan', role: 'PM', accent: '#f472b6' },
-  { seed: 'Casey', name: 'Casey', role: 'Backend', accent: '#60a5fa' },
-  { seed: 'Riley', name: 'Riley', role: 'QA', accent: '#a78bfa' },
-  { seed: 'Taylor', name: 'Taylor', role: 'DevOps', accent: '#fbbf24' },
-  { seed: 'Sam', name: 'Sam', role: 'Data', accent: '#2dd4bf' },
-] as const;
+type Item = {
+  id: string;
+  uri: string;
+  category: string;
+  accent: string;
+  h: number;
+};
 
-const MESSAGES = [
+const ITEMS: Item[] = [
   {
-    seed: 'Morgan',
-    name: 'Morgan',
-    text: 'The new fade animation looks incredible 🔥',
-    time: '2m',
-    unread: 3,
+    id: '1',
+    uri: img('photo-1515886657613-9f3515b0c78f'),
+    category: 'Fashion',
+    accent: '#f472b6',
+    h: 260,
   },
   {
-    seed: 'Casey',
-    name: 'Casey',
-    text: 'Backend changes are shipped, ready for QA',
-    time: '14m',
-    unread: 0,
+    id: '2',
+    uri: img('photo-1487958449943-2429e8be8625'),
+    category: 'Architecture',
+    accent: '#60a5fa',
+    h: 200,
   },
   {
-    seed: 'Alex',
-    name: 'Alex',
-    text: 'iOS build passed, no animation glitches ✅',
-    time: '1h',
-    unread: 1,
+    id: '3',
+    uri: img('photo-1579546929518-9e396f3cc809'),
+    category: 'Art',
+    accent: '#a78bfa',
+    h: 300,
   },
   {
-    seed: 'Riley',
-    name: 'Riley',
-    text: 'All regression tests are green',
-    time: '3h',
-    unread: 0,
+    id: '4',
+    uri: img('photo-1448375240586-882707db888b'),
+    category: 'Nature',
+    accent: '#34d399',
+    h: 220,
   },
   {
-    seed: 'Jordan',
-    name: 'Jordan',
-    text: 'Can we increase the fade size on the header?',
-    time: '5h',
-    unread: 0,
+    id: '5',
+    uri: img('photo-1558618666-fcd25c85cd64'),
+    category: 'Fashion',
+    accent: '#f472b6',
+    h: 280,
   },
   {
-    seed: 'Taylor',
-    name: 'Taylor',
-    text: 'Deploy pipeline is ready to go',
-    time: '8h',
-    unread: 0,
+    id: '6',
+    uri: img('photo-1486325212027-8081e485255e'),
+    category: 'Architecture',
+    accent: '#60a5fa',
+    h: 240,
   },
   {
-    seed: 'Sam',
-    name: 'Sam',
-    text: 'Metrics are looking great after the update 📈',
-    time: '1d',
-    unread: 0,
+    id: '7',
+    uri: img('photo-1541701494587-cb58502866ab'),
+    category: 'Art',
+    accent: '#a78bfa',
+    h: 190,
   },
   {
-    seed: 'Christian',
-    name: 'Christian',
-    text: "Let's ship v1.0 tomorrow!",
-    time: '1d',
-    unread: 2,
+    id: '8',
+    uri: img('photo-1506905925346-21bda4d32df4'),
+    category: 'Nature',
+    accent: '#34d399',
+    h: 320,
   },
   {
-    seed: 'Morgan',
-    name: 'Morgan',
-    text: 'Agreed — everything looks solid',
-    time: '2d',
-    unread: 0,
+    id: '9',
+    uri: img('photo-1469334031218-e382a71b716b'),
+    category: 'Fashion',
+    accent: '#f472b6',
+    h: 230,
   },
   {
-    seed: 'Alex',
-    name: 'Alex',
-    text: 'AGSL shader performance is insane on API 33+ 🚀',
-    time: '2d',
-    unread: 0,
+    id: '10',
+    uri: img('photo-1477959858617-67f85cf4f1df'),
+    category: 'Architecture',
+    accent: '#60a5fa',
+    h: 270,
   },
-] as const;
+  {
+    id: '11',
+    uri: img('photo-1558591710-4b4a1ae0f04d'),
+    category: 'Art',
+    accent: '#a78bfa',
+    h: 210,
+  },
+  {
+    id: '12',
+    uri: img('photo-1465146344425-f00d5f5c8f07'),
+    category: 'Nature',
+    accent: '#34d399',
+    h: 290,
+  },
+  {
+    id: '13',
+    uri: img('photo-1509631179647-0177331693ae'),
+    category: 'Fashion',
+    accent: '#f472b6',
+    h: 250,
+  },
+  {
+    id: '14',
+    uri: img('photo-1493397212122-2b85dda8106b'),
+    category: 'Architecture',
+    accent: '#60a5fa',
+    h: 310,
+  },
+  {
+    id: '15',
+    uri: img('photo-1547891654-e66ed7ebb968'),
+    category: 'Art',
+    accent: '#a78bfa',
+    h: 180,
+  },
+  {
+    id: '16',
+    uri: img('photo-1501854140801-50d01698950b'),
+    category: 'Nature',
+    accent: '#34d399',
+    h: 260,
+  },
+];
 
-// ── Person card ───────────────────────────────────────────────────────────────
+type Category = { label: string; accent: string };
 
-function PersonCard({ seed, name, role, accent }: (typeof PEOPLE)[number]) {
+const CATEGORIES: Category[] = [
+  { label: 'All', accent: '#f2f2f2' },
+  { label: 'Fashion', accent: '#f472b6' },
+  { label: 'Architecture', accent: '#60a5fa' },
+  { label: 'Art', accent: '#a78bfa' },
+  { label: 'Nature', accent: '#34d399' },
+  { label: 'Dark', accent: '#fb923c' },
+];
+
+// ── Masonry helpers ───────────────────────────────────────────────────────────
+
+function splitMasonry(items: Item[]): [Item[], Item[]] {
+  const left: Item[] = [];
+  const right: Item[] = [];
+  let leftH = 0;
+  let rightH = 0;
+  for (const item of items) {
+    if (leftH <= rightH) {
+      left.push(item);
+      leftH += item.h;
+    } else {
+      right.push(item);
+      rightH += item.h;
+    }
+  }
+  return [left, right];
+}
+
+// ── Card ──────────────────────────────────────────────────────────────────────
+
+function MasonryCard({ item }: { item: Item }) {
   return (
-    <View style={[card.root, { borderColor: accent + '30' }]}>
-      <View style={[card.ring, { borderColor: accent + '80' }]}>
-        <Image source={{ uri: avatar(seed) }} style={card.avatar} />
-      </View>
-      <Text style={card.name} numberOfLines={1}>
-        {name}
-      </Text>
-      <View style={[card.badge, { backgroundColor: accent + '18' }]}>
-        <Text style={[card.role, { color: accent }]}>{role}</Text>
+    <View style={[mc.root, { height: item.h }]}>
+      <Image source={{ uri: item.uri }} style={mc.image} resizeMode="cover" />
+      <View style={mc.label}>
+        <View style={[mc.dot, { backgroundColor: item.accent }]} />
+        <Text style={mc.text}>{item.category.toUpperCase()}</Text>
       </View>
     </View>
   );
 }
 
-const card = StyleSheet.create({
+const mc = StyleSheet.create({
   root: {
-    width: 84,
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    marginHorizontal: 4,
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 8,
     backgroundColor: C.surface,
-    gap: 6,
   },
-  ring: {
-    borderRadius: 24,
-    borderWidth: 2,
-    padding: 2,
+  image: {
+    ...StyleSheet.absoluteFillObject,
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 22,
-    backgroundColor: '#222',
-  },
-  name: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: C.text,
-    letterSpacing: 0.1,
-  },
-  badge: {
+  label: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: 20,
   },
-  role: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  text: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.8,
   },
 });
 
-// ── Message row ───────────────────────────────────────────────────────────────
+// ── Category pill ─────────────────────────────────────────────────────────────
 
-function MessageRow({
-  seed,
-  name,
-  text,
-  time,
-  unread,
-}: (typeof MESSAGES)[number]) {
+function CategoryPill({
+  cat,
+  active,
+  onPress,
+}: {
+  cat: Category;
+  active: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={msg.root}>
-      <Image source={{ uri: avatar(seed, 48) }} style={msg.avatar} />
-      <View style={msg.body}>
-        <View style={msg.header}>
-          <Text style={msg.name}>{name}</Text>
-          <Text style={msg.time}>{time}</Text>
-        </View>
-        <Text style={[msg.text, unread > 0 && msg.textBold]} numberOfLines={1}>
-          {text}
-        </Text>
-      </View>
-      {unread > 0 && (
-        <View style={msg.pill}>
-          <Text style={msg.pillText}>{unread}</Text>
-        </View>
-      )}
-    </View>
+    <Pressable
+      onPress={onPress}
+      style={[
+        pill.root,
+        active
+          ? { backgroundColor: cat.accent, borderColor: cat.accent }
+          : pill.inactive,
+      ]}
+    >
+      <Text
+        style={[
+          pill.text,
+          { color: active ? (cat.label === 'All' ? '#000' : '#fff') : C.sub },
+        ]}
+      >
+        {cat.label}
+      </Text>
+    </Pressable>
   );
 }
 
-const msg = StyleSheet.create({
+const pill = StyleSheet.create({
   root: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
     paddingHorizontal: 16,
-    gap: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: C.border,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#222',
-  },
-  body: {
-    flex: 1,
-    gap: 3,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  name: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: C.text,
-  },
-  time: {
-    fontSize: 12,
-    color: C.muted,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 8,
   },
   text: {
     fontSize: 13,
-    color: C.sub,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
-  textBold: {
-    color: C.text,
-    fontWeight: '500',
-  },
-  pill: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#818cf8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  pillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#fff',
+  inactive: {
+    backgroundColor: 'transparent',
+    borderColor: C.border,
   },
 });
 
 // ── Demo screen ───────────────────────────────────────────────────────────────
 
 function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  // ── Scroll-driven top fade via Reanimated SharedValue ──────────────────────
+  //
+  // scrollY lives entirely on the UI thread — no JS-thread bridge round-trip.
+  //
+  // topFadeProps animates `fadeTop` (native prop) directly on NativeEdgeFadeView
+  // via Reanimated's UI-thread shadow-node mutation.  Using `fadeTop` avoids the
+  // Yoga layout collision that would occur if we animated the JS wrapper's `top`.
+  //
+  //   scrollY = 0  → fadeTop = 0   (at the very top, no top fade needed)
+  //   scrollY = 80 → fadeTop = 60  (full 60 dp top fade — content above)
+
+  const scrollY = useSharedValue(0);
+
+  const onScroll = useAnimatedScrollHandler((event) => {
+    scrollY.set(event.contentOffset.y);
+  });
+
+  const topFadeProps = useAnimatedProps(() => ({
+    fadeTop: interpolate(
+      scrollY.value,
+      [0, 160],
+      [0, 160],
+      Extrapolation.CLAMP
+    ),
+  }));
+
+  const filtered =
+    activeCategory === 'All'
+      ? ITEMS
+      : ITEMS.filter((i) => i.category === activeCategory);
+
+  const [left, right] = splitMasonry(filtered);
+
   return (
     <View style={s.screen}>
       {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.title}>Messages</Text>
-          <Text style={s.subtitle}>10 conversations</Text>
+          <Text style={s.title}>Discover</Text>
+          <Text style={s.subtitle}>{ITEMS.length} pieces</Text>
         </View>
         <Pressable style={s.benchBtn} onPress={onBenchmark}>
-          <Text style={s.benchText}>Benchmark</Text>
+          <Text style={s.benchText}>⚡ Benchmark</Text>
         </Pressable>
       </View>
 
-      {/* Team strip */}
-      <Text style={s.section}>Team</Text>
-      <EdgeFadeView left={20} right={20} curve="gentle" style={s.strip}>
+      {/*
+       * Category filter strip — overlay mode.
+       *
+       * mode="overlay" + color={C.bg} paints a gradient from the background
+       * colour over the scroll edges, creating a "fade into background" look.
+       * This is overlay mode's typical use-case; no true alpha masking needed.
+       */}
+      <EdgeFadeView
+        left={120}
+        right={120}
+        curve="gentle"
+        mode="overlay"
+        color={C.bg}
+        style={s.filterWrap}
+      >
         <ScrollView
           horizontal
           nestedScrollEnabled
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.stripContent}
+          contentContainerStyle={s.filterContent}
         >
-          {PEOPLE.map((p) => (
-            <PersonCard key={p.seed} {...p} />
+          {CATEGORIES.map((cat) => (
+            <CategoryPill
+              key={cat.label}
+              cat={cat}
+              active={activeCategory === cat.label}
+              onPress={() => setActiveCategory(cat.label)}
+            />
           ))}
         </ScrollView>
       </EdgeFadeView>
 
-      {/* Divider */}
-      <View style={s.divider} />
-
-      {/* Messages list */}
-      <Text style={s.section}>Recent</Text>
-      <EdgeFadeView top={40} bottom={80} curve="smooth" style={s.list}>
-        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-          {MESSAGES.map((m) => (
-            <MessageRow key={m.seed + m.time} {...m} />
-          ))}
-        </ScrollView>
-      </EdgeFadeView>
+      {/*
+       * Masonry grid — mask mode, scroll-driven top fade via Reanimated.
+       *
+       * AnimatedEdgeFadeView wraps NativeEdgeFadeView directly so Reanimated's
+       * UI-thread worklet can mutate `fadeTop` as a @ReactProp without
+       * colliding with Yoga layout.
+       *
+       * Static props (fadeBottom, mode, curve*) are passed as normal React props.
+       * The animated prop (fadeTop) is driven by the scroll SharedValue.
+       */}
+      <AnimatedEdgeFadeView
+        animatedProps={topFadeProps}
+        fadeBottom={600}
+        mode="mask"
+        curveTop="smooth"
+        curveBottom="smooth"
+        style={s.gridWrap}
+      >
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.gridContent}
+          scrollEventThrottle={16}
+          onScroll={onScroll}
+        >
+          <View style={s.columns}>
+            <View style={s.col}>
+              {left.map((item) => (
+                <MasonryCard key={item.id} item={item} />
+              ))}
+            </View>
+            <View style={s.col}>
+              {right.map((item) => (
+                <MasonryCard key={item.id} item={item} />
+              ))}
+            </View>
+          </View>
+        </Animated.ScrollView>
+      </AnimatedEdgeFadeView>
     </View>
   );
 }
@@ -315,9 +437,9 @@ export default function App() {
       {screen === 'demo' ? (
         <DemoScreen onBenchmark={() => setScreen('benchmark')} />
       ) : (
-        <View style={{ flex: 1 }}>
+        <View style={s.benchmarkRoot}>
           <Pressable style={s.backBtn} onPress={() => setScreen('demo')}>
-            <Text style={s.backText}>← Demo</Text>
+            <Text style={s.backText}>← Discover</Text>
           </Pressable>
           <BenchmarkScreen />
         </View>
@@ -333,6 +455,9 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: C.bg,
   },
+  benchmarkRoot: {
+    flex: 1,
+  },
   screen: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? 48 : 60,
@@ -347,19 +472,19 @@ const s = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
     color: C.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 13,
-    color: C.muted,
+    color: C.sub,
     marginTop: 2,
   },
   benchBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
@@ -370,37 +495,29 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Section label
-  section: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.muted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    paddingHorizontal: 20,
-    marginBottom: 10,
+  // Filter strip
+  filterWrap: {
+    height: 44,
+    marginBottom: 16,
   },
-
-  // People strip
-  strip: {
-    height: 128,
-    marginBottom: 4,
-  },
-  stripContent: {
+  filterContent: {
     paddingHorizontal: 20,
     alignItems: 'center',
   },
 
-  // Divider
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginHorizontal: 20,
-    marginVertical: 16,
+  // Grid
+  gridWrap: {
+    flex: 1,
   },
-
-  // Messages list
-  list: {
+  gridContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 120,
+  },
+  columns: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  col: {
     flex: 1,
   },
 
