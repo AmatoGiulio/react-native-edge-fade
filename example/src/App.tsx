@@ -61,6 +61,81 @@ function DemoScreen() {
           </ScrollView>
         </EdgeFadeView>
       </View>
+
+      {/* ── Custom curve demos ── */}
+      <Text style={styles.sectionHeader}>
+        Custom curves (AGSL LUT on API 33+)
+      </Text>
+
+      <Text style={styles.label}>cubicBezier(0.25, 0.1, 0.25, 1) — ease</Text>
+      <EdgeFadeView
+        mode="mask"
+        bottom={80}
+        curve={{ type: 'cubicBezier', x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 }}
+        style={styles.tallBox}
+      >
+        <ScrollView>
+          {ITEMS.map((item) => (
+            <View key={item} style={styles.row}>
+              <Text style={styles.rowText}>{item}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
+
+      <Text style={styles.label}>
+        cubicBezier(0.42, 0, 0.58, 1) — ease-in-out (symmetric)
+      </Text>
+      <EdgeFadeView
+        mode="mask"
+        bottom={80}
+        curve={{ type: 'cubicBezier', x1: 0.42, y1: 0, x2: 0.58, y2: 1 }}
+        style={styles.tallBox}
+      >
+        <ScrollView>
+          {ITEMS.map((item) => (
+            <View key={item} style={styles.row}>
+              <Text style={styles.rowText}>{item}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
+
+      <Text style={styles.label}>
+        stops [1, 0.9, 0.6, 0.2, 0] — concave step
+      </Text>
+      <EdgeFadeView
+        mode="mask"
+        bottom={80}
+        curve={{ type: 'stops', values: [1, 0.9, 0.6, 0.2, 0] }}
+        style={styles.tallBox}
+      >
+        <ScrollView>
+          {ITEMS.map((item) => (
+            <View key={item} style={styles.row}>
+              <Text style={styles.rowText}>{item}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
+
+      <Text style={styles.label}>
+        stops [1, 0.5, 0.5, 0.5, 0] — shelf / plateau
+      </Text>
+      <EdgeFadeView
+        mode="mask"
+        bottom={80}
+        curve={{ type: 'stops', values: [1, 0.5, 0.5, 0.5, 0] }}
+        style={styles.tallBox}
+      >
+        <ScrollView>
+          {ITEMS.map((item) => (
+            <View key={item} style={styles.row}>
+              <Text style={styles.rowText}>{item}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </EdgeFadeView>
     </ScrollView>
   );
 }
@@ -107,11 +182,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
   },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#444',
+    marginTop: 24,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
   label: {
     fontSize: 13,
     fontWeight: '600',
     color: '#666',
     marginTop: 16,
+  },
+  tallBox: {
+    height: 200,
   },
   box: {
     height: 100,
