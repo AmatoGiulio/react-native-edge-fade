@@ -156,6 +156,9 @@ Overlay mode:
 - Rebuild only on size, color, curve, or edge config changes.
 - Preserve visual parity with mask mode by using complementary alpha equations:
   `overlayAlpha = t ^ n` and `maskAlpha = 1 - (t ^ n)`.
+- Apply subtle deterministic alpha dithering in the AGSL preset path. The shader removes
+  stop-based banding; dithering targets residual 8-bit alpha/display quantization on
+  dark gradients.
 
 Mask mode:
 
@@ -165,6 +168,9 @@ Mask mode:
 - On Android API 33+, use AGSL for preset curves to evaluate the alpha curve per pixel
   instead of approximating it with discrete gradient stops. This avoids stop-based
   banding while keeping a dense `LinearGradient` fallback for older devices.
+- Do not describe the result as a universal guarantee that no banding can ever be
+  observed. Screenshots, panel bit depth, compositor precision, and low-contrast dark
+  gradients can still show quantization; the implementation should document that nuance.
 
 ## Technology Options
 
@@ -219,6 +225,28 @@ Start from a native view architecture. Choose Expo Modules API or Fabric first u
 there is a specific product reason to make the library Nitro-first.
 
 ## Feature Evaluation
+
+### Rendering Quality Thresholds
+
+Current Android API 33+ preset path:
+
+- AGSL evaluates the curve per pixel, so it has no discrete gradient stops.
+- The shader adds subtle deterministic alpha dithering to reduce visible 8-bit alpha and
+  display quantization on dark fades.
+- The expected result is "stop-free and visually de-banded", not a universal guarantee
+  that every screenshot or device panel will look mathematically continuous.
+
+Optimization thresholds:
+
+- If bands are still visible on device, first test with `linear`, `gentle`, and `smooth`
+  at 80, 120, and 160 dp to separate quantization from the chosen curve shape.
+- If scroll jank appears, benchmark `saveLayer` in mask mode on Android API 32 and API
+  33+ before changing compositing strategy.
+- If custom `cubicBezier` curves show banding, consider an AGSL cubic-bezier evaluator
+  for API 33+ while keeping serialized stops as fallback.
+- If iOS shows comparable banding, evaluate whether dense `CGGradient` stops are enough
+  before considering a Metal/Core Image path. This should be a measured decision, not a
+  default v1 requirement.
 
 ### 1. Custom Shapes
 

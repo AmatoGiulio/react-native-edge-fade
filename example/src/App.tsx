@@ -26,11 +26,29 @@ export default function App() {
       <Text style={styles.label}>Overlay — left + right</Text>
       <View style={styles.box}>
         <EdgeFadeView
-          mode="mask"
+          mode="overlay"
           left={120}
           right={120}
           curve="gentle"
           color="#010101"
+          style={StyleSheet.absoluteFill}
+        >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {ITEMS.map((item) => (
+              <View key={item} style={styles.chip}>
+                <Text style={styles.text}>{item}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </EdgeFadeView>
+      </View>
+      <Text style={styles.label}>Mask — left + right</Text>
+      <View style={styles.box}>
+        <EdgeFadeView
+          mode="mask"
+          left={120}
+          right={120}
+          curve="gentle"
           style={StyleSheet.absoluteFill}
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>

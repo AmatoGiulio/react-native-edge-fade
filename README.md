@@ -110,8 +110,18 @@ maskAlpha    = 1 - (t ^ n)
 This keeps mask and overlay visually complementary while avoiding stop-based banding.
 For the `soft` curve, Android uses the same complementary shape with `sin(t * PI / 2)`.
 
+The shader also applies subtle deterministic alpha dithering inside the fade range. AGSL
+removes banding caused by discrete gradient stops; dithering mitigates the remaining
+8-bit alpha/display quantization that can still be visible on dark backgrounds or in
+compressed screenshots.
+
 Android API < 33 and custom serialized curves fall back to a dense `LinearGradient`
 implementation for compatibility.
+
+Important: "zero-banding" here means no stop-based banding in the Android API 33+
+preset path. Extremely dark, low-contrast fades can still expose device, screenshot, or
+compositor quantization, so the implementation uses dithering to make those residual
+steps less perceptible.
 
 ## Platform Notes
 

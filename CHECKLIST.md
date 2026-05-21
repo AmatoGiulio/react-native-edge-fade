@@ -35,9 +35,9 @@
 ### Curve types (EdgeFadeCurve)
 
 - [x] `'smooth'` — default ease-out (9-stop)
-- [x] `'sharp'`  — aggressive ease-out (9-stop)
+- [x] `'sharp'` — aggressive ease-out (9-stop)
 - [x] `'gentle'` — gentle ease-out (9-stop)
-- [x] `'soft'`   — very soft (9-stop)
+- [x] `'soft'` — very soft (9-stop)
 - [x] `'linear'` — linear (2-stop)
 - [x] `{ type: 'cubicBezier', x1, y1, x2, y2 }` — CSS cubic-bezier easing, sampled to 9 stops
 - [x] `{ type: 'stops', values: [...] }` — explicit alpha array, inner → outer
@@ -55,11 +55,14 @@
 - [x] Explicit `mode` prop (`"mask"` / `"overlay"`)
 - [x] Custom curve parsing (comma-separated alpha strings)
 - [x] AGSL RuntimeShader on Android API 33+ for preset curves (per-pixel alpha, zero discrete stops)
+- [x] AGSL alpha dithering on Android API 33+ to mitigate residual 8-bit/display quantization
 - [x] 64-stop LinearGradient fallback for Android API < 33 and custom curves
 - [x] Gradient cache per edge (`GradientKey` data class)
 - [x] Rounded clip (`canvas.clipPath` with cached `Path`)
 - [x] `androidx.core:core-ktx` for `ColorUtils.setAlphaComponent`
 - [ ] Tested on physical device (Pixel) ✓ — retested after Phase 2 changes
+- [ ] Benchmark `saveLayer` cost during scroll on API 32 and API 33+
+- [ ] Evaluate AGSL support for serialized cubic-bezier custom curves
 
 ---
 
@@ -84,23 +87,23 @@
 
 ## Codegen props (EdgeFadeViewNativeComponent.ts)
 
-| Prop                 | Type        | Status |
-|----------------------|-------------|--------|
-| `fadeTop`            | `Float`     | ✅      |
-| `fadeBottom`         | `Float`     | ✅      |
-| `fadeLeft`           | `Float`     | ✅      |
-| `fadeRight`          | `Float`     | ✅      |
-| `curveTop`           | `string`    | ✅      |
-| `curveBottom`        | `string`    | ✅      |
-| `curveLeft`          | `string`    | ✅      |
-| `curveRight`         | `string`    | ✅      |
-| `mode`               | `string`    | ✅      |
-| `overlayColor`       | `ColorValue`| ✅      |
-| `overlayColorTop`    | `ColorValue`| ✅      |
-| `overlayColorBottom` | `ColorValue`| ✅      |
-| `overlayColorLeft`   | `ColorValue`| ✅      |
-| `overlayColorRight`  | `ColorValue`| ✅      |
-| `fadeRadius`         | `Float`     | ✅      |
+| Prop                 | Type         | Status |
+| -------------------- | ------------ | ------ |
+| `fadeTop`            | `Float`      | ✅     |
+| `fadeBottom`         | `Float`      | ✅     |
+| `fadeLeft`           | `Float`      | ✅     |
+| `fadeRight`          | `Float`      | ✅     |
+| `curveTop`           | `string`     | ✅     |
+| `curveBottom`        | `string`     | ✅     |
+| `curveLeft`          | `string`     | ✅     |
+| `curveRight`         | `string`     | ✅     |
+| `mode`               | `string`     | ✅     |
+| `overlayColor`       | `ColorValue` | ✅     |
+| `overlayColorTop`    | `ColorValue` | ✅     |
+| `overlayColorBottom` | `ColorValue` | ✅     |
+| `overlayColorLeft`   | `ColorValue` | ✅     |
+| `overlayColorRight`  | `ColorValue` | ✅     |
+| `fadeRadius`         | `Float`      | ✅     |
 
 ---
 
@@ -108,6 +111,7 @@
 
 - [x] Mask mode demo (top + bottom)
 - [x] Overlay mode demo (left + right with global color)
+- [x] Mask vs overlay comparison demo (left + right)
 - [ ] Per-edge color demo
 - [ ] cubicBezier curve demo
 - [ ] stops curve demo
@@ -119,10 +123,11 @@
 
 - [x] `memo` wrapper on `EdgeFadeView` (no re-renders on stable props)
 - [x] Gradient caching — Android (key-based), iOS (static for presets)
+- [x] Android preset path is stop-free on API 33+; residual visual banding is treated as quantization and mitigated with dithering
 - [x] No implicit CA animations on layout changes
 - [x] `serializeCurve` — pure function, no side effects
 - [x] `resolveNativeProps` — pure function, no side effects
-- [ ] Unit tests for `serializeCurve` and `resolveNativeProps`
+- [x] Unit tests for `serializeCurve` and `resolveNativeProps`
 - [ ] TypeScript strict mode audit
 
 ---
@@ -144,7 +149,7 @@
 
 - [x] README written
 - [ ] Version bumped to `1.0.0`
-- [ ] `yarn prepare` passes (TypeScript build)
-- [ ] Android build passes
+- [x] `yarn prepare` passes (TypeScript build)
+- [x] Android build passes
 - [ ] iOS build passes
 - [ ] npm publish
