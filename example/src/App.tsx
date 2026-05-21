@@ -1,17 +1,18 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
+import BenchmarkScreen from './BenchmarkScreen';
 
 const ITEMS = Array.from({ length: 30 }, (_, i) => `Item ${i + 1}`);
 
-export default function App() {
+function DemoScreen() {
   return (
-    <View style={styles.root}>
-      {/* ── Mask mode: vertical list ── */}
+    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.label}>Mask — bottom fade</Text>
       <EdgeFadeView
         mode="mask"
         bottom={80}
-        style={[styles.box, styles.tallBox]}
+        style={[styles.box, { height: 300 }]}
       >
         <ScrollView>
           {ITEMS.map((item) => (
@@ -22,7 +23,6 @@ export default function App() {
         </ScrollView>
       </EdgeFadeView>
 
-      {/* ── Overlay mode: horizontal scroll ── */}
       <Text style={styles.label}>Overlay — left + right</Text>
       <View style={styles.box}>
         <EdgeFadeView
@@ -42,6 +42,7 @@ export default function App() {
           </ScrollView>
         </EdgeFadeView>
       </View>
+
       <Text style={styles.label}>Mask — left + right</Text>
       <View style={styles.box}>
         <EdgeFadeView
@@ -60,6 +61,33 @@ export default function App() {
           </ScrollView>
         </EdgeFadeView>
       </View>
+    </ScrollView>
+  );
+}
+
+const TABS = ['Demo', 'Benchmark'] as const;
+type Tab = (typeof TABS)[number];
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('Demo');
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#010101' }}>
+      {/* Tab bar */}
+      <View style={tabs.bar}>
+        {TABS.map((t) => (
+          <Pressable
+            key={t}
+            style={[tabs.tab, t === tab && tabs.active]}
+            onPress={() => setTab(t)}
+          >
+            <Text style={[tabs.text, t === tab && tabs.activeText]}>{t}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === 'Demo' && <DemoScreen />}
+      {tab === 'Benchmark' && <BenchmarkScreen />}
     </View>
   );
 }
@@ -68,8 +96,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#010101',
-    paddingTop: 60,
+  },
+  content: {
+    paddingTop: 16,
     paddingHorizontal: 16,
+    paddingBottom: 40,
     gap: 8,
   },
   text: {
@@ -84,12 +115,8 @@ const styles = StyleSheet.create({
   },
   box: {
     height: 100,
-    //backgroundColor: '#333',
     borderRadius: 12,
     overflow: 'hidden',
-  },
-  tallBox: {
-    height: 300,
   },
   row: {
     paddingVertical: 12,
@@ -112,5 +139,34 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginLeft: 8,
     justifyContent: 'center',
+  },
+});
+
+const tabs = StyleSheet.create({
+  bar: {
+    flexDirection: 'row',
+    paddingTop: 56,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#1a1a1a',
+    backgroundColor: '#010101',
+  },
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  active: {
+    backgroundColor: '#1a1a1a',
+  },
+  text: {
+    fontSize: 14,
+    color: '#555',
+    fontWeight: '500',
+  },
+  activeText: {
+    color: '#fff',
   },
 });

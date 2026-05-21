@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { StyleSheet } from 'react-native';
 
 import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
 import { resolveNativeProps } from './normalize';
@@ -8,24 +9,33 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   props: EdgeFadeViewProps
 ) {
   const n = resolveNativeProps(props);
-  const { radius, style, children } = props;
-  const viewProps = { ...props };
-  delete viewProps.top;
-  delete viewProps.bottom;
-  delete viewProps.left;
-  delete viewProps.right;
-  delete viewProps.size;
-  delete viewProps.curve;
-  delete viewProps.mode;
-  delete viewProps.color;
-  delete viewProps.radius;
-  delete viewProps.style;
-  delete viewProps.children;
+  const {
+    top: _t,
+    bottom: _b,
+    left: _l,
+    right: _r,
+    size: _s,
+    curve: _c,
+    mode: _m,
+    color: _col,
+    radius,
+    style,
+    children,
+    ...viewProps
+  } = props;
+
+  // Flatten the style so we can intercept borderRadius before it reaches the
+  // native component. EdgeFadeView's ViewManager doesn't register borderRadius
+  // (it would trigger a Fabric "unsupported property" warning). We apply it
+  // instead via fadeRadius → native clipPath, which is our corner-clip path.
+  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+  const { borderRadius: styleBorderRadius, ...cleanStyle } = flat;
+  const resolvedRadius = (radius ?? styleBorderRadius) as number | undefined;
 
   return (
     <NativeEdgeFadeView
       {...viewProps}
-      style={style}
+      style={cleanStyle as any}
       fadeTop={n.fadeTop}
       fadeBottom={n.fadeBottom}
       fadeLeft={n.fadeLeft}
@@ -40,7 +50,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
       overlayColorBottom={n.overlayColorBottom}
       overlayColorLeft={n.overlayColorLeft}
       overlayColorRight={n.overlayColorRight}
-      fadeRadius={radius}
+      fadeRadius={resolvedRadius}
     >
       {children}
     </NativeEdgeFadeView>

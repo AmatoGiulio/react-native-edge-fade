@@ -4,7 +4,9 @@
       "Skill(argent-android-emulator-setup)",
       "Skill(argent-android-emulator-setup:*)",
       "Bash(yarn prepare *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(.\\\\gradlew compileDebugKotlin)",
+      "Bash(./gradlew compileDebugKotlin)"
     ]
   }
 }

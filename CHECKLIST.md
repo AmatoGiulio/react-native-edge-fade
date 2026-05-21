@@ -39,7 +39,7 @@
 - [x] `'gentle'` — gentle ease-out (9-stop)
 - [x] `'soft'` — very soft (9-stop)
 - [x] `'linear'` — linear (2-stop)
-- [x] `{ type: 'cubicBezier', x1, y1, x2, y2 }` — CSS cubic-bezier easing, sampled to 9 stops
+- [x] `{ type: 'cubicBezier', x1, y1, x2, y2 }` — CSS cubic-bezier easing, sampled to 32 stops (AGSL LUT on API 33+, LinearGradient fallback on older)
 - [x] `{ type: 'stops', values: [...] }` — explicit alpha array, inner → outer
 
 ---
@@ -55,14 +55,14 @@
 - [x] Explicit `mode` prop (`"mask"` / `"overlay"`)
 - [x] Custom curve parsing (comma-separated alpha strings)
 - [x] AGSL RuntimeShader on Android API 33+ for preset curves (per-pixel alpha, zero discrete stops)
+- [x] AGSL RuntimeShader on Android API 33+ for custom curves (`cubicBezier` + `stops`) via 32-entry LUT uniform with linear interpolation
 - [x] AGSL alpha dithering on Android API 33+ to mitigate residual 8-bit/display quantization
-- [x] 64-stop LinearGradient fallback for Android API < 33 and custom curves
+- [x] 64-stop LinearGradient fallback for Android API < 33 only (custom curves now use AGSL LUT on 33+)
 - [x] Gradient cache per edge (`GradientKey` data class)
 - [x] Rounded clip (`canvas.clipPath` with cached `Path`)
 - [x] `androidx.core:core-ktx` for `ColorUtils.setAlphaComponent`
 - [ ] Tested on physical device (Pixel) ✓ — retested after Phase 2 changes
 - [ ] Benchmark `saveLayer` cost during scroll on API 32 and API 33+
-- [ ] Evaluate AGSL support for serialized cubic-bezier custom curves
 
 ---
 

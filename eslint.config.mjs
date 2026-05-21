@@ -21,6 +21,12 @@ export default defineConfig([
     rules: {
       'react/react-in-jsx-scope': 'off',
       'prettier/prettier': 'error',
+      // Allow destructure-to-ignore variables prefixed with _ (e.g. top: _t)
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
+      ],
+      'no-unused-vars': 'off', // superseded by @typescript-eslint/no-unused-vars
     },
   },
   {
