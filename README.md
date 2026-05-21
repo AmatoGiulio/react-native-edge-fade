@@ -249,7 +249,7 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | ----------------- | --------------------------------------------------------------------------- |
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
-| iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeMultiply`)                  |
+| iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
 
 ### Android — nested scrolling
