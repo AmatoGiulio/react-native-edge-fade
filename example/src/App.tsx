@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -45,129 +46,245 @@ const C = {
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
-const img = (id: string) =>
-  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=400&q=80`;
-
 type Item = {
   id: string;
-  uri: string;
+  source: ImageSourcePropType;
   category: string;
   accent: string;
-  h: number;
+  ratio: number;
 };
 
 const ITEMS: Item[] = [
   {
-    id: '1',
-    uri: img('photo-1515886657613-9f3515b0c78f'),
-    category: 'Fashion',
-    accent: '#f472b6',
-    h: 260,
-  },
-  {
-    id: '2',
-    uri: img('photo-1487958449943-2429e8be8625'),
+    id: 'architecture-01',
+    source: require('../assets/images/9ba092c8-2d9e-4614-8fb7-4774e45ab457.jpg'),
     category: 'Architecture',
     accent: '#60a5fa',
-    h: 200,
+    ratio: 0.714,
   },
   {
-    id: '3',
-    uri: img('photo-1579546929518-9e396f3cc809'),
-    category: 'Art',
-    accent: '#a78bfa',
-    h: 300,
-  },
-  {
-    id: '4',
-    uri: img('photo-1448375240586-882707db888b'),
-    category: 'Nature',
-    accent: '#34d399',
-    h: 220,
-  },
-  {
-    id: '5',
-    uri: img('photo-1558618666-fcd25c85cd64'),
-    category: 'Fashion',
+    id: 'portrait-01',
+    source: require('../assets/images/9c4345e2-63f4-4faa-b9ce-b1ee85d0c9d9.jpg'),
+    category: 'Portrait',
     accent: '#f472b6',
-    h: 280,
+    ratio: 0.778,
   },
   {
-    id: '6',
-    uri: img('photo-1486325212027-8081e485255e'),
+    id: 'wildlife-01',
+    source: require('../assets/images/9d4529fe-f2ae-4ab2-a29f-f14fc999cf0c.jpg'),
+    category: 'Wildlife',
+    accent: '#34d399',
+    ratio: 0.667,
+  },
+  {
+    id: 'motion-01',
+    source: require('../assets/images/9d8a4f0e-81f3-425f-ab85-8efc7e3cb5b6.jpg'),
+    category: 'Motion',
+    accent: '#fb923c',
+    ratio: 1,
+  },
+  {
+    id: 'still-life-01',
+    source: require('../assets/images/9d8a4f92-9cd1-47d0-8f7c-9090c35a99e9.jpg'),
+    category: 'Still life',
+    accent: '#a78bfa',
+    ratio: 1,
+  },
+  {
+    id: 'motion-02',
+    source: require('../assets/images/9d8a4fe4-aa56-4750-8bf3-d0dbc5a81a09.jpg'),
+    category: 'Motion',
+    accent: '#fb923c',
+    ratio: 1,
+  },
+  {
+    id: 'portrait-02',
+    source: require('../assets/images/9d8a5043-09cd-408b-81b9-a62b15a1888c.jpg'),
+    category: 'Portrait',
+    accent: '#f472b6',
+    ratio: 0.673,
+  },
+  {
+    id: 'still-life-02',
+    source: require('../assets/images/9e242635-a789-410b-8a3c-4ea625b7beeb.jpg'),
+    category: 'Still life',
+    accent: '#a78bfa',
+    ratio: 0.667,
+  },
+  {
+    id: 'botanical-01',
+    source: require('../assets/images/9e3c7299-6b8f-47e6-a549-83caa9572864.jpg'),
+    category: 'Botanical',
+    accent: '#22c55e',
+    ratio: 1.499,
+  },
+  {
+    id: 'texture-01',
+    source: require('../assets/images/9e3e5add-485c-467d-827b-55cf402481d2.jpg'),
+    category: 'Texture',
+    accent: '#38bdf8',
+    ratio: 0.667,
+  },
+  {
+    id: 'landscape-01',
+    source: require('../assets/images/9ef3281a-a251-4733-b2b4-166429b9737b.jpg'),
+    category: 'Landscape',
+    accent: '#f59e0b',
+    ratio: 1.499,
+  },
+  {
+    id: 'sport-01',
+    source: require('../assets/images/9f256029-83b7-4cca-ab40-34aa82623fee.jpg'),
+    category: 'Sport',
+    accent: '#94a3b8',
+    ratio: 0.666,
+  },
+  {
+    id: 'architecture-02',
+    source: require('../assets/images/9f4b5744-7ad6-42ae-a56a-c0a05830639c.jpg'),
     category: 'Architecture',
     accent: '#60a5fa',
-    h: 240,
+    ratio: 0.667,
   },
   {
-    id: '7',
-    uri: img('photo-1541701494587-cb58502866ab'),
-    category: 'Art',
-    accent: '#a78bfa',
-    h: 190,
-  },
-  {
-    id: '8',
-    uri: img('photo-1506905925346-21bda4d32df4'),
-    category: 'Nature',
-    accent: '#34d399',
-    h: 320,
-  },
-  {
-    id: '9',
-    uri: img('photo-1469334031218-e382a71b716b'),
-    category: 'Fashion',
+    id: 'portrait-03',
+    source: require('../assets/images/9f6820da-c77a-49ce-9dd8-faf244f2b4d4.jpg'),
+    category: 'Portrait',
     accent: '#f472b6',
-    h: 230,
+    ratio: 0.8,
   },
   {
-    id: '10',
-    uri: img('photo-1477959858617-67f85cf4f1df'),
+    id: 'landscape-02',
+    source: require('../assets/images/a0395656-c22e-4e94-9a49-480bbf5ca458.jpg'),
+    category: 'Landscape',
+    accent: '#f59e0b',
+    ratio: 0.667,
+  },
+  {
+    id: 'portrait-04',
+    source: require('../assets/images/a03ad659-7fb7-454a-8636-c30e9f666810.jpg'),
+    category: 'Portrait',
+    accent: '#f472b6',
+    ratio: 0.8,
+  },
+  {
+    id: 'landscape-03',
+    source: require('../assets/images/a07e2d49-8e4b-4818-a83e-400c0218c788.jpg'),
+    category: 'Landscape',
+    accent: '#f59e0b',
+    ratio: 0.989,
+  },
+  {
+    id: 'water-01',
+    source: require('../assets/images/a0ca83d6-d331-4b68-9f96-985ac8912b64.jpg'),
+    category: 'Water',
+    accent: '#06b6d4',
+    ratio: 0.8,
+  },
+  {
+    id: 'texture-02',
+    source: require('../assets/images/a0d5d70b-21be-4bac-86de-c1fd44a04ae1.jpg'),
+    category: 'Texture',
+    accent: '#38bdf8',
+    ratio: 1.499,
+  },
+  {
+    id: 'water-02',
+    source: require('../assets/images/a0f1dd90-a6f4-4517-8b41-ad82bb2e96a8.jpg'),
+    category: 'Water',
+    accent: '#06b6d4',
+    ratio: 0.75,
+  },
+  {
+    id: 'architecture-03',
+    source: require('../assets/images/a0f44c2b-de69-448d-9354-fad6324d4157.jpg'),
     category: 'Architecture',
     accent: '#60a5fa',
-    h: 270,
+    ratio: 1.5,
   },
   {
-    id: '11',
-    uri: img('photo-1558591710-4b4a1ae0f04d'),
-    category: 'Art',
-    accent: '#a78bfa',
-    h: 210,
+    id: 'botanical-02',
+    source: require('../assets/images/a110becf-fc2a-455b-b63c-8f97c8605331.jpg'),
+    category: 'Botanical',
+    accent: '#22c55e',
+    ratio: 0.67,
   },
   {
-    id: '12',
-    uri: img('photo-1465146344425-f00d5f5c8f07'),
-    category: 'Nature',
-    accent: '#34d399',
-    h: 290,
-  },
-  {
-    id: '13',
-    uri: img('photo-1509631179647-0177331693ae'),
-    category: 'Fashion',
-    accent: '#f472b6',
-    h: 250,
-  },
-  {
-    id: '14',
-    uri: img('photo-1493397212122-2b85dda8106b'),
+    id: 'architecture-04',
+    source: require('../assets/images/a1124490-93df-41d7-86a8-b08bab3fbd60.jpg'),
     category: 'Architecture',
     accent: '#60a5fa',
-    h: 310,
+    ratio: 1.499,
   },
   {
-    id: '15',
-    uri: img('photo-1547891654-e66ed7ebb968'),
-    category: 'Art',
-    accent: '#a78bfa',
-    h: 180,
+    id: 'portrait-05',
+    source: require('../assets/images/a1135b99-8f51-49a0-aa8d-a91f5a2e9d71.jpg'),
+    category: 'Portrait',
+    accent: '#f472b6',
+    ratio: 0.668,
   },
   {
-    id: '16',
-    uri: img('photo-1501854140801-50d01698950b'),
-    category: 'Nature',
-    accent: '#34d399',
-    h: 260,
+    id: 'texture-03',
+    source: require('../assets/images/a1153da7-2686-4a2c-b575-2dbaec5c0fba.jpg'),
+    category: 'Texture',
+    accent: '#38bdf8',
+    ratio: 1.5,
+  },
+  {
+    id: 'water-03',
+    source: require('../assets/images/a120e421-b303-4145-be24-f3f8dc77da2b.jpg'),
+    category: 'Water',
+    accent: '#06b6d4',
+    ratio: 0.667,
+  },
+  {
+    id: 'botanical-03',
+    source: require('../assets/images/a16ee596-df8e-4469-91d2-f39f162fb184.jpg'),
+    category: 'Botanical',
+    accent: '#22c55e',
+    ratio: 1.499,
+  },
+  {
+    id: 'portrait-06',
+    source: require('../assets/images/p-9877b4d9-adbb-4bff-bc0b-4802f797d4ab.jpg'),
+    category: 'Portrait',
+    accent: '#f472b6',
+    ratio: 1.499,
+  },
+  {
+    id: 'architecture-05',
+    source: require('../assets/images/p-98946414-c532-4896-9311-a8eba52fa06d.jpg'),
+    category: 'Architecture',
+    accent: '#60a5fa',
+    ratio: 0.8,
+  },
+  {
+    id: 'portrait-07',
+    source: require('../assets/images/p-98dc3a7a-5b07-4084-9156-101443846ce1.jpg'),
+    category: 'Portrait',
+    accent: '#f472b6',
+    ratio: 1.25,
+  },
+  {
+    id: 'motion-03',
+    source: require('../assets/images/p-98f88e35-b619-4a0d-9d0c-d80d3a01b9cc.jpg'),
+    category: 'Motion',
+    accent: '#fb923c',
+    ratio: 0.683,
+  },
+  {
+    id: 'landscape-04',
+    source: require('../assets/images/p-98fb1bc2-5c32-41c0-a1a0-bdc93f70846e.jpg'),
+    category: 'Landscape',
+    accent: '#f59e0b',
+    ratio: 1.503,
+  },
+  {
+    id: 'water-04',
+    source: require('../assets/images/p-99bb8611-7a4c-44fb-85bc-06ac11f7ef15.jpg'),
+    category: 'Water',
+    accent: '#06b6d4',
+    ratio: 0.667,
   },
 ];
 
@@ -175,11 +292,16 @@ type Category = { label: string; accent: string };
 
 const CATEGORIES: Category[] = [
   { label: 'All', accent: '#f2f2f2' },
-  { label: 'Fashion', accent: '#f472b6' },
   { label: 'Architecture', accent: '#60a5fa' },
-  { label: 'Art', accent: '#a78bfa' },
-  { label: 'Nature', accent: '#34d399' },
-  { label: 'Dark', accent: '#fb923c' },
+  { label: 'Portrait', accent: '#f472b6' },
+  { label: 'Landscape', accent: '#f59e0b' },
+  { label: 'Water', accent: '#06b6d4' },
+  { label: 'Botanical', accent: '#22c55e' },
+  { label: 'Texture', accent: '#38bdf8' },
+  { label: 'Motion', accent: '#fb923c' },
+  { label: 'Still life', accent: '#a78bfa' },
+  { label: 'Wildlife', accent: '#34d399' },
+  { label: 'Sport', accent: '#94a3b8' },
 ];
 
 // ── Masonry helpers ───────────────────────────────────────────────────────────
@@ -190,12 +312,13 @@ function splitMasonry(items: Item[]): [Item[], Item[]] {
   let leftH = 0;
   let rightH = 0;
   for (const item of items) {
+    const displayH = 1 / item.ratio + 0.16;
     if (leftH <= rightH) {
       left.push(item);
-      leftH += item.h;
+      leftH += displayH;
     } else {
       right.push(item);
-      rightH += item.h;
+      rightH += displayH;
     }
   }
   return [left, right];
@@ -205,8 +328,12 @@ function splitMasonry(items: Item[]): [Item[], Item[]] {
 
 function MasonryCard({ item }: { item: Item }) {
   return (
-    <View style={[mc.root, { height: item.h }]}>
-      <Image source={{ uri: item.uri }} style={mc.image} resizeMode="cover" />
+    <View style={mc.root}>
+      <Image
+        source={item.source}
+        style={[mc.image, { aspectRatio: item.ratio }]}
+        resizeMode="contain"
+      />
       <View style={mc.label}>
         <View style={[mc.dot, { backgroundColor: item.accent }]} />
         <Text style={mc.text}>{item.category.toUpperCase()}</Text>
@@ -223,19 +350,16 @@ const mc = StyleSheet.create({
     backgroundColor: C.surface,
   },
   image: {
-    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    backgroundColor: '#050505',
   },
   label: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: C.surface,
   },
   dot: {
     width: 6,
