@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(argent-android-emulator-setup)",
+      "Skill(argent-android-emulator-setup:*)",
+      "Bash(yarn prepare *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -2,7 +2,10 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-edge-fade": ["./src/index"]
+      "react-native-edge-fade": ["./src/index"],
+      "react-native/Libraries/Types/CodegenTypesNamespace": [
+        "./node_modules/react-native/Libraries/Types/CodegenTypesNamespace"
+      ]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
