@@ -219,7 +219,11 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
   CGContextSetFillColorWithColor(ctx, UIColor.whiteColor.CGColor);
   CGContextFillRect(ctx, self.bounds);
-  CGContextSetBlendMode(ctx, kCGBlendModeMultiply);
+  // DestinationIn: R = D * Sa. Each edge gradient (clipped to its own rect)
+  // multiplies the mask alpha by the gradient's alpha. Sequential passes on
+  // overlapping corners compound (Sa_top * Sa_left), matching the intended
+  // per-corner falloff.
+  CGContextSetBlendMode(ctx, kCGBlendModeDestinationIn);
 
   BOOL release = NO;
   CGGradientRef grad;
@@ -270,6 +274,12 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
 // ─── EdgeFadeView ─────────────────────────────────────────────────────────────
 
+// invalidateLayer is implemented in RCTViewComponentView but not exposed in any
+// header. Forward-declare here so the override below can call super.
+@interface RCTViewComponentView (EdgeFadeInternal)
+- (void)invalidateLayer;
+@end
+
 @implementation EdgeFadeView {
   // Mask mode
   EdgeFadeMaskLayer *_maskLayer;
@@ -308,7 +318,10 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps {
   const auto &p  = *std::static_pointer_cast<EdgeFadeViewProps const>(props);
-  const auto &op = *std::static_pointer_cast<EdgeFadeViewProps const>(oldProps);
+  // `oldProps` may be null on the first updateProps call. `_props` is guaranteed
+  // valid (initialized to defaultProps in initWithFrame) and reflects the last
+  // applied props after [super updateProps:].
+  const auto &op = *std::static_pointer_cast<EdgeFadeViewProps const>(_props);
 
   const BOOL sizeChanged  = p.fadeTop    != op.fadeTop    || p.fadeBottom != op.fadeBottom
                          || p.fadeLeft   != op.fadeLeft   || p.fadeRight  != op.fadeRight;
@@ -337,7 +350,11 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   NSString *modeStr = [NSString stringWithUTF8String:p.mode.c_str()];
   BOOL newIsMask = ![@"overlay" isEqualToString:modeStr];
 
-  if (modeChanged && newIsMask != _isMaskMode) {
+  // Build (or rebuild) layers when the mode flips, OR when the layer for the
+  // current mode is still missing (first updateProps call, since _props
+  // defaults don't trigger a mode flip when the user picks the default mode).
+  BOOL layerMissing = newIsMask ? (_maskLayer == nil) : (_overlayContainer == nil);
+  if ((modeChanged && newIsMask != _isMaskMode) || layerMissing) {
     _isMaskMode = newIsMask;
     [self _teardownFadeLayers];
     [self _buildFadeLayers];
@@ -362,6 +379,16 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 - (void)layoutSubviews {
   [super layoutSubviews];
   [self _updateLayerFrames];
+}
+
+// RCTViewComponentView.invalidateLayer resets self.currentContainerView.layer.mask
+// to nil during its border/clipping pipeline. We must re-apply our mask after
+// super has finished, otherwise mask mode never paints.
+- (void)invalidateLayer {
+  [super invalidateLayer];
+  if (_isMaskMode && _maskLayer && self.layer.mask != _maskLayer) {
+    self.layer.mask = _maskLayer;
+  }
 }
 
 - (void)didAddSubview:(UIView *)subview {
