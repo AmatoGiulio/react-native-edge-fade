@@ -18,8 +18,6 @@ using namespace facebook::react;
 static const int    kN          = 32;
 static const CGFloat kTwoStops[2] = {0, 1.0};
 
-typedef CGFloat (*CurveFn)(CGFloat);
-
 static CGFloat smoothFn(CGFloat t) { return pow(1-t, 3); }
 static CGFloat sharpFn (CGFloat t) { return pow(1-t, 5); }
 static CGFloat gentleFn(CGFloat t) { return pow(1-t, 2); }
@@ -136,6 +134,9 @@ static CGGradientRef maskGradientForPreset(NSString *curve)
 }
 
 // Overlay colors: transparent (inner, reversed curve) → color (outer).
+// Builds CGColorRef instances directly (skipping the UIColor round-trip) so
+// per-rebuild cost is one CGColorCreate per stop instead of one UIColor +
+// one autoreleased CGColor cast — roughly half the work for the 32-stop case.
 static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 {
   const CGFloat *alphas; size_t count;
@@ -155,13 +156,40 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
   CGFloat r, g, b, a;
   [color getRed:&r green:&g blue:&b alpha:&a];
 
+  CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
   NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
   for (NSInteger i = (NSInteger)count - 1; i >= 0; i--) {
-    UIColor *c = [UIColor colorWithRed:r green:g blue:b alpha:a * alphas[i]];
-    [result addObject:(id)c.CGColor];
+    CGFloat components[4] = {r, g, b, a * alphas[i]};
+    CGColorRef c = CGColorCreate(space, components);
+    [result addObject:(__bridge_transfer id)c];
   }
+  CGColorSpaceRelease(space);
   if (dynAlphas) { free(dynAlphas); free(dynStops); }
   return [result copy];
+}
+
+// Cached locations arrays — these are identical for every preset and shared
+// between all four edges. The previous code re-allocated kN NSNumbers per
+// edge on every overlay color rebuild.
+static NSArray<NSNumber *> *cachedPresetLocations(void)
+{
+  static NSArray<NSNumber *> *cached;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    computePresetCurves();
+    NSMutableArray *locs = [NSMutableArray arrayWithCapacity:kN];
+    for (int i = 0; i < kN; i++) [locs addObject:@(sNStops[i])];
+    cached = [locs copy];
+  });
+  return cached;
+}
+
+static NSArray<NSNumber *> *cachedLinearLocations(void)
+{
+  static NSArray<NSNumber *> *cached;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{ cached = @[@0, @1]; });
+  return cached;
 }
 
 static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
@@ -173,19 +201,17 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
     for (NSUInteger i = 0; i < n; i++) [locs addObject:@((CGFloat)i / (n - 1))];
     return [locs copy];
   }
-  if ([curve isEqualToString:@"linear"]) return @[@0, @1];
-  // Preset: kN evenly-spaced locations
-  computePresetCurves();
-  NSMutableArray *locs = [NSMutableArray arrayWithCapacity:kN];
-  for (int i = 0; i < kN; i++) [locs addObject:@(sNStops[i])];
-  return [locs copy];
+  if ([curve isEqualToString:@"linear"]) return cachedLinearLocations();
+  return cachedPresetLocations();
 }
 
 // ─── EdgeFadeMaskLayer ────────────────────────────────────────────────────────
 //
 // Draws a combined alpha mask for all four edges into a single CALayer.
-// kCGBlendModeMultiply ensures corners receive the product of both adjacent
-// curves: Ra = Sa * Da → alpha_top × alpha_left at each corner pixel.
+// Uses kCGBlendModeDestinationIn (R = D · Sa). The destination is initialized
+// to opaque white; each edge gradient (clipped to its own strip) multiplies
+// existing alpha by the gradient's alpha. Sequential passes over an overlapping
+// corner therefore compound: alpha_top × alpha_left.
 
 @interface EdgeFadeMaskLayer : CALayer
 @property CGFloat fadeTop, fadeBottom, fadeLeft, fadeRight;
@@ -197,6 +223,9 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 - (instancetype)init {
   self = [super init];
   self.needsDisplayOnBoundsChange = YES;
+  // contentsScale is updated to traitCollection.displayScale by the owning
+  // view in didMoveToWindow:/traitCollectionDidChange:. Seed with main screen
+  // for environments where the view never reaches a window (snapshot tests).
   self.contentsScale = UIScreen.mainScreen.scale;
   return self;
 }
@@ -284,8 +313,8 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   // Mask mode
   EdgeFadeMaskLayer *_maskLayer;
 
-  // Overlay mode — one CAGradientLayer per edge
-  UIView          *_overlayContainer;
+  // Overlay mode — one CAGradientLayer per edge, attached directly to self.layer
+  // (no intermediate container view) to avoid an extra compositing pass.
   CAGradientLayer *_overlayTop, *_overlayBottom, *_overlayLeft, *_overlayRight;
 
   // Per-layer color cache — avoid rebuilding colors on unrelated prop changes
@@ -310,8 +339,44 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
     static const auto defaultProps = std::make_shared<const EdgeFadeViewProps>();
     _props = defaultProps;
     _isMaskMode = YES;
+    // Continuous corner curve matches Apple's system squircle and composes
+    // more cleanly with `layer.mask` than the default circular curve.
+    if (@available(iOS 13.0, *)) {
+      self.layer.cornerCurve = kCACornerCurveContinuous;
+    }
   }
   return self;
+}
+
+// ── Scale sync ────────────────────────────────────────────────────────────────
+// Use the actual window's screen scale rather than UIScreen.mainScreen — the
+// latter is wrong on iPad multi-window and external displays.
+
+- (CGFloat)_effectiveScale {
+  UIScreen *screen = self.window.screen ?: UIScreen.mainScreen;
+  return screen.scale;
+}
+
+- (void)_syncLayerScales {
+  const CGFloat scale = [self _effectiveScale];
+  if (_maskLayer && _maskLayer.contentsScale != scale) {
+    _maskLayer.contentsScale = scale;
+    [_maskLayer setNeedsDisplay];
+  }
+  if (_overlayTop) {
+    _overlayTop.contentsScale = _overlayBottom.contentsScale =
+    _overlayLeft.contentsScale = _overlayRight.contentsScale = scale;
+  }
+}
+
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  [self _syncLayerScales];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  [self _syncLayerScales];
 }
 
 // ── Props update ──────────────────────────────────────────────────────────────
@@ -353,7 +418,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   // Build (or rebuild) layers when the mode flips, OR when the layer for the
   // current mode is still missing (first updateProps call, since _props
   // defaults don't trigger a mode flip when the user picks the default mode).
-  BOOL layerMissing = newIsMask ? (_maskLayer == nil) : (_overlayContainer == nil);
+  BOOL layerMissing = newIsMask ? (_maskLayer == nil) : (_overlayTop == nil);
   if ((modeChanged && newIsMask != _isMaskMode) || layerMissing) {
     _isMaskMode = newIsMask;
     [self _teardownFadeLayers];
@@ -393,8 +458,14 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
 - (void)didAddSubview:(UIView *)subview {
   [super didAddSubview:subview];
-  if (_overlayContainer && subview != _overlayContainer) {
-    [self bringSubviewToFront:_overlayContainer];
+  // Subview layers are appended to self.layer.sublayers and would otherwise
+  // sit above our overlay gradient layers. Re-attaching with addSublayer:
+  // moves a layer to the end of the sublayers array → back on top.
+  if (!_isMaskMode && _overlayTop) {
+    [self.layer addSublayer:_overlayTop];
+    [self.layer addSublayer:_overlayBottom];
+    [self.layer addSublayer:_overlayLeft];
+    [self.layer addSublayer:_overlayRight];
   }
 }
 
@@ -404,27 +475,27 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   self.layer.mask = nil;
   _maskLayer = nil;
 
-  [_overlayContainer removeFromSuperview];
-  _overlayContainer = nil;
+  [_overlayTop removeFromSuperlayer];
+  [_overlayBottom removeFromSuperlayer];
+  [_overlayLeft removeFromSuperlayer];
+  [_overlayRight removeFromSuperlayer];
   _overlayTop = _overlayBottom = _overlayLeft = _overlayRight = nil;
   _cachedCurveTop = _cachedCurveBottom = _cachedCurveLeft = _cachedCurveRight = nil;
   _cachedColorTop = _cachedColorBottom = _cachedColorLeft = _cachedColorRight = nil;
 }
 
 - (void)_buildFadeLayers {
+  const CGFloat scale = [self _effectiveScale];
   if (_isMaskMode) {
     _maskLayer = [EdgeFadeMaskLayer layer];
+    _maskLayer.contentsScale = scale;
     self.layer.mask = _maskLayer;
     [self _syncMaskLayer];
   } else {
-    _overlayContainer = [[UIView alloc] init];
-    _overlayContainer.userInteractionEnabled = NO;
-    _overlayContainer.backgroundColor = UIColor.clearColor;
-    [self addSubview:_overlayContainer];
-    _overlayTop    = [self _makeGradientLayer];
-    _overlayBottom = [self _makeGradientLayer];
-    _overlayLeft   = [self _makeGradientLayer];
-    _overlayRight  = [self _makeGradientLayer];
+    _overlayTop    = [self _makeGradientLayerWithScale:scale];
+    _overlayBottom = [self _makeGradientLayerWithScale:scale];
+    _overlayLeft   = [self _makeGradientLayerWithScale:scale];
+    _overlayRight  = [self _makeGradientLayerWithScale:scale];
     [self _rebuildOverlayColors];
     [self _updateLayerFrames];
   }
@@ -432,20 +503,65 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
 // ── Mask mode ─────────────────────────────────────────────────────────────────
 
+// Update the mask layer state and invalidate only the strips that actually
+// changed. Each dirty rect spans MAX(old, new) so the previous fade extent is
+// erased before the new gradient is drawn. CG sets the context clip to the
+// dirty rect inside drawInContext: — the existing draw code restricts itself
+// to that clip without any change.
 - (void)_syncMaskLayer {
+  if (!_maskLayer) return;
+
+  const CGFloat oldTop    = _maskLayer.fadeTop;
+  const CGFloat oldBottom = _maskLayer.fadeBottom;
+  const CGFloat oldLeft   = _maskLayer.fadeLeft;
+  const CGFloat oldRight  = _maskLayer.fadeRight;
+  NSString *oldCurveTop    = _maskLayer.curveTop;
+  NSString *oldCurveBottom = _maskLayer.curveBottom;
+  NSString *oldCurveLeft   = _maskLayer.curveLeft;
+  NSString *oldCurveRight  = _maskLayer.curveRight;
+
   _maskLayer.fadeTop    = _fadeTop;   _maskLayer.fadeBottom = _fadeBottom;
   _maskLayer.fadeLeft   = _fadeLeft;  _maskLayer.fadeRight  = _fadeRight;
   _maskLayer.curveTop   = _curveTop;  _maskLayer.curveBottom = _curveBottom;
   _maskLayer.curveLeft  = _curveLeft; _maskLayer.curveRight  = _curveRight;
-  [_maskLayer setNeedsDisplay];
+
+  const CGFloat w = CGRectGetWidth(_maskLayer.bounds);
+  const CGFloat h = CGRectGetHeight(_maskLayer.bounds);
+  if (w <= 0 || h <= 0) {
+    // No bounds yet — full invalidate; layoutSubviews will trigger the first draw.
+    [_maskLayer setNeedsDisplay];
+    return;
+  }
+
+  const BOOL topChanged    = oldTop    != _fadeTop    || ![oldCurveTop    isEqualToString:_curveTop];
+  const BOOL bottomChanged = oldBottom != _fadeBottom || ![oldCurveBottom isEqualToString:_curveBottom];
+  const BOOL leftChanged   = oldLeft   != _fadeLeft   || ![oldCurveLeft   isEqualToString:_curveLeft];
+  const BOOL rightChanged  = oldRight  != _fadeRight  || ![oldCurveRight  isEqualToString:_curveRight];
+
+  if (topChanged) {
+    CGFloat extent = MAX(oldTop, _fadeTop);
+    [_maskLayer setNeedsDisplayInRect:CGRectMake(0, 0, w, extent)];
+  }
+  if (bottomChanged) {
+    CGFloat extent = MAX(oldBottom, _fadeBottom);
+    [_maskLayer setNeedsDisplayInRect:CGRectMake(0, h - extent, w, extent)];
+  }
+  if (leftChanged) {
+    CGFloat extent = MAX(oldLeft, _fadeLeft);
+    [_maskLayer setNeedsDisplayInRect:CGRectMake(0, 0, extent, h)];
+  }
+  if (rightChanged) {
+    CGFloat extent = MAX(oldRight, _fadeRight);
+    [_maskLayer setNeedsDisplayInRect:CGRectMake(w - extent, 0, extent, h)];
+  }
 }
 
 // ── Overlay mode ──────────────────────────────────────────────────────────────
 
-- (CAGradientLayer *)_makeGradientLayer {
+- (CAGradientLayer *)_makeGradientLayerWithScale:(CGFloat)scale {
   CAGradientLayer *layer = [CAGradientLayer layer];
-  layer.contentsScale = UIScreen.mainScreen.scale;
-  [_overlayContainer.layer addSublayer:layer];
+  layer.contentsScale = scale;
+  [self.layer addSublayer:layer];
   return layer;
 }
 
@@ -491,37 +607,33 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   const CGFloat h = CGRectGetHeight(self.bounds);
 
   if (_isMaskMode && _maskLayer) {
+    // needsDisplayOnBoundsChange is YES — CA invalidates on bounds change
+    // automatically. No explicit setNeedsDisplay needed for origin-only frame
+    // shifts (the rendered bitmap is in layer-local coordinates).
     _maskLayer.frame = self.bounds;
-    [_maskLayer setNeedsDisplay];
     return;
   }
 
-  if (!_overlayContainer) return;
-  _overlayContainer.frame = self.bounds;
+  if (!_overlayTop) return;
 
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
 
-  if (_overlayTop) {
-    _overlayTop.frame      = CGRectMake(0, 0, w, _fadeTop);
-    _overlayTop.startPoint = CGPointMake(0.5, 1); _overlayTop.endPoint = CGPointMake(0.5, 0);
-    _overlayTop.hidden     = (_fadeTop <= 0);
-  }
-  if (_overlayBottom) {
-    _overlayBottom.frame      = CGRectMake(0, h - _fadeBottom, w, _fadeBottom);
-    _overlayBottom.startPoint = CGPointMake(0.5, 0); _overlayBottom.endPoint = CGPointMake(0.5, 1);
-    _overlayBottom.hidden     = (_fadeBottom <= 0);
-  }
-  if (_overlayLeft) {
-    _overlayLeft.frame      = CGRectMake(0, 0, _fadeLeft, h);
-    _overlayLeft.startPoint = CGPointMake(1, 0.5); _overlayLeft.endPoint = CGPointMake(0, 0.5);
-    _overlayLeft.hidden     = (_fadeLeft <= 0);
-  }
-  if (_overlayRight) {
-    _overlayRight.frame      = CGRectMake(w - _fadeRight, 0, _fadeRight, h);
-    _overlayRight.startPoint = CGPointMake(0, 0.5); _overlayRight.endPoint = CGPointMake(1, 0.5);
-    _overlayRight.hidden     = (_fadeRight <= 0);
-  }
+  _overlayTop.frame      = CGRectMake(0, 0, w, _fadeTop);
+  _overlayTop.startPoint = CGPointMake(0.5, 1); _overlayTop.endPoint = CGPointMake(0.5, 0);
+  _overlayTop.hidden     = (_fadeTop <= 0);
+
+  _overlayBottom.frame      = CGRectMake(0, h - _fadeBottom, w, _fadeBottom);
+  _overlayBottom.startPoint = CGPointMake(0.5, 0); _overlayBottom.endPoint = CGPointMake(0.5, 1);
+  _overlayBottom.hidden     = (_fadeBottom <= 0);
+
+  _overlayLeft.frame      = CGRectMake(0, 0, _fadeLeft, h);
+  _overlayLeft.startPoint = CGPointMake(1, 0.5); _overlayLeft.endPoint = CGPointMake(0, 0.5);
+  _overlayLeft.hidden     = (_fadeLeft <= 0);
+
+  _overlayRight.frame      = CGRectMake(w - _fadeRight, 0, _fadeRight, h);
+  _overlayRight.startPoint = CGPointMake(0, 0.5); _overlayRight.endPoint = CGPointMake(1, 0.5);
+  _overlayRight.hidden     = (_fadeRight <= 0);
 
   [CATransaction commit];
 }
