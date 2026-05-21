@@ -279,38 +279,64 @@ compressed screenshots.
 
 ## Scroll-driven fades
 
-Use `AnimatedEdgeFadeView` — a pre-wrapped `Animated.createAnimatedComponent(EdgeFadeView)` — to drive any numeric edge prop from an `Animated.Value` or interpolation. No extra dependencies required.
+For static fades, use `EdgeFadeView`. For UI-thread scroll animation with
+Reanimated, wrap the raw Fabric component, then animate the native `fadeTop`,
+`fadeBottom`, `fadeLeft`, or `fadeRight` props directly.
+
+The package intentionally does not export a pre-wrapped `AnimatedEdgeFadeView`:
+that would either add a Reanimated dependency or encourage animating `top` /
+`bottom`, which collide with Yoga layout props.
 
 ```tsx
-import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedProps,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { NativeEdgeFadeView } from 'react-native-edge-fade';
+
+const ReanimatedNativeEdgeFadeView =
+  Animated.createAnimatedComponent(NativeEdgeFadeView);
 
 function FeedScreen() {
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = useSharedValue(0);
 
-  // Top fade: invisible at the top, ramps to 60 dp after 80 px of scroll.
-  const topFade = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [0, 60],
-    extrapolate: 'clamp',
+  const onScroll = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const animatedProps = useAnimatedProps(() => {
+    return {
+      fadeTop: interpolate(
+        scrollY.value,
+        [0, 80],
+        [0, 60],
+        Extrapolation.CLAMP
+      ),
+      fadeBottom: 80,
+      mode: 'mask',
+    };
   });
 
   return (
-    <AnimatedEdgeFadeView top={topFade} bottom={80} style={{ flex: 1 }}>
-      <ScrollView
-        scrollEventThrottle={16}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: false }
-        )}
-      >
+    <ReanimatedNativeEdgeFadeView
+      animatedProps={animatedProps}
+      style={{ flex: 1 }}
+    >
+      <Animated.ScrollView scrollEventThrottle={16} onScroll={onScroll}>
         {/* content */}
-      </ScrollView>
-    </AnimatedEdgeFadeView>
+      </Animated.ScrollView>
+    </ReanimatedNativeEdgeFadeView>
   );
 }
 ```
 
-> **Note** — `useNativeDriver: false` is required because the fade size is resolved in JS before reaching the native view. All five numeric props (`top`, `bottom`, `left`, `right`, `size`, `radius`) accept animated values.
+> **Note** — animate the flat native props (`fadeTop`, `fadeBottom`,
+> `fadeLeft`, `fadeRight`) rather than the ergonomic JS props (`top`, `bottom`,
+> `left`, `right`). The JS props are normalized by `EdgeFadeView`; Reanimated
+> animated props mutate the native view directly.
 
 ---
 

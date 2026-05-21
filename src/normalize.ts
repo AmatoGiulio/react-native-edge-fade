@@ -26,8 +26,8 @@ function resolveEdge(
   if (prop === true) return { size, curve };
   if (typeof prop === 'number') return { size: prop, curve };
   // Plain EdgeConfig object — only treat as config if it has at least one known key.
-  // This also guards against Animated nodes / other objects that may be passed during
-  // the first render of AnimatedEdgeFadeView before useAnimatedProps has resolved.
+  // This also guards against animated nodes / other objects that may be passed before
+  // animated props resolve.
   if (
     typeof prop === 'object' &&
     prop !== null &&

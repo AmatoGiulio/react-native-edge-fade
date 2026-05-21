@@ -18,7 +18,7 @@ import Animated, {
 import { EdgeFadeView, NativeEdgeFadeView } from 'react-native-edge-fade';
 import BenchmarkScreen from './BenchmarkScreen';
 
-// ── Animated EdgeFadeView for Reanimated ──────────────────────────────────────
+// ── Reanimated native EdgeFadeView ────────────────────────────────────────────
 //
 // We wrap NativeEdgeFadeView (the raw Fabric component), NOT the JS EdgeFadeView
 // wrapper.  Reason: Reanimated's useAnimatedProps fires a UI-thread worklet that
@@ -29,7 +29,7 @@ import BenchmarkScreen from './BenchmarkScreen';
 //
 // Created at module level so Reanimated never re-registers the component.
 
-const AnimatedEdgeFadeView =
+const ReanimatedNativeEdgeFadeView =
   Animated.createAnimatedComponent(NativeEdgeFadeView);
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -388,14 +388,14 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
       {/*
        * Masonry grid — mask mode, scroll-driven top fade via Reanimated.
        *
-       * AnimatedEdgeFadeView wraps NativeEdgeFadeView directly so Reanimated's
+       * ReanimatedNativeEdgeFadeView wraps NativeEdgeFadeView directly so Reanimated's
        * UI-thread worklet can mutate `fadeTop` as a @ReactProp without
        * colliding with Yoga layout.
        *
        * Static props (fadeBottom, mode, curve*) are passed as normal React props.
        * The animated prop (fadeTop) is driven by the scroll SharedValue.
        */}
-      <AnimatedEdgeFadeView
+      <ReanimatedNativeEdgeFadeView
         animatedProps={topFadeProps}
         fadeBottom={600}
         mode="mask"
@@ -422,7 +422,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
             </View>
           </View>
         </Animated.ScrollView>
-      </AnimatedEdgeFadeView>
+      </ReanimatedNativeEdgeFadeView>
     </View>
   );
 }
