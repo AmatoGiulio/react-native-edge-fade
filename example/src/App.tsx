@@ -54,6 +54,12 @@ type Item = {
   ratio: number;
 };
 
+type GalleryRow =
+  | { type: 'full'; item: Item }
+  | { type: 'columns'; left: Item[]; right: Item[] };
+
+const FULL_WIDTH_RATIO = 1.15;
+
 const ITEMS: Item[] = [
   {
     id: 'architecture-01',
@@ -304,9 +310,9 @@ const CATEGORIES: Category[] = [
   { label: 'Sport', accent: '#94a3b8' },
 ];
 
-// ── Masonry helpers ───────────────────────────────────────────────────────────
+// ── Gallery helpers ───────────────────────────────────────────────────────────
 
-function splitMasonry(items: Item[]): [Item[], Item[]] {
+function splitColumns(items: Item[]): [Item[], Item[]] {
   const left: Item[] = [];
   const right: Item[] = [];
   let leftH = 0;
@@ -322,6 +328,30 @@ function splitMasonry(items: Item[]): [Item[], Item[]] {
     }
   }
   return [left, right];
+}
+
+function buildGalleryRows(items: Item[]): GalleryRow[] {
+  const rows: GalleryRow[] = [];
+  let pending: Item[] = [];
+
+  const flushColumns = () => {
+    if (pending.length === 0) return;
+    const [left, right] = splitColumns(pending);
+    rows.push({ type: 'columns', left, right });
+    pending = [];
+  };
+
+  for (const item of items) {
+    if (item.ratio >= FULL_WIDTH_RATIO) {
+      flushColumns();
+      rows.push({ type: 'full', item });
+    } else {
+      pending.push(item);
+    }
+  }
+
+  flushColumns();
+  return rows;
 }
 
 // ── Card ──────────────────────────────────────────────────────────────────────
@@ -462,7 +492,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
       ? ITEMS
       : ITEMS.filter((i) => i.category === activeCategory);
 
-  const [left, right] = splitMasonry(filtered);
+  const rows = buildGalleryRows(filtered);
 
   return (
     <View style={s.screen}>
@@ -533,18 +563,24 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
           scrollEventThrottle={16}
           onScroll={onScroll}
         >
-          <View style={s.columns}>
-            <View style={s.col}>
-              {left.map((item) => (
-                <MasonryCard key={item.id} item={item} />
-              ))}
-            </View>
-            <View style={s.col}>
-              {right.map((item) => (
-                <MasonryCard key={item.id} item={item} />
-              ))}
-            </View>
-          </View>
+          {rows.map((row, index) =>
+            row.type === 'full' ? (
+              <MasonryCard key={row.item.id} item={row.item} />
+            ) : (
+              <View key={`columns-${index}`} style={s.columns}>
+                <View style={s.col}>
+                  {row.left.map((item) => (
+                    <MasonryCard key={item.id} item={item} />
+                  ))}
+                </View>
+                <View style={s.col}>
+                  {row.right.map((item) => (
+                    <MasonryCard key={item.id} item={item} />
+                  ))}
+                </View>
+              </View>
+            )
+          )}
         </Animated.ScrollView>
       </ReanimatedNativeEdgeFadeView>
     </View>
