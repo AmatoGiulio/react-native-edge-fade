@@ -13,26 +13,16 @@ import type { ImageSourcePropType } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
-  useAnimatedProps,
   useAnimatedScrollHandler,
+  useDerivedValue,
   useSharedValue,
 } from 'react-native-reanimated';
-import { EdgeFadeView, NativeEdgeFadeView } from 'react-native-edge-fade';
+import { EdgeFadeView, AnimatedEdgeFadeView } from 'react-native-edge-fade';
 import BenchmarkScreen from './BenchmarkScreen';
 
-// ── Reanimated native EdgeFadeView ────────────────────────────────────────────
-//
-// We wrap NativeEdgeFadeView (the raw Fabric component), NOT the JS EdgeFadeView
-// wrapper.  Reason: Reanimated's useAnimatedProps fires a UI-thread worklet that
-// mutates the shadow node directly.  If we animate `top` on the JS wrapper, the
-// mutation lands on Yoga's `top` layout property (shifting the view down).
-// Animating `fadeTop` on the native component targets the registered @ReactProp
-// instead — no layout side-effects.
-//
-// Created at module level so Reanimated never re-registers the component.
-
-const ReanimatedNativeEdgeFadeView =
-  Animated.createAnimatedComponent(NativeEdgeFadeView);
+// AnimatedEdgeFadeView accepts a SharedValue on size-like props (top, bottom,
+// left, right, start, end, radius) and routes them through a Reanimated
+// useAnimatedProps worklet so updates stay on the UI thread.
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -408,13 +398,11 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
   // ── Scroll-driven top fade via Reanimated SharedValue ──────────────────────
   //
   // scrollY lives entirely on the UI thread — no JS-thread bridge round-trip.
+  // topFade is a derived SharedValue that grows the top fade as the user
+  // scrolls down, and is fed directly to AnimatedEdgeFadeView's `top` prop.
   //
-  // topFadeProps animates `fadeTop` (native prop) directly on NativeEdgeFadeView
-  // via Reanimated's UI-thread shadow-node mutation.  Using `fadeTop` avoids the
-  // Yoga layout collision that would occur if we animated the JS wrapper's `top`.
-  //
-  //   scrollY = 0  → fadeTop = 0   (at the very top, no top fade needed)
-  //   scrollY = 80 → fadeTop = 60  (full 60 dp top fade — content above)
+  //   scrollY = 0   → topFade = 0    (at the very top, no top fade needed)
+  //   scrollY = 120 → topFade = 120  (full 120 dp top fade — content above)
 
   const scrollY = useSharedValue(0);
 
@@ -422,14 +410,9 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
     scrollY.set(event.contentOffset.y);
   });
 
-  const topFadeProps = useAnimatedProps(() => ({
-    fadeTop: interpolate(
-      scrollY.value,
-      [0, 120],
-      [0, 120],
-      Extrapolation.CLAMP
-    ),
-  }));
+  const topFade = useDerivedValue(() =>
+    interpolate(scrollY.value, [0, 120], [0, 120], Extrapolation.CLAMP)
+  );
 
   const filtered =
     activeCategory === 'All'
@@ -486,19 +469,15 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
       {/*
        * Masonry grid — mask mode, scroll-driven top fade via Reanimated.
        *
-       * ReanimatedNativeEdgeFadeView wraps NativeEdgeFadeView directly so Reanimated's
-       * UI-thread worklet can mutate `fadeTop` as a @ReactProp without
-       * colliding with Yoga layout.
-       *
-       * Static props (fadeBottom, mode, curve*) are passed as normal React props.
-       * The animated prop (fadeTop) is driven by the scroll SharedValue.
+       * `top` is a SharedValue<number> — AnimatedEdgeFadeView routes it
+       * through a UI-thread worklet so the fade depth updates without a JS
+       * round-trip. `bottom` stays a static EdgeConfig with its own curve.
        */}
-      <ReanimatedNativeEdgeFadeView
-        animatedProps={topFadeProps}
-        fadeBottom={600}
+      <AnimatedEdgeFadeView
+        top={topFade}
+        bottom={{ size: 600, curve: 'smooth' }}
         mode="mask"
-        curveTop="gentle"
-        curveBottom="smooth"
+        curve="gentle"
         style={s.gridWrap}
       >
         <Animated.ScrollView
@@ -520,7 +499,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
             </View>
           </View>
         </Animated.ScrollView>
-      </ReanimatedNativeEdgeFadeView>
+      </AnimatedEdgeFadeView>
     </View>
   );
 }

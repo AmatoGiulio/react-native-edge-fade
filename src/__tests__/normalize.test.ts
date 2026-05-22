@@ -1,4 +1,4 @@
-import { resolveNativeProps } from '../normalize';
+import { resolveNativeProps, resolveRadius } from '../normalize';
 
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
@@ -178,5 +178,83 @@ describe('resolveNativeProps — edge independence', () => {
     expect(n.fadeBottom).toBe(20);
     expect(n.fadeLeft).toBe(30);
     expect(n.fadeRight).toBe(40);
+  });
+});
+
+// ── DEV warnings ───────────────────────────────────────────────────────────────
+
+describe('resolveNativeProps — DEV warnings', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  test('warns when global color is set with explicit mode="mask"', () => {
+    resolveNativeProps({ bottom: true, color: '#fff', mode: 'mask' });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('`color` is ignored when `mode="mask"`')
+    );
+  });
+
+  test('warns when EdgeConfig.color is set with explicit mode="mask"', () => {
+    resolveNativeProps({ bottom: { color: '#fff' }, mode: 'mask' });
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  test('does not warn when mode is not set explicitly (auto-infers overlay)', () => {
+    resolveNativeProps({ bottom: true, color: '#fff' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('does not warn when color is absent', () => {
+    resolveNativeProps({ bottom: true, mode: 'mask' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('does not warn for explicit mode="overlay" with color', () => {
+    resolveNativeProps({ bottom: true, color: '#fff', mode: 'overlay' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── Radius resolution ──────────────────────────────────────────────────────────
+
+describe('resolveRadius', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  test('returns the radius prop when set', () => {
+    expect(resolveRadius(12, undefined)).toBe(12);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('returns undefined when radius is unset and style has no borderRadius', () => {
+    expect(resolveRadius(undefined, undefined)).toBeUndefined();
+    expect(resolveRadius(undefined, { margin: 8 })).toBeUndefined();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('ignores style.borderRadius and warns when it is set', () => {
+    expect(resolveRadius(undefined, { borderRadius: 16 })).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('`style.borderRadius` is ignored')
+    );
+  });
+
+  test('warns about style.borderRadius even when the radius prop is also set', () => {
+    expect(resolveRadius(8, { borderRadius: 16 })).toBe(8);
+    expect(warnSpy).toHaveBeenCalled();
   });
 });

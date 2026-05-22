@@ -49,7 +49,14 @@ export interface EdgeFadeViewProps extends ViewProps {
   mode?: EdgeFadeMode;
   /** Global overlay color (overlay mode). Per-edge `EdgeConfig.color` overrides this. */
   color?: ColorValue;
-  /** Apply rounded clip via native layer. */
+  /**
+   * Corner radius (dp) applied as a native clip path that also clips the fade
+   * mask, keeping the gradient flush with the rounded edge.
+   *
+   * Use this instead of `style.borderRadius`. `style.borderRadius` is ignored
+   * (a `__DEV__` warning is logged) because it would only round the wrapper
+   * view without clipping the fade gradient.
+   */
   radius?: number;
   style?: StyleProp<ViewStyle>;
 }

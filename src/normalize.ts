@@ -1,4 +1,10 @@
-import { I18nManager, type ColorValue } from 'react-native';
+import {
+  I18nManager,
+  StyleSheet,
+  type ColorValue,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { serializeCurve } from './curves';
 import type {
@@ -59,6 +65,33 @@ export interface NativeEdgeProps {
   overlayColorRight?: ColorValue;
 }
 
+/**
+ * Resolve the effective corner radius.
+ *
+ * `radius` is the only supported source. `style.borderRadius` is intentionally
+ * ignored — using it would not integrate with the fade mask (the gradient
+ * would clip square corners even on a rounded container). When
+ * `style.borderRadius` is detected we log a `__DEV__` warning so the user
+ * knows to migrate to the `radius` prop.
+ */
+export function resolveRadius(
+  radius: number | undefined,
+  style: StyleProp<ViewStyle>
+): number | undefined {
+  if (__DEV__) {
+    const flat = StyleSheet.flatten(style) as
+      | { borderRadius?: number }
+      | undefined;
+    if (flat?.borderRadius != null) {
+      console.warn(
+        '[EdgeFadeView] `style.borderRadius` is ignored — use the `radius` ' +
+          'prop instead so the corner clip integrates with the fade mask.'
+      );
+    }
+  }
+  return radius;
+}
+
 export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
   const size = props.size ?? DEFAULT_SIZE;
   const curve = props.curve ?? DEFAULT_CURVE;
@@ -82,6 +115,13 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
     right?.color != null;
 
   const mode: EdgeFadeMode = props.mode ?? (hasColor ? 'overlay' : 'mask');
+
+  if (__DEV__ && hasColor && props.mode === 'mask') {
+    console.warn(
+      '[EdgeFadeView] `color` is ignored when `mode="mask"` is set explicitly. ' +
+        'Either remove `color` or switch to `mode="overlay"`.'
+    );
+  }
 
   return {
     fadeTop: top?.size ?? 0,

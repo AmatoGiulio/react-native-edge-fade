@@ -10696,6 +10696,10 @@ __metadata:
   peerDependencies:
     react: "*"
     react-native: "*"
+    react-native-reanimated: ">=3.0.0"
+  peerDependenciesMeta:
+    react-native-reanimated:
+      optional: true
   languageName: unknown
   linkType: soft
 
