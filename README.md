@@ -66,8 +66,10 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | -------- | ------------------------------------- | ---------- | ---------------------------------------------------- |
 | `top`    | `boolean \| number \| EdgeConfig`     | `false`    | Top edge fade                                        |
 | `bottom` | `boolean \| number \| EdgeConfig`     | `false`    | Bottom edge fade                                     |
-| `left`   | `boolean \| number \| EdgeConfig`     | `false`    | Left edge fade                                       |
-| `right`  | `boolean \| number \| EdgeConfig`     | `false`    | Right edge fade                                      |
+| `left`   | `boolean \| number \| EdgeConfig`     | `false`    | Left edge fade (physical, direction-independent)     |
+| `right`  | `boolean \| number \| EdgeConfig`     | `false`    | Right edge fade (physical, direction-independent)    |
+| `start`  | `boolean \| number \| EdgeConfig`     | `false`    | Logical leading edge — maps to `left` in LTR, `right` in RTL |
+| `end`    | `boolean \| number \| EdgeConfig`     | `false`    | Logical trailing edge — maps to `right` in LTR, `left` in RTL |
 | `size`   | `number`                              | `80`       | Default fade depth (dp) for all active edges         |
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
 | `mode`   | `'mask' \| 'overlay'`                 | auto       | Render mode; inferred from `color` when omitted      |
@@ -87,6 +89,25 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 // EdgeConfig — full per-edge control
 <EdgeFadeView bottom={{ size: 120, curve: 'sharp', color: '#000' }} />
 ```
+
+### RTL — `start` / `end`
+
+`start` and `end` are logical edge props that follow `I18nManager.isRTL`,
+matching the behavior of `marginStart`/`marginEnd`:
+
+```tsx
+// Fade always on the leading side, regardless of layout direction.
+<EdgeFadeView start={80}>{/* … */}</EdgeFadeView>
+```
+
+| Layout direction | `start` resolves to | `end` resolves to |
+| ---------------- | ------------------- | ----------------- |
+| LTR              | `left`              | `right`           |
+| RTL              | `right`             | `left`            |
+
+`left` and `right` remain physical and are useful when the edge must stay on a
+specific side regardless of localisation (rare). When both a logical and a
+physical prop target the same resolved side, the logical one wins.
 
 ### EdgeConfig
 
@@ -248,6 +269,7 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | Platform          | Implementation                                                              |
 | ----------------- | --------------------------------------------------------------------------- |
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
+| Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
 | iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |

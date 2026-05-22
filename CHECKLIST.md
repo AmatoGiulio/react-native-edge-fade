@@ -1,6 +1,6 @@
 # react-native-edge-fade — State of the Art
 
-> Last updated: 2026-05-21 (iOS mask-mode fixes + example app refresh).
+> Last updated: 2026-05-22 (Android density / RTL / saveLayer perf pass).
 > Keep this file current as features land.
 
 ---
@@ -20,6 +20,7 @@
 ### Props (EdgeFadeViewProps)
 
 - [x] `top / bottom / left / right` — `boolean | number | EdgeConfig`
+- [x] `start / end` — logical leading / trailing edges, mapped via `I18nManager.isRTL`
 - [x] `size` — global default depth (dp, default 80)
 - [x] `curve` — global default curve (default `'smooth'`)
 - [x] `mode` — `'mask' | 'overlay'` (explicit; inferred from `color` when omitted)
@@ -49,7 +50,12 @@
 
 - [x] `EdgeFadeView` extends `FrameLayout` (children handled automatically)
 - [x] `EdgeFadeViewManager` extends `ViewGroupManager` (Fabric-correct)
+- [x] `dp → px` density conversion at the `ViewManager` boundary (`size={80}` now matches iOS points scale)
 - [x] Mask mode — `saveLayer` + sequential `DST_IN` gradients (corner alpha = product)
+- [x] Single-edge fast path — `saveLayer` shrunk to the edge strip (two-pass render, ~14–30× less offscreen memory bandwidth)
+- [x] `BlendMode.DST_IN` on API 29+, `PorterDuffXfermode` fallback below
+- [x] One-shot Log.w on AGSL `RuntimeShader` compile / uniform failure (visible LinearGradient fallback)
+- [x] Native shader/gradient cache released in `onDetachedFromWindow`
 - [x] Overlay mode — `LinearGradient` painted over children
 - [x] Per-edge overlay color (`overlayColorTop/Bottom/Left/Right`)
 - [x] Global overlay color fallback (`overlayColor`)
