@@ -14,6 +14,8 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     bottom: _b,
     left: _l,
     right: _r,
+    start: _st,
+    end: _en,
     size: _s,
     curve: _c,
     mode: _m,

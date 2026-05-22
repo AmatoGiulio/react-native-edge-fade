@@ -1,4 +1,4 @@
-import type { ColorValue } from 'react-native';
+import { I18nManager, type ColorValue } from 'react-native';
 
 import { serializeCurve } from './curves';
 import type {
@@ -63,10 +63,16 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
   const size = props.size ?? DEFAULT_SIZE;
   const curve = props.curve ?? DEFAULT_CURVE;
 
+  // Logical start/end map to physical left/right based on layout direction.
+  // When provided, they override the physical prop on the matching side.
+  const isRTL = I18nManager.isRTL;
+  const leftLogical = isRTL ? props.end : props.start;
+  const rightLogical = isRTL ? props.start : props.end;
+
   const top = resolveEdge(props.top, size, curve);
   const bottom = resolveEdge(props.bottom, size, curve);
-  const left = resolveEdge(props.left, size, curve);
-  const right = resolveEdge(props.right, size, curve);
+  const left = resolveEdge(leftLogical ?? props.left, size, curve);
+  const right = resolveEdge(rightLogical ?? props.right, size, curve);
 
   const hasColor =
     props.color != null ||

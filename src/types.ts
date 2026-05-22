@@ -34,6 +34,10 @@ export interface EdgeFadeViewProps extends ViewProps {
   bottom?: boolean | number | EdgeConfig;
   left?: boolean | number | EdgeConfig;
   right?: boolean | number | EdgeConfig;
+  /** Logical leading edge. Maps to `left` in LTR and `right` in RTL. Overrides the physical prop. */
+  start?: boolean | number | EdgeConfig;
+  /** Logical trailing edge. Maps to `right` in LTR and `left` in RTL. Overrides the physical prop. */
+  end?: boolean | number | EdgeConfig;
   /** Default fade depth in dp for all enabled edges (default: 80). */
   size?: number;
   /** Default gradient curve for all enabled edges (default: 'smooth'). */

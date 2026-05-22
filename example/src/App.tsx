@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Dimensions,
   Image,
   Platform,
   Pressable,
@@ -51,307 +52,251 @@ type Item = {
   source: ImageSourcePropType;
   category: string;
   accent: string;
-  ratio: number;
 };
 
-type GalleryRow =
-  | { type: 'full'; item: Item }
-  | { type: 'columns'; left: Item[]; right: Item[] };
+// Accent color per category (used for the small dot on each card).
+const CATEGORY_ACCENT: Record<string, string> = {
+  Architecture: '#60a5fa',
+  Portrait: '#f472b6',
+  Animals: '#34d399',
+  Abstract: '#a78bfa',
+  Nature: '#22c55e',
+  Landscape: '#f59e0b',
+  Sports: '#94a3b8',
+  Underwater: '#06b6d4',
+};
 
-const FULL_WIDTH_RATIO = 1.15;
+const mkItem = (
+  id: string,
+  source: ImageSourcePropType,
+  category: keyof typeof CATEGORY_ACCENT
+): Item => ({ id, source, category, accent: CATEGORY_ACCENT[category] });
 
 const ITEMS: Item[] = [
-  {
-    id: 'architecture-01',
-    source: require('../assets/images/9ba092c8-2d9e-4614-8fb7-4774e45ab457.jpg'),
-    category: 'Architecture',
-    accent: '#60a5fa',
-    ratio: 0.714,
-  },
-  {
-    id: 'portrait-01',
-    source: require('../assets/images/9c4345e2-63f4-4faa-b9ce-b1ee85d0c9d9.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 0.778,
-  },
-  {
-    id: 'wildlife-01',
-    source: require('../assets/images/9d4529fe-f2ae-4ab2-a29f-f14fc999cf0c.jpg'),
-    category: 'Wildlife',
-    accent: '#34d399',
-    ratio: 0.667,
-  },
-  {
-    id: 'motion-01',
-    source: require('../assets/images/9d8a4f0e-81f3-425f-ab85-8efc7e3cb5b6.jpg'),
-    category: 'Motion',
-    accent: '#fb923c',
-    ratio: 1,
-  },
-  {
-    id: 'still-life-01',
-    source: require('../assets/images/9d8a4f92-9cd1-47d0-8f7c-9090c35a99e9.jpg'),
-    category: 'Still life',
-    accent: '#a78bfa',
-    ratio: 1,
-  },
-  {
-    id: 'motion-02',
-    source: require('../assets/images/9d8a4fe4-aa56-4750-8bf3-d0dbc5a81a09.jpg'),
-    category: 'Motion',
-    accent: '#fb923c',
-    ratio: 1,
-  },
-  {
-    id: 'portrait-02',
-    source: require('../assets/images/9d8a5043-09cd-408b-81b9-a62b15a1888c.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 0.673,
-  },
-  {
-    id: 'still-life-02',
-    source: require('../assets/images/9e242635-a789-410b-8a3c-4ea625b7beeb.jpg'),
-    category: 'Still life',
-    accent: '#a78bfa',
-    ratio: 0.667,
-  },
-  {
-    id: 'botanical-01',
-    source: require('../assets/images/9e3c7299-6b8f-47e6-a549-83caa9572864.jpg'),
-    category: 'Botanical',
-    accent: '#22c55e',
-    ratio: 1.499,
-  },
-  {
-    id: 'texture-01',
-    source: require('../assets/images/9e3e5add-485c-467d-827b-55cf402481d2.jpg'),
-    category: 'Texture',
-    accent: '#38bdf8',
-    ratio: 0.667,
-  },
-  {
-    id: 'landscape-01',
-    source: require('../assets/images/9ef3281a-a251-4733-b2b4-166429b9737b.jpg'),
-    category: 'Landscape',
-    accent: '#f59e0b',
-    ratio: 1.499,
-  },
-  {
-    id: 'sport-01',
-    source: require('../assets/images/9f256029-83b7-4cca-ab40-34aa82623fee.jpg'),
-    category: 'Sport',
-    accent: '#94a3b8',
-    ratio: 0.666,
-  },
-  {
-    id: 'architecture-02',
-    source: require('../assets/images/9f4b5744-7ad6-42ae-a56a-c0a05830639c.jpg'),
-    category: 'Architecture',
-    accent: '#60a5fa',
-    ratio: 0.667,
-  },
-  {
-    id: 'portrait-03',
-    source: require('../assets/images/9f6820da-c77a-49ce-9dd8-faf244f2b4d4.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 0.8,
-  },
-  {
-    id: 'landscape-02',
-    source: require('../assets/images/a0395656-c22e-4e94-9a49-480bbf5ca458.jpg'),
-    category: 'Landscape',
-    accent: '#f59e0b',
-    ratio: 0.667,
-  },
-  {
-    id: 'portrait-04',
-    source: require('../assets/images/a03ad659-7fb7-454a-8636-c30e9f666810.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 0.8,
-  },
-  {
-    id: 'landscape-03',
-    source: require('../assets/images/a07e2d49-8e4b-4818-a83e-400c0218c788.jpg'),
-    category: 'Landscape',
-    accent: '#f59e0b',
-    ratio: 0.989,
-  },
-  {
-    id: 'water-01',
-    source: require('../assets/images/a0ca83d6-d331-4b68-9f96-985ac8912b64.jpg'),
-    category: 'Water',
-    accent: '#06b6d4',
-    ratio: 0.8,
-  },
-  {
-    id: 'texture-02',
-    source: require('../assets/images/a0d5d70b-21be-4bac-86de-c1fd44a04ae1.jpg'),
-    category: 'Texture',
-    accent: '#38bdf8',
-    ratio: 1.499,
-  },
-  {
-    id: 'water-02',
-    source: require('../assets/images/a0f1dd90-a6f4-4517-8b41-ad82bb2e96a8.jpg'),
-    category: 'Water',
-    accent: '#06b6d4',
-    ratio: 0.75,
-  },
-  {
-    id: 'architecture-03',
-    source: require('../assets/images/a0f44c2b-de69-448d-9354-fad6324d4157.jpg'),
-    category: 'Architecture',
-    accent: '#60a5fa',
-    ratio: 1.5,
-  },
-  {
-    id: 'botanical-02',
-    source: require('../assets/images/a110becf-fc2a-455b-b63c-8f97c8605331.jpg'),
-    category: 'Botanical',
-    accent: '#22c55e',
-    ratio: 0.67,
-  },
-  {
-    id: 'architecture-04',
-    source: require('../assets/images/a1124490-93df-41d7-86a8-b08bab3fbd60.jpg'),
-    category: 'Architecture',
-    accent: '#60a5fa',
-    ratio: 1.499,
-  },
-  {
-    id: 'portrait-05',
-    source: require('../assets/images/a1135b99-8f51-49a0-aa8d-a91f5a2e9d71.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 0.668,
-  },
-  {
-    id: 'texture-03',
-    source: require('../assets/images/a1153da7-2686-4a2c-b575-2dbaec5c0fba.jpg'),
-    category: 'Texture',
-    accent: '#38bdf8',
-    ratio: 1.5,
-  },
-  {
-    id: 'water-03',
-    source: require('../assets/images/a120e421-b303-4145-be24-f3f8dc77da2b.jpg'),
-    category: 'Water',
-    accent: '#06b6d4',
-    ratio: 0.667,
-  },
-  {
-    id: 'botanical-03',
-    source: require('../assets/images/a16ee596-df8e-4469-91d2-f39f162fb184.jpg'),
-    category: 'Botanical',
-    accent: '#22c55e',
-    ratio: 1.499,
-  },
-  {
-    id: 'portrait-06',
-    source: require('../assets/images/p-9877b4d9-adbb-4bff-bc0b-4802f797d4ab.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 1.499,
-  },
-  {
-    id: 'architecture-05',
-    source: require('../assets/images/p-98946414-c532-4896-9311-a8eba52fa06d.jpg'),
-    category: 'Architecture',
-    accent: '#60a5fa',
-    ratio: 0.8,
-  },
-  {
-    id: 'portrait-07',
-    source: require('../assets/images/p-98dc3a7a-5b07-4084-9156-101443846ce1.jpg'),
-    category: 'Portrait',
-    accent: '#f472b6',
-    ratio: 1.25,
-  },
-  {
-    id: 'motion-03',
-    source: require('../assets/images/p-98f88e35-b619-4a0d-9d0c-d80d3a01b9cc.jpg'),
-    category: 'Motion',
-    accent: '#fb923c',
-    ratio: 0.683,
-  },
-  {
-    id: 'landscape-04',
-    source: require('../assets/images/p-98fb1bc2-5c32-41c0-a1a0-bdc93f70846e.jpg'),
-    category: 'Landscape',
-    accent: '#f59e0b',
-    ratio: 1.503,
-  },
-  {
-    id: 'water-04',
-    source: require('../assets/images/p-99bb8611-7a4c-44fb-85bc-06ac11f7ef15.jpg'),
-    category: 'Water',
-    accent: '#06b6d4',
-    ratio: 0.667,
-  },
+  mkItem(
+    'i01',
+    require('../assets/images/9ba092c8-2d9e-4614-8fb7-4774e45ab457.jpg'),
+    'Architecture'
+  ),
+  mkItem(
+    'i02',
+    require('../assets/images/9c4345e2-63f4-4faa-b9ce-b1ee85d0c9d9.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i03',
+    require('../assets/images/9d4529fe-f2ae-4ab2-a29f-f14fc999cf0c.jpg'),
+    'Animals'
+  ),
+  mkItem(
+    'i04',
+    require('../assets/images/9d8a4f0e-81f3-425f-ab85-8efc7e3cb5b6.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i05',
+    require('../assets/images/9d8a4f92-9cd1-47d0-8f7c-9090c35a99e9.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i06',
+    require('../assets/images/9d8a4fe4-aa56-4750-8bf3-d0dbc5a81a09.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i07',
+    require('../assets/images/9d8a5043-09cd-408b-81b9-a62b15a1888c.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i08',
+    require('../assets/images/9e242635-a789-410b-8a3c-4ea625b7beeb.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i09',
+    require('../assets/images/9e3c7299-6b8f-47e6-a549-83caa9572864.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i10',
+    require('../assets/images/9e3e5add-485c-467d-827b-55cf402481d2.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i11',
+    require('../assets/images/9ef3281a-a251-4733-b2b4-166429b9737b.jpg'),
+    'Landscape'
+  ),
+  mkItem(
+    'i12',
+    require('../assets/images/9f256029-83b7-4cca-ab40-34aa82623fee.jpg'),
+    'Sports'
+  ),
+  mkItem(
+    'i13',
+    require('../assets/images/9f4b5744-7ad6-42ae-a56a-c0a05830639c.jpg'),
+    'Architecture'
+  ),
+  mkItem(
+    'i14',
+    require('../assets/images/9f6820da-c77a-49ce-9dd8-faf244f2b4d4.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i15',
+    require('../assets/images/a0395656-c22e-4e94-9a49-480bbf5ca458.jpg'),
+    'Landscape'
+  ),
+  mkItem(
+    'i16',
+    require('../assets/images/a03ad659-7fb7-454a-8636-c30e9f666810.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i17',
+    require('../assets/images/a07e2d49-8e4b-4818-a83e-400c0218c788.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i18',
+    require('../assets/images/a0ca83d6-d331-4b68-9f96-985ac8912b64.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i19',
+    require('../assets/images/a0d5d70b-21be-4bac-86de-c1fd44a04ae1.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i20',
+    require('../assets/images/a0f1dd90-a6f4-4517-8b41-ad82bb2e96a8.jpg'),
+    'Landscape'
+  ),
+  mkItem(
+    'i21',
+    require('../assets/images/a0f44c2b-de69-448d-9354-fad6324d4157.jpg'),
+    'Architecture'
+  ),
+  mkItem(
+    'i22',
+    require('../assets/images/a110becf-fc2a-455b-b63c-8f97c8605331.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i23',
+    require('../assets/images/a1124490-93df-41d7-86a8-b08bab3fbd60.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i24',
+    require('../assets/images/a1135b99-8f51-49a0-aa8d-a91f5a2e9d71.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i25',
+    require('../assets/images/a1153da7-2686-4a2c-b575-2dbaec5c0fba.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i26',
+    require('../assets/images/a120e421-b303-4145-be24-f3f8dc77da2b.jpg'),
+    'Underwater'
+  ),
+  mkItem(
+    'i27',
+    require('../assets/images/a16ee596-df8e-4469-91d2-f39f162fb184.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i28',
+    require('../assets/images/p-9877b4d9-adbb-4bff-bc0b-4802f797d4ab.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i29',
+    require('../assets/images/p-98946414-c532-4896-9311-a8eba52fa06d.jpg'),
+    'Architecture'
+  ),
+  mkItem(
+    'i30',
+    require('../assets/images/p-98dc3a7a-5b07-4084-9156-101443846ce1.jpg'),
+    'Portrait'
+  ),
+  mkItem(
+    'i31',
+    require('../assets/images/p-98f88e35-b619-4a0d-9d0c-d80d3a01b9cc.jpg'),
+    'Abstract'
+  ),
+  mkItem(
+    'i32',
+    require('../assets/images/p-98fb1bc2-5c32-41c0-a1a0-bdc93f70846e.jpg'),
+    'Nature'
+  ),
+  mkItem(
+    'i33',
+    require('../assets/images/p-99bb8611-7a4c-44fb-85bc-06ac11f7ef15.jpg'),
+    'Landscape'
+  ),
 ];
 
 type Category = { label: string; accent: string };
 
 const CATEGORIES: Category[] = [
   { label: 'All', accent: '#f2f2f2' },
-  { label: 'Architecture', accent: '#60a5fa' },
-  { label: 'Portrait', accent: '#f472b6' },
-  { label: 'Landscape', accent: '#f59e0b' },
-  { label: 'Water', accent: '#06b6d4' },
-  { label: 'Botanical', accent: '#22c55e' },
-  { label: 'Texture', accent: '#38bdf8' },
-  { label: 'Motion', accent: '#fb923c' },
-  { label: 'Still life', accent: '#a78bfa' },
-  { label: 'Wildlife', accent: '#34d399' },
-  { label: 'Sport', accent: '#94a3b8' },
+  { label: 'Portrait', accent: CATEGORY_ACCENT.Portrait },
+  { label: 'Nature', accent: CATEGORY_ACCENT.Nature },
+  { label: 'Landscape', accent: CATEGORY_ACCENT.Landscape },
+  { label: 'Architecture', accent: CATEGORY_ACCENT.Architecture },
+  { label: 'Abstract', accent: CATEGORY_ACCENT.Abstract },
+  { label: 'Animals', accent: CATEGORY_ACCENT.Animals },
+  { label: 'Underwater', accent: CATEGORY_ACCENT.Underwater },
+  { label: 'Sports', accent: CATEGORY_ACCENT.Sports },
 ];
 
 // ── Gallery helpers ───────────────────────────────────────────────────────────
 
-function splitColumns(items: Item[]): [Item[], Item[]] {
+// Intrinsic aspect ratio of each bundled asset, resolved once at module load.
+const RATIOS = new Map<string, number>(
+  ITEMS.map((it) => {
+    const src = Image.resolveAssetSource(it.source);
+    return [it.id, src?.width && src?.height ? src.width / src.height : 1];
+  })
+);
+
+const ratioFor = (it: Item) => RATIOS.get(it.id) ?? 1;
+
+// Masonry column width derived from the grid layout:
+//   gridContent.paddingHorizontal = 12  → 24 total side padding
+//   columns.gap                   = 8   → 8 between the two columns
+const GRID_H_PADDING = 12;
+const COLUMN_GAP = 8;
+const COLUMN_WIDTH =
+  (Dimensions.get('window').width - GRID_H_PADDING * 2 - COLUMN_GAP) / 2;
+
+// Per-item image height: column width divided by the asset's true ratio.
+// Result: each card matches the image's natural aspect ratio → no crop,
+// columns end up with different totals → masonry layout.
+const heightFor = (it: Item) => COLUMN_WIDTH / ratioFor(it);
+
+// 2-column masonry: drop each item into the currently shorter column,
+// measuring column height as the running sum of 1/ratio (= height per unit width).
+function splitColumns(items: Item[]): { left: Item[]; right: Item[] } {
   const left: Item[] = [];
   const right: Item[] = [];
   let leftH = 0;
   let rightH = 0;
-  for (const item of items) {
-    const displayH = 1 / item.ratio + 0.16;
+  for (const it of items) {
+    const h = 1 / ratioFor(it);
     if (leftH <= rightH) {
-      left.push(item);
-      leftH += displayH;
+      left.push(it);
+      leftH += h;
     } else {
-      right.push(item);
-      rightH += displayH;
+      right.push(it);
+      rightH += h;
     }
   }
-  return [left, right];
-}
-
-function buildGalleryRows(items: Item[]): GalleryRow[] {
-  const rows: GalleryRow[] = [];
-  let pending: Item[] = [];
-
-  const flushColumns = () => {
-    if (pending.length === 0) return;
-    const [left, right] = splitColumns(pending);
-    rows.push({ type: 'columns', left, right });
-    pending = [];
-  };
-
-  for (const item of items) {
-    if (item.ratio >= FULL_WIDTH_RATIO) {
-      flushColumns();
-      rows.push({ type: 'full', item });
-    } else {
-      pending.push(item);
-    }
-  }
-
-  flushColumns();
-  return rows;
+  return { left, right };
 }
 
 // ── Card ──────────────────────────────────────────────────────────────────────
@@ -361,8 +306,7 @@ function MasonryCard({ item }: { item: Item }) {
     <View style={mc.root}>
       <Image
         source={item.source}
-        style={[mc.image, { aspectRatio: item.ratio }]}
-        resizeMode="contain"
+        style={[mc.image, { height: heightFor(item) }]}
       />
       <View style={mc.label}>
         <View style={[mc.dot, { backgroundColor: item.accent }]} />
@@ -374,14 +318,14 @@ function MasonryCard({ item }: { item: Item }) {
 
 const mc = StyleSheet.create({
   root: {
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 8,
     backgroundColor: C.surface,
   },
   image: {
     width: '100%',
-    backgroundColor: '#050505',
+    backgroundColor: '#0a0a0a',
   },
   label: {
     flexDirection: 'row',
@@ -481,8 +425,8 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
   const topFadeProps = useAnimatedProps(() => ({
     fadeTop: interpolate(
       scrollY.value,
-      [0, 160],
-      [0, 160],
+      [0, 120],
+      [0, 120],
       Extrapolation.CLAMP
     ),
   }));
@@ -492,7 +436,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
       ? ITEMS
       : ITEMS.filter((i) => i.category === activeCategory);
 
-  const rows = buildGalleryRows(filtered);
+  const { left: leftCol, right: rightCol } = splitColumns(filtered);
 
   return (
     <View style={s.screen}>
@@ -503,7 +447,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
           <Text style={s.subtitle}>{ITEMS.length} pieces</Text>
         </View>
         <Pressable style={s.benchBtn} onPress={onBenchmark}>
-          <Text style={s.benchText}>⚡ Benchmark</Text>
+          <Text style={s.benchText}>Benchmark</Text>
         </Pressable>
       </View>
 
@@ -553,7 +497,7 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
         animatedProps={topFadeProps}
         fadeBottom={600}
         mode="mask"
-        curveTop="smooth"
+        curveTop="gentle"
         curveBottom="smooth"
         style={s.gridWrap}
       >
@@ -563,24 +507,18 @@ function DemoScreen({ onBenchmark }: { onBenchmark: () => void }) {
           scrollEventThrottle={16}
           onScroll={onScroll}
         >
-          {rows.map((row, index) =>
-            row.type === 'full' ? (
-              <MasonryCard key={row.item.id} item={row.item} />
-            ) : (
-              <View key={`columns-${index}`} style={s.columns}>
-                <View style={s.col}>
-                  {row.left.map((item) => (
-                    <MasonryCard key={item.id} item={item} />
-                  ))}
-                </View>
-                <View style={s.col}>
-                  {row.right.map((item) => (
-                    <MasonryCard key={item.id} item={item} />
-                  ))}
-                </View>
-              </View>
-            )
-          )}
+          <View style={s.columns}>
+            <View style={s.col}>
+              {leftCol.map((it) => (
+                <MasonryCard key={it.id} item={it} />
+              ))}
+            </View>
+            <View style={s.col}>
+              {rightCol.map((it) => (
+                <MasonryCard key={it.id} item={it} />
+              ))}
+            </View>
+          </View>
         </Animated.ScrollView>
       </ReanimatedNativeEdgeFadeView>
     </View>
@@ -627,7 +565,7 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 20,
     marginBottom: 20,
   },

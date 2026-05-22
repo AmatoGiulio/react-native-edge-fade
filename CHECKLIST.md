@@ -1,6 +1,7 @@
 # react-native-edge-fade — State of the Art
 
-> Last updated: 2026-05-21. Keep this file current as features land.
+> Last updated: 2026-05-22 (Android density / RTL / saveLayer perf pass).
+> Keep this file current as features land.
 
 ---
 
@@ -19,6 +20,7 @@
 ### Props (EdgeFadeViewProps)
 
 - [x] `top / bottom / left / right` — `boolean | number | EdgeConfig`
+- [x] `start / end` — logical leading / trailing edges, mapped via `I18nManager.isRTL`
 - [x] `size` — global default depth (dp, default 80)
 - [x] `curve` — global default curve (default `'smooth'`)
 - [x] `mode` — `'mask' | 'overlay'` (explicit; inferred from `color` when omitted)
@@ -48,7 +50,12 @@
 
 - [x] `EdgeFadeView` extends `FrameLayout` (children handled automatically)
 - [x] `EdgeFadeViewManager` extends `ViewGroupManager` (Fabric-correct)
+- [x] `dp → px` density conversion at the `ViewManager` boundary (`size={80}` now matches iOS points scale)
 - [x] Mask mode — `saveLayer` + sequential `DST_IN` gradients (corner alpha = product)
+- [x] Single-edge fast path — `saveLayer` shrunk to the edge strip (two-pass render, ~14–30× less offscreen memory bandwidth)
+- [x] `BlendMode.DST_IN` on API 29+, `PorterDuffXfermode` fallback below
+- [x] One-shot Log.w on AGSL `RuntimeShader` compile / uniform failure (visible LinearGradient fallback)
+- [x] Native shader/gradient cache released in `onDetachedFromWindow`
 - [x] Overlay mode — `LinearGradient` painted over children
 - [x] Per-edge overlay color (`overlayColorTop/Bottom/Left/Right`)
 - [x] Global overlay color fallback (`overlayColor`)
@@ -68,7 +75,7 @@
 
 ## iOS
 
-- [x] `EdgeFadeMaskLayer` — `CALayer` subclass, `kCGBlendModeMultiply` (corner alpha = product)
+- [x] `EdgeFadeMaskLayer` — `CALayer` subclass, `kCGBlendModeDestinationIn` (`R = D · Sa`; corner alpha = product of overlapping passes)
 - [x] Static gradient cache (one `CGGradientRef` per preset, process lifetime)
 - [x] Custom curve support in mask mode (build-and-release per draw)
 - [x] Overlay mode — `UIView` container + `CAGradientLayer` sublayers
@@ -77,10 +84,13 @@
 - [x] Explicit `mode` prop
 - [x] Custom curve support in overlay mode
 - [x] Surgical `updateProps` diffing (size / curve / color / mode / radius)
+- [x] Null-safe `updateProps` — compares against `_props` (always valid) instead of the `oldProps` parameter (can be an empty `shared_ptr` on the first call)
+- [x] Builds mask/overlay layers on first `updateProps` when the prop mode matches the default (no mode-flip)
+- [x] Overrides `invalidateLayer` to re-attach `_maskLayer` after `RCTViewComponentView` resets `currentContainerView.layer.mask` to nil
 - [x] `CATransaction setDisableActions:YES` (no implicit CA animations on frame changes)
 - [x] `didAddSubview:` keeps overlay on top
 - [x] `cornerRadius + masksToBounds` for `radius` prop
-- [ ] Built and tested on simulator — **PENDING** (user cannot test iOS currently)
+- [x] Built and tested on simulator (iOS 26.x, RN 0.83)
 - [ ] `fadeRadius` + mask mode corner interaction — needs verification on device
 
 ---
@@ -109,9 +119,11 @@
 
 ## Example app (example/src/App.tsx)
 
-- [x] Mask mode demo (top + bottom)
-- [x] Overlay mode demo (left + right with global color)
+- [x] Mask mode demo (top + bottom) — scroll-driven `fadeTop` via Reanimated on the masonry grid
+- [x] Overlay mode demo (left + right with global color) — category filter strip
 - [x] Mask vs overlay comparison demo (left + right)
+- [x] Pinterest-style 2-column masonry with real per-asset aspect ratios (`Image.resolveAssetSource`)
+- [x] Content-derived categories (Portrait / Nature / Landscape / Architecture / Abstract / Animals / Underwater / Sports) matching the bundled assets
 - [ ] Per-edge color demo
 - [ ] cubicBezier curve demo
 - [ ] stops curve demo
@@ -151,5 +163,5 @@
 - [ ] Version bumped to `1.0.0`
 - [x] `yarn prepare` passes (TypeScript build)
 - [x] Android build passes
-- [ ] iOS build passes
+- [x] iOS build passes (Xcode 26.x / iOS 26 simulator, RN 0.83)
 - [ ] npm publish

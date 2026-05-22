@@ -19,19 +19,23 @@ class EdgeFadeViewManager :
   override fun getName(): String = NAME
   override fun createViewInstance(context: ThemedReactContext): EdgeFadeView = EdgeFadeView(context)
 
+  // JS sends sizes in dp. Fabric Float props arrive unscaled, so we convert here.
+  private fun dpToPx(view: EdgeFadeView, dp: Float): Float =
+    dp * view.resources.displayMetrics.density
+
   // ── Edge sizes ─────────────────────────────────────────────────────────────
 
   @ReactProp(name = "fadeTop")
-  override fun setFadeTop(view: EdgeFadeView, value: Float) { view.fadeTop = value; view.invalidate() }
+  override fun setFadeTop(view: EdgeFadeView, value: Float) { view.fadeTop = dpToPx(view, value); view.invalidate() }
 
   @ReactProp(name = "fadeBottom")
-  override fun setFadeBottom(view: EdgeFadeView, value: Float) { view.fadeBottom = value; view.invalidate() }
+  override fun setFadeBottom(view: EdgeFadeView, value: Float) { view.fadeBottom = dpToPx(view, value); view.invalidate() }
 
   @ReactProp(name = "fadeLeft")
-  override fun setFadeLeft(view: EdgeFadeView, value: Float) { view.fadeLeft = value; view.invalidate() }
+  override fun setFadeLeft(view: EdgeFadeView, value: Float) { view.fadeLeft = dpToPx(view, value); view.invalidate() }
 
   @ReactProp(name = "fadeRight")
-  override fun setFadeRight(view: EdgeFadeView, value: Float) { view.fadeRight = value; view.invalidate() }
+  override fun setFadeRight(view: EdgeFadeView, value: Float) { view.fadeRight = dpToPx(view, value); view.invalidate() }
 
   // ── Curves ─────────────────────────────────────────────────────────────────
 
@@ -70,7 +74,7 @@ class EdgeFadeViewManager :
   override fun setOverlayColorRight(view: EdgeFadeView, value: Int?) { view.overlayColorRight = value; view.invalidate() }
 
   @ReactProp(name = "fadeRadius")
-  override fun setFadeRadius(view: EdgeFadeView, value: Float) { view.fadeRadius = value; view.invalidate() }
+  override fun setFadeRadius(view: EdgeFadeView, value: Float) { view.fadeRadius = dpToPx(view, value); view.invalidate() }
 
   companion object {
     const val NAME = "EdgeFadeView"
