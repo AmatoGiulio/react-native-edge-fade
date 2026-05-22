@@ -15,6 +15,7 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
+import android.util.Log
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
@@ -440,7 +441,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // Cannot handle this curve analytically or as a LUT — fall back to LinearGradient
     if (presetParams == null && lut == null) return null
 
-    val rts = existing ?: runCatching { RuntimeShader(AGSL_SRC) }.getOrNull() ?: return null
+    val rts = existing ?: runCatching { RuntimeShader(AGSL_SRC) }
+      .onFailure { logAgslFallbackOnce("RuntimeShader compile failed", it) }
+      .getOrNull() ?: return null
 
     val isOverlay = if (color != null) 1f else 0f
     val cr = if (color != null) Color.red(color)   / 255f else 0f
@@ -469,7 +472,19 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
         // alphaLUT unused when useLUT=0 — no need to upload
       }
       rts
-    }.getOrNull()
+    }
+      .onFailure { logAgslFallbackOnce("RuntimeShader uniform upload failed", it) }
+      .getOrNull()
+  }
+
+  // Tracks whether we've already logged an AGSL fallback for this view instance.
+  // Per-frame failures would otherwise flood logcat.
+  private var agslFallbackLogged = false
+
+  private fun logAgslFallbackOnce(message: String, cause: Throwable?) {
+    if (agslFallbackLogged) return
+    agslFallbackLogged = true
+    Log.w("EdgeFadeView", "$message — falling back to LinearGradient.", cause)
   }
 
   // ── LinearGradient fallbacks (API < 33 / unparseable curves) ───────────────
