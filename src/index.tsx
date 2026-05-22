@@ -1,18 +1,15 @@
 import { EdgeFadeView } from './EdgeFadeView';
+import { AnimatedEdgeFadeView } from './AnimatedEdgeFadeView';
 
-export { EdgeFadeView };
+export { EdgeFadeView, AnimatedEdgeFadeView };
+
+export type { AnimatedEdgeFadeViewProps } from './AnimatedEdgeFadeView';
 
 /**
- * Raw Fabric native component — for advanced Reanimated usage.
- *
- * Animate `fadeTop` / `fadeBottom` / `fadeLeft` / `fadeRight` directly as
- * native props so Reanimated's UI-thread shadow-node mutation targets the
- * correct prop instead of Yoga's `top` / `bottom` layout properties.
- *
- * Use `Animated.createAnimatedComponent(NativeEdgeFadeView)` and drive
- * `fadeTop` (not `top`) with `useAnimatedProps`.
- *
- * On web this is a plain View — no visual effects apply.
+ * Raw Fabric native component — escape hatch for power users who want full
+ * control over the flat native props (`fadeTop`, `fadeBottom`, etc.) and the
+ * Reanimated wrapping themselves. Prefer `AnimatedEdgeFadeView` for animated
+ * use cases.
  */
 export { default as NativeEdgeFadeView } from './EdgeFadeViewNativeComponent';
 
