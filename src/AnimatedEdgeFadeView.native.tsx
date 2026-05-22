@@ -5,11 +5,6 @@ import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
 import { resolveNativeProps, resolveRadius } from './normalize';
 import type { EdgeConfig, EdgeFadeViewProps } from './types';
 
-// ── SharedValue typing (structural) ────────────────────────────────────────────
-// We avoid a hard type-import from `react-native-reanimated` so the package
-// keeps it as a soft peer dependency. The structural shape below matches any
-// Reanimated SharedValue<T> (and any user-defined object with the same surface).
-
 type SharedValueLike<T> = {
   readonly value: T;
   readonly addListener: (
@@ -38,10 +33,7 @@ export interface AnimatedEdgeFadeViewProps extends Omit<
   radius?: number | SharedValueLike<number>;
 }
 
-// ── Reanimated soft peer dependency ────────────────────────────────────────────
-
 let Reanimated: any = null;
-
 let AnimatedNativeEdgeFadeView: any = null;
 
 try {
@@ -49,43 +41,54 @@ try {
   AnimatedNativeEdgeFadeView =
     Reanimated.default.createAnimatedComponent(NativeEdgeFadeView);
 } catch {
-  // Reanimated not installed — component throws on render with a clear message.
+  // The render path throws a package-specific setup error.
 }
 
-function isSharedValue(x: unknown): x is SharedValueLike<unknown> {
-  if (Reanimated?.isSharedValue) {
-    return Reanimated.isSharedValue(x);
-  }
+function isSharedValue(value: unknown): value is SharedValueLike<unknown> {
+  if (Reanimated?.isSharedValue) return Reanimated.isSharedValue(value);
+
   return (
-    typeof x === 'object' &&
-    x !== null &&
-    'value' in x &&
-    typeof (x as any).addListener === 'function'
+    typeof value === 'object' &&
+    value !== null &&
+    'value' in value &&
+    typeof (value as any).addListener === 'function'
   );
 }
 
-// ── Component ──────────────────────────────────────────────────────────────────
+function sharedNumber(value: EdgeProp): SharedValueLike<number> | null {
+  return isSharedValue(value) ? (value as SharedValueLike<number>) : null;
+}
 
-function useEdgeFadeAnimatedProps(
-  topSV: SharedValueLike<number> | null,
-  bottomSV: SharedValueLike<number> | null,
-  leftSV: SharedValueLike<number> | null,
-  rightSV: SharedValueLike<number> | null,
-  startSV: SharedValueLike<number> | null,
-  endSV: SharedValueLike<number> | null,
-  radiusSV: SharedValueLike<number> | null
-) {
+function useEdgeFadeAnimatedProps({
+  top,
+  bottom,
+  left,
+  right,
+  start,
+  end,
+  radius,
+}: {
+  top: SharedValueLike<number> | null;
+  bottom: SharedValueLike<number> | null;
+  left: SharedValueLike<number> | null;
+  right: SharedValueLike<number> | null;
+  start: SharedValueLike<number> | null;
+  end: SharedValueLike<number> | null;
+  radius: SharedValueLike<number> | null;
+}) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
 
     const out: any = {};
-    if (topSV) out.fadeTop = topSV.value;
-    if (bottomSV) out.fadeBottom = bottomSV.value;
-    if (leftSV) out.fadeLeft = leftSV.value;
-    if (rightSV) out.fadeRight = rightSV.value;
-    if (startSV) out.fadeLeft = startSV.value; // LTR mapping (matches static API default)
-    if (endSV) out.fadeRight = endSV.value;
-    if (radiusSV) out.fadeRadius = radiusSV.value;
+
+    if (top) out.fadeTop = top.value;
+    if (bottom) out.fadeBottom = bottom.value;
+    if (left) out.fadeLeft = left.value;
+    if (right) out.fadeRight = right.value;
+    if (start) out.fadeLeft = start.value;
+    if (end) out.fadeRight = end.value;
+    if (radius) out.fadeRadius = radius.value;
+
     return out;
   });
 }
@@ -101,100 +104,74 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     );
   }
 
-  // Identify SharedValue inputs on the animatable surface (sizes + radius).
-  // Capturing the references at render time is required so the worklet can
-  // read `.value` on the UI thread.
-  const topSV = isSharedValue(props.top)
-    ? (props.top as SharedValueLike<number>)
-    : null;
-  const bottomSV = isSharedValue(props.bottom)
-    ? (props.bottom as SharedValueLike<number>)
-    : null;
-  const leftSV = isSharedValue(props.left)
-    ? (props.left as SharedValueLike<number>)
-    : null;
-  const rightSV = isSharedValue(props.right)
-    ? (props.right as SharedValueLike<number>)
-    : null;
-  const startSV = isSharedValue(props.start)
-    ? (props.start as SharedValueLike<number>)
-    : null;
-  const endSV = isSharedValue(props.end)
-    ? (props.end as SharedValueLike<number>)
-    : null;
-  const radiusSV = isSharedValue(props.radius)
-    ? (props.radius as SharedValueLike<number>)
-    : null;
-
-  // Build the static prop set: replace any SharedValue with 0 so
-  // resolveNativeProps emits an inactive edge, then let animatedProps
-  // override the size on the UI thread.
-  const staticProps: EdgeFadeViewProps = {
-    ...(props as EdgeFadeViewProps),
-    top: topSV ? 0 : (props.top as EdgeFadeViewProps['top']),
-    bottom: bottomSV ? 0 : (props.bottom as EdgeFadeViewProps['bottom']),
-    left: leftSV ? 0 : (props.left as EdgeFadeViewProps['left']),
-    right: rightSV ? 0 : (props.right as EdgeFadeViewProps['right']),
-    start: startSV ? 0 : (props.start as EdgeFadeViewProps['start']),
-    end: endSV ? 0 : (props.end as EdgeFadeViewProps['end']),
-    radius: radiusSV ? undefined : (props.radius as number | undefined),
+  const animated = {
+    top: sharedNumber(props.top),
+    bottom: sharedNumber(props.bottom),
+    left: sharedNumber(props.left),
+    right: sharedNumber(props.right),
+    start: sharedNumber(props.start),
+    end: sharedNumber(props.end),
+    radius: isSharedValue(props.radius)
+      ? (props.radius as SharedValueLike<number>)
+      : null,
   };
 
-  const n = resolveNativeProps(staticProps);
+  const staticProps: EdgeFadeViewProps = {
+    ...(props as EdgeFadeViewProps),
+    top: animated.top ? 0 : (props.top as EdgeFadeViewProps['top']),
+    bottom: animated.bottom ? 0 : (props.bottom as EdgeFadeViewProps['bottom']),
+    left: animated.left ? 0 : (props.left as EdgeFadeViewProps['left']),
+    right: animated.right ? 0 : (props.right as EdgeFadeViewProps['right']),
+    start: animated.start ? 0 : (props.start as EdgeFadeViewProps['start']),
+    end: animated.end ? 0 : (props.end as EdgeFadeViewProps['end']),
+    radius: animated.radius ? undefined : (props.radius as number | undefined),
+  };
+
+  const nativeProps = resolveNativeProps(staticProps);
   const resolvedRadius = resolveRadius(staticProps.radius, props.style);
 
   const {
-    top: _t,
-    bottom: _b,
-    left: _l,
-    right: _r,
-    start: _st,
-    end: _en,
-    size: _s,
-    curve: _c,
-    mode: _m,
-    color: _col,
+    top: _top,
+    bottom: _bottom,
+    left: _left,
+    right: _right,
+    start: _start,
+    end: _end,
+    size: _size,
+    curve: _curve,
+    mode: _mode,
+    color: _color,
     radius: _radius,
     style,
     children,
     ...viewProps
   } = props as AnimatedEdgeFadeViewProps & { children?: React.ReactNode };
 
-  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
-  const { borderRadius: _ignoredBorderRadius, ...cleanStyle } = flat;
-
-  // Resolve which logical SharedValue maps to which physical native prop, mirroring
-  // the LTR/RTL mapping that resolveNativeProps applies for non-animated edges.
-  // We assume LTR at the JS thread level (default); for RTL the user should pass
-  // `start` instead of `left` etc. — same convention as the static API.
-  const animatedProps = useEdgeFadeAnimatedProps(
-    topSV,
-    bottomSV,
-    leftSV,
-    rightSV,
-    startSV,
-    endSV,
-    radiusSV
-  );
+  const flatStyle = (StyleSheet.flatten(style) ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const { borderRadius: _ignoredBorderRadius, ...cleanStyle } = flatStyle;
+  const animatedProps = useEdgeFadeAnimatedProps(animated);
 
   return (
     <AnimatedNativeEdgeFadeView
       {...viewProps}
       style={cleanStyle}
-      fadeTop={n.fadeTop}
-      fadeBottom={n.fadeBottom}
-      fadeLeft={n.fadeLeft}
-      fadeRight={n.fadeRight}
-      curveTop={n.curveTop}
-      curveBottom={n.curveBottom}
-      curveLeft={n.curveLeft}
-      curveRight={n.curveRight}
-      mode={n.mode}
-      overlayColor={n.overlayColor}
-      overlayColorTop={n.overlayColorTop}
-      overlayColorBottom={n.overlayColorBottom}
-      overlayColorLeft={n.overlayColorLeft}
-      overlayColorRight={n.overlayColorRight}
+      fadeTop={nativeProps.fadeTop}
+      fadeBottom={nativeProps.fadeBottom}
+      fadeLeft={nativeProps.fadeLeft}
+      fadeRight={nativeProps.fadeRight}
+      curveTop={nativeProps.curveTop}
+      curveBottom={nativeProps.curveBottom}
+      curveLeft={nativeProps.curveLeft}
+      curveRight={nativeProps.curveRight}
+      mode={nativeProps.mode}
+      overlayColor={nativeProps.overlayColor}
+      overlayColorTop={nativeProps.overlayColorTop}
+      overlayColorBottom={nativeProps.overlayColorBottom}
+      overlayColorLeft={nativeProps.overlayColorLeft}
+      overlayColorRight={nativeProps.overlayColorRight}
       fadeRadius={resolvedRadius}
       animatedProps={animatedProps}
     >

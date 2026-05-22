@@ -1,25 +1,15 @@
-/**
- * BenchmarkScreen — stress test for EdgeFadeView rendering performance.
- *
- * Vary fade size, curve, mode and active edges to find bottlenecks.
- * On Android: open Android Studio → CPU Profiler → "Capture system trace"
- * while scrolling to see EdgeFade.dispatchDraw / EdgeFade.mask / EdgeFade.overlay
- * sections in the trace.
- */
-
 import { useEffect, useRef, useState } from 'react';
 import {
+  FlatList,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import type { ListRenderItem } from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
 import type { EdgeFadeMode } from 'react-native-edge-fade';
-
-// ── Config ────────────────────────────────────────────────────────────────────
 
 const FADE_SIZES = [40, 80, 160, 240] as const;
 const CURVES = ['smooth', 'sharp', 'gentle', 'soft', 'linear'] as const;
@@ -32,8 +22,7 @@ const EDGE_SETS = [
 ] as const;
 
 const ITEMS = Array.from({ length: 200 }, (_, i) => `Item ${i + 1}`);
-
-// ── FPS counter ───────────────────────────────────────────────────────────────
+const ROW_HEIGHT = 49;
 
 function useFPS() {
   const [fps, setFps] = useState<number | null>(null);
@@ -46,21 +35,22 @@ function useFPS() {
       frameRef.current += 1;
       const now = Date.now();
       const delta = now - lastRef.current;
+
       if (delta >= 800) {
         setFps(Math.round((frameRef.current * 1000) / delta));
         frameRef.current = 0;
         lastRef.current = now;
       }
+
       rafRef.current = requestAnimationFrame(tick);
     };
+
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
   return fps;
 }
-
-// ── Pill selector ─────────────────────────────────────────────────────────────
 
 function Pills<T extends string | number>({
   label,
@@ -72,21 +62,21 @@ function Pills<T extends string | number>({
   label: string;
   options: readonly T[];
   value: T;
-  onSelect: (v: T) => void;
-  format?: (v: T) => string;
+  onSelect: (value: T) => void;
+  format?: (value: T) => string;
 }) {
   return (
     <View style={pill.row}>
       <Text style={pill.label}>{label}</Text>
       <View style={pill.group}>
-        {options.map((o) => (
+        {options.map((option) => (
           <Pressable
-            key={String(o)}
-            style={[pill.item, o === value && pill.active]}
-            onPress={() => onSelect(o)}
+            key={String(option)}
+            style={[pill.item, option === value && pill.active]}
+            onPress={() => onSelect(option)}
           >
-            <Text style={[pill.text, o === value && pill.activeText]}>
-              {format ? format(o) : String(o)}
+            <Text style={[pill.text, option === value && pill.activeText]}>
+              {format ? format(option) : String(option)}
             </Text>
           </Pressable>
         ))}
@@ -95,11 +85,25 @@ function Pills<T extends string | number>({
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
+const renderBenchmarkItem: ListRenderItem<string> = ({ item }) => (
+  <View style={s.row}>
+    <Text style={s.rowText}>{item}</Text>
+  </View>
+);
+
+const keyExtractor = (item: string) => item;
+
+const getItemLayout = (
+  _data: ArrayLike<string> | null | undefined,
+  index: number
+) => ({
+  length: ROW_HEIGHT,
+  offset: ROW_HEIGHT * index,
+  index,
+});
 
 export default function BenchmarkScreen() {
   const fps = useFPS();
-
   const [fadeSize, setFadeSize] = useState<(typeof FADE_SIZES)[number]>(80);
   const [curve, setCurve] = useState<(typeof CURVES)[number]>('smooth');
   const [mode, setMode] = useState<EdgeFadeMode>('mask');
@@ -110,12 +114,11 @@ export default function BenchmarkScreen() {
 
   return (
     <View style={s.root}>
-      {/* ── Header ── */}
       <View style={s.header}>
         <Text style={s.title}>Benchmark</Text>
         <View style={s.fpsBox}>
           <Text style={[s.fps, fps !== null && fps < 50 && s.fpsWarn]}>
-            {fps !== null ? `${fps} fps` : '—'}
+            {fps !== null ? `${fps} fps` : '-'}
           </Text>
           <Text style={s.platform}>
             {Platform.OS} {Platform.Version}
@@ -123,14 +126,13 @@ export default function BenchmarkScreen() {
         </View>
       </View>
 
-      {/* ── Controls ── */}
       <View style={s.controls}>
         <Pills
           label="fade"
           options={FADE_SIZES}
           value={fadeSize}
           onSelect={setFadeSize}
-          format={(v) => `${v}dp`}
+          format={(value) => `${value}dp`}
         />
         <Pills
           label="curve"
@@ -142,18 +144,17 @@ export default function BenchmarkScreen() {
           label="mode"
           options={MODES}
           value={mode}
-          onSelect={setMode as (v: string) => void}
+          onSelect={setMode as (value: string) => void}
         />
         <Pills
           label="edges"
-          options={EDGE_SETS.map((_, i) => i)}
+          options={EDGE_SETS.map((_, index) => index)}
           value={edgeSet}
           onSelect={setEdgeSet}
-          format={(i) => EDGE_SETS[i]!.label}
+          format={(index) => EDGE_SETS[index]!.label}
         />
       </View>
 
-      {/* ── Stress list ── */}
       <View style={s.listWrap}>
         <EdgeFadeView
           mode={mode}
@@ -165,22 +166,23 @@ export default function BenchmarkScreen() {
           color={color}
           style={StyleSheet.absoluteFill}
         >
-          <ScrollView
-            showsVerticalScrollIndicator={false}
+          <FlatList
+            data={ITEMS}
+            renderItem={renderBenchmarkItem}
+            keyExtractor={keyExtractor}
+            getItemLayout={getItemLayout}
             contentContainerStyle={s.listContent}
-          >
-            {ITEMS.map((item) => (
-              <View key={item} style={s.row}>
-                <Text style={s.rowText}>{item}</Text>
-              </View>
-            ))}
-          </ScrollView>
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={7}
+          />
         </EdgeFadeView>
       </View>
 
-      {/* ── Info ── */}
       <Text style={s.hint}>
-        Android: Android Studio → CPU Profiler → Capture system trace
+        Android: Android Studio - CPU Profiler - Capture system trace
       </Text>
       <Text style={s.hint}>
         Look for <Text style={s.code}>EdgeFade.dispatchDraw</Text>
@@ -190,8 +192,6 @@ export default function BenchmarkScreen() {
     </View>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   root: {
@@ -235,13 +235,13 @@ const s = StyleSheet.create({
   },
   listWrap: {
     flex: 1,
-    marginHorizontal: 0,
   },
   listContent: {
     paddingVertical: 8,
   },
   row: {
-    paddingVertical: 14,
+    height: ROW_HEIGHT,
+    justifyContent: 'center',
     paddingHorizontal: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#1a1a1a',
@@ -275,7 +275,6 @@ const pill = StyleSheet.create({
     color: '#555',
     width: 38,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   group: {
     flexDirection: 'row',
