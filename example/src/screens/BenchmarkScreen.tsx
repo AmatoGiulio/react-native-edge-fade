@@ -1,15 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  FlatList,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Platform, StyleSheet, Text, View } from 'react-native';
 import type { ListRenderItem } from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
 import type { EdgeFadeMode } from 'react-native-edge-fade';
+
+import { SegmentedPills } from '../components/SegmentedPills';
 
 const FADE_SIZES = [40, 80, 160, 240] as const;
 const CURVES = ['smooth', 'sharp', 'gentle', 'soft', 'linear'] as const;
@@ -52,42 +47,76 @@ function useFPS() {
   return fps;
 }
 
-function Pills<T extends string | number>({
-  label,
-  options,
-  value,
-  onSelect,
-  format,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  onSelect: (value: T) => void;
-  format?: (value: T) => string;
-}) {
+function BenchmarkHeader({ fps }: { fps: number | null }) {
   return (
-    <View style={pill.row}>
-      <Text style={pill.label}>{label}</Text>
-      <View style={pill.group}>
-        {options.map((option) => (
-          <Pressable
-            key={String(option)}
-            style={[pill.item, option === value && pill.active]}
-            onPress={() => onSelect(option)}
-          >
-            <Text style={[pill.text, option === value && pill.activeText]}>
-              {format ? format(option) : String(option)}
-            </Text>
-          </Pressable>
-        ))}
+    <View style={styles.header}>
+      <Text style={styles.title}>Benchmark</Text>
+      <View style={styles.fpsBox}>
+        <Text style={[styles.fps, fps !== null && fps < 50 && styles.fpsWarn]}>
+          {fps !== null ? `${fps} fps` : '-'}
+        </Text>
+        <Text style={styles.platform}>
+          {Platform.OS} {Platform.Version}
+        </Text>
       </View>
     </View>
   );
 }
 
+function BenchmarkControls({
+  fadeSize,
+  curve,
+  mode,
+  edgeSet,
+  onFadeSizeChange,
+  onCurveChange,
+  onModeChange,
+  onEdgeSetChange,
+}: {
+  fadeSize: (typeof FADE_SIZES)[number];
+  curve: (typeof CURVES)[number];
+  mode: EdgeFadeMode;
+  edgeSet: number;
+  onFadeSizeChange: (value: (typeof FADE_SIZES)[number]) => void;
+  onCurveChange: (value: (typeof CURVES)[number]) => void;
+  onModeChange: (value: EdgeFadeMode) => void;
+  onEdgeSetChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.controls}>
+      <SegmentedPills
+        label="fade"
+        options={FADE_SIZES}
+        value={fadeSize}
+        onSelect={onFadeSizeChange}
+        format={(value) => `${value}dp`}
+      />
+      <SegmentedPills
+        label="curve"
+        options={CURVES}
+        value={curve}
+        onSelect={onCurveChange}
+      />
+      <SegmentedPills
+        label="mode"
+        options={MODES}
+        value={mode}
+        onSelect={onModeChange}
+      />
+      <SegmentedPills
+        label="edges"
+        options={EDGE_SETS.map((_, index) => index)}
+        value={edgeSet}
+        onSelect={onEdgeSetChange}
+        format={(index) => EDGE_SETS[index]!.label}
+      />
+    </View>
+  );
+}
+
 const renderBenchmarkItem: ListRenderItem<string> = ({ item }) => (
-  <View style={s.row}>
-    <Text style={s.rowText}>{item}</Text>
+  <View style={styles.row}>
+    <Text style={styles.rowText}>{item}</Text>
   </View>
 );
 
@@ -113,49 +142,20 @@ export default function BenchmarkScreen() {
   const color = mode === 'overlay' ? '#010101' : undefined;
 
   return (
-    <View style={s.root}>
-      <View style={s.header}>
-        <Text style={s.title}>Benchmark</Text>
-        <View style={s.fpsBox}>
-          <Text style={[s.fps, fps !== null && fps < 50 && s.fpsWarn]}>
-            {fps !== null ? `${fps} fps` : '-'}
-          </Text>
-          <Text style={s.platform}>
-            {Platform.OS} {Platform.Version}
-          </Text>
-        </View>
-      </View>
+    <View style={styles.root}>
+      <BenchmarkHeader fps={fps} />
+      <BenchmarkControls
+        fadeSize={fadeSize}
+        curve={curve}
+        mode={mode}
+        edgeSet={edgeSet}
+        onFadeSizeChange={setFadeSize}
+        onCurveChange={setCurve}
+        onModeChange={setMode}
+        onEdgeSetChange={setEdgeSet}
+      />
 
-      <View style={s.controls}>
-        <Pills
-          label="fade"
-          options={FADE_SIZES}
-          value={fadeSize}
-          onSelect={setFadeSize}
-          format={(value) => `${value}dp`}
-        />
-        <Pills
-          label="curve"
-          options={CURVES}
-          value={curve}
-          onSelect={setCurve}
-        />
-        <Pills
-          label="mode"
-          options={MODES}
-          value={mode}
-          onSelect={setMode as (value: string) => void}
-        />
-        <Pills
-          label="edges"
-          options={EDGE_SETS.map((_, index) => index)}
-          value={edgeSet}
-          onSelect={setEdgeSet}
-          format={(index) => EDGE_SETS[index]!.label}
-        />
-      </View>
-
-      <View style={s.listWrap}>
+      <View style={styles.listWrap}>
         <EdgeFadeView
           mode={mode}
           top={edges.top ? fadeSize : 0}
@@ -171,7 +171,7 @@ export default function BenchmarkScreen() {
             renderItem={renderBenchmarkItem}
             keyExtractor={keyExtractor}
             getItemLayout={getItemLayout}
-            contentContainerStyle={s.listContent}
+            contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews
             initialNumToRender={12}
@@ -181,19 +181,19 @@ export default function BenchmarkScreen() {
         </EdgeFadeView>
       </View>
 
-      <Text style={s.hint}>
+      <Text style={styles.hint}>
         Android: Android Studio - CPU Profiler - Capture system trace
       </Text>
-      <Text style={s.hint}>
-        Look for <Text style={s.code}>EdgeFade.dispatchDraw</Text>
+      <Text style={styles.hint}>
+        Look for <Text style={styles.code}>EdgeFade.dispatchDraw</Text>
         {' / '}
-        <Text style={s.code}>EdgeFade.mask</Text>
+        <Text style={styles.code}>EdgeFade.mask</Text>
       </Text>
     </View>
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#010101',
@@ -260,44 +260,5 @@ const s = StyleSheet.create({
   code: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     color: '#666',
-  },
-});
-
-const pill = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#555',
-    width: 38,
-    textTransform: 'uppercase',
-  },
-  group: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  item: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-  },
-  active: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  text: {
-    fontSize: 12,
-    color: '#666',
-  },
-  activeText: {
-    color: '#000',
-    fontWeight: '600',
   },
 });

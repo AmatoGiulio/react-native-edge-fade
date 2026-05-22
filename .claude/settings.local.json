@@ -30,7 +30,14 @@
       "Bash(awk -F: '$1<=1205 && $1>=894 {print}')",
       "WebSearch",
       "Bash(git checkout *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(./gradlew :react-native-edge-fade:compileDebugKotlin)",
+      "Bash(curl -s \"https://api.github.com/repos/AmatoGiulio/react-native-edge-fade/actions/runs?per_page=3&branch=api/dx-validations\")",
+      "Bash(curl -s \"https://api.github.com/repos/AmatoGiulio/react-native-edge-fade/actions/runs/26282393810/jobs\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(j['name'], j['conclusion'], j['id']\\) for j in d['jobs']]\")",
+      "Bash(curl -s \"https://api.github.com/repos/AmatoGiulio/react-native-edge-fade/actions/jobs/77361589195/logs\" -L)",
+      "Bash(curl -sL \"https://api.github.com/repos/AmatoGiulio/react-native-edge-fade/actions/runs/26282393810/jobs\")",
+      "Bash(git pull *)"
     ]
   }
 }
