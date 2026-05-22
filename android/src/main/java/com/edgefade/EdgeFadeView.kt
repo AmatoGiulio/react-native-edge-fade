@@ -283,18 +283,73 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     Trace.beginSection("EdgeFade.mask")
     val w = width.toFloat(); val h = height.toFloat()
     try {
-      val sc = canvas.saveLayer(0f, 0f, w, h, null)
-      super.dispatchDraw(canvas)
+      // Single-edge fast path: the saveLayer can be shrunk to just the edge strip,
+      // saving up to ~30× offscreen memory bandwidth on a typical phone. Pass 1
+      // renders content directly to the main canvas, clipped to the inner area.
+      // Pass 2 renders content into a tiny offscreen, applies the mask, and
+      // composites the result over the edge strip.
+      //
+      // For multi-edge configurations the union of edge rects is typically the
+      // full view (top+bottom spans full height, top+left spans both axes), so
+      // shrinking saveLayer saves nothing — we fall back to the legacy path.
+      val edgeCount = (if (fadeTop > 0f) 1 else 0) +
+                      (if (fadeBottom > 0f) 1 else 0) +
+                      (if (fadeLeft > 0f) 1 else 0) +
+                      (if (fadeRight > 0f) 1 else 0)
 
-      if (fadeTop > 0f)    { maskPaint.shader = topGrad(null);       canvas.drawRect(0f, 0f, w, fadeTop, maskPaint) }
-      if (fadeBottom > 0f) { maskPaint.shader = bottomGrad(h, null); canvas.drawRect(0f, h - fadeBottom, w, h, maskPaint) }
-      if (fadeLeft > 0f)   { maskPaint.shader = leftGrad(null);      canvas.drawRect(0f, 0f, fadeLeft, h, maskPaint) }
-      if (fadeRight > 0f)  { maskPaint.shader = rightGrad(w, null);  canvas.drawRect(w - fadeRight, 0f, w, h, maskPaint) }
-
-      canvas.restoreToCount(sc)
+      if (edgeCount == 1) {
+        drawMaskSingleEdge(canvas, w, h)
+      } else {
+        drawMaskFullView(canvas, w, h)
+      }
     } finally {
       Trace.endSection()
     }
+  }
+
+  private fun drawMaskFullView(canvas: Canvas, w: Float, h: Float) {
+    val sc = canvas.saveLayer(0f, 0f, w, h, null)
+    super.dispatchDraw(canvas)
+
+    if (fadeTop > 0f)    { maskPaint.shader = topGrad(null);       canvas.drawRect(0f, 0f, w, fadeTop, maskPaint) }
+    if (fadeBottom > 0f) { maskPaint.shader = bottomGrad(h, null); canvas.drawRect(0f, h - fadeBottom, w, h, maskPaint) }
+    if (fadeLeft > 0f)   { maskPaint.shader = leftGrad(null);      canvas.drawRect(0f, 0f, fadeLeft, h, maskPaint) }
+    if (fadeRight > 0f)  { maskPaint.shader = rightGrad(w, null);  canvas.drawRect(w - fadeRight, 0f, w, h, maskPaint) }
+
+    canvas.restoreToCount(sc)
+  }
+
+  private fun drawMaskSingleEdge(canvas: Canvas, w: Float, h: Float) {
+    val edge: RectF = when {
+      fadeTop > 0f    -> RectF(0f, 0f, w, fadeTop)
+      fadeBottom > 0f -> RectF(0f, h - fadeBottom, w, h)
+      fadeLeft > 0f   -> RectF(0f, 0f, fadeLeft, h)
+      else            -> RectF(w - fadeRight, 0f, w, h)
+    }
+
+    // Pass 1 — content outside the edge strip is rendered directly to the main canvas.
+    val s1 = canvas.save()
+    when {
+      fadeTop > 0f    -> canvas.clipRect(0f, edge.bottom, w, h)
+      fadeBottom > 0f -> canvas.clipRect(0f, 0f, w, edge.top)
+      fadeLeft > 0f   -> canvas.clipRect(edge.right, 0f, w, h)
+      else            -> canvas.clipRect(0f, 0f, edge.left, h)
+    }
+    super.dispatchDraw(canvas)
+    canvas.restoreToCount(s1)
+
+    // Pass 2 — small offscreen layer covering only the edge strip. saveLayer's
+    // bounds also clip subsequent draws, so dispatchDraw is implicitly limited
+    // to the strip.
+    val s2 = canvas.saveLayer(edge.left, edge.top, edge.right, edge.bottom, null)
+    super.dispatchDraw(canvas)
+    when {
+      fadeTop > 0f    -> { maskPaint.shader = topGrad(null);       canvas.drawRect(0f, 0f, w, fadeTop, maskPaint) }
+      fadeBottom > 0f -> { maskPaint.shader = bottomGrad(h, null); canvas.drawRect(0f, h - fadeBottom, w, h, maskPaint) }
+      fadeLeft > 0f   -> { maskPaint.shader = leftGrad(null);      canvas.drawRect(0f, 0f, fadeLeft, h, maskPaint) }
+      else            -> { maskPaint.shader = rightGrad(w, null);  canvas.drawRect(w - fadeRight, 0f, w, h, maskPaint) }
+    }
+    canvas.restoreToCount(s2)
   }
 
   // ── Per-edge cached shader accessors ──────────────────────────────────────
