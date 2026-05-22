@@ -251,6 +251,19 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
   }
 
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  override fun onDetachedFromWindow() {
+    // Drop cached shaders so the underlying native resources (Skia objects)
+    // are released promptly when the view leaves the tree, instead of waiting
+    // for the JVM to garbage-collect this View instance.
+    topGrad = null;    topKey    = null;    topRts    = null
+    bottomGrad = null; bottomKey = null;    bottomRts = null
+    leftGrad = null;   leftKey   = null;    leftRts   = null
+    rightGrad = null;  rightKey  = null;    rightRts  = null
+    super.onDetachedFromWindow()
+  }
+
   // ── Drawing ────────────────────────────────────────────────────────────────
 
   override fun dispatchDraw(canvas: Canvas) {
