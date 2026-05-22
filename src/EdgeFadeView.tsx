@@ -127,6 +127,8 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   delete viewProps.bottom;
   delete viewProps.left;
   delete viewProps.right;
+  delete viewProps.start;
+  delete viewProps.end;
   delete viewProps.size;
   delete viewProps.curve;
   delete viewProps.mode;
