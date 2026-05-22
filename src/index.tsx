@@ -5,13 +5,13 @@ export { EdgeFadeView, AnimatedEdgeFadeView };
 
 export type { AnimatedEdgeFadeViewProps } from './AnimatedEdgeFadeView';
 
-/**
- * Raw Fabric native component — escape hatch for power users who want full
- * control over the flat native props (`fadeTop`, `fadeBottom`, etc.) and the
- * Reanimated wrapping themselves. Prefer `AnimatedEdgeFadeView` for animated
- * use cases.
- */
-export { default as NativeEdgeFadeView } from './EdgeFadeViewNativeComponent';
+// NativeEdgeFadeView (raw Fabric component) is intentionally not re-exported
+// from the public barrel. Power users who need it can import it via the
+// dedicated subpath:
+//
+//   import NativeEdgeFadeView from 'react-native-edge-fade/native';
+//
+// For animated use cases prefer `AnimatedEdgeFadeView`.
 
 export type {
   EdgeFadeViewProps,

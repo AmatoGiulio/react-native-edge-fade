@@ -299,28 +299,24 @@ compressed screenshots.
 
 ---
 
-## Scroll-driven fades
+## Animated fades (Reanimated)
 
-For static fades, use `EdgeFadeView`. For UI-thread scroll animation with
-Reanimated, wrap the raw Fabric component, then animate the native `fadeTop`,
-`fadeBottom`, `fadeLeft`, or `fadeRight` props directly.
+For UI-thread animated fades, use `AnimatedEdgeFadeView`. It accepts the same
+ergonomic props as `EdgeFadeView` and additionally a `SharedValue<number>` on
+any size-like prop (`top`, `bottom`, `left`, `right`, `start`, `end`, `radius`).
 
-The package intentionally does not export a pre-wrapped `AnimatedEdgeFadeView`:
-that would either add a Reanimated dependency or encourage animating `top` /
-`bottom`, which collide with Yoga layout props.
+Updates driven by a `SharedValue` stay on the UI thread — no bridge, no React
+re-render. Static props (`mode`, `curve`, `color`, …) work as usual.
 
 ```tsx
 import Animated, {
   Extrapolation,
   interpolate,
-  useAnimatedProps,
   useAnimatedScrollHandler,
+  useDerivedValue,
   useSharedValue,
 } from 'react-native-reanimated';
-import { NativeEdgeFadeView } from 'react-native-edge-fade';
-
-const ReanimatedNativeEdgeFadeView =
-  Animated.createAnimatedComponent(NativeEdgeFadeView);
+import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 function FeedScreen() {
   const scrollY = useSharedValue(0);
@@ -329,36 +325,37 @@ function FeedScreen() {
     scrollY.value = event.contentOffset.y;
   });
 
-  const animatedProps = useAnimatedProps(() => {
-    return {
-      fadeTop: interpolate(
-        scrollY.value,
-        [0, 80],
-        [0, 60],
-        Extrapolation.CLAMP
-      ),
-      fadeBottom: 80,
-      mode: 'mask',
-    };
-  });
+  // SharedValue derived from scroll position — fade depth grows as you scroll.
+  const topFade = useDerivedValue(() =>
+    interpolate(scrollY.value, [0, 80], [0, 60], Extrapolation.CLAMP)
+  );
 
   return (
-    <ReanimatedNativeEdgeFadeView
-      animatedProps={animatedProps}
-      style={{ flex: 1 }}
-    >
+    <AnimatedEdgeFadeView top={topFade} bottom={80} style={{ flex: 1 }}>
       <Animated.ScrollView scrollEventThrottle={16} onScroll={onScroll}>
         {/* content */}
       </Animated.ScrollView>
-    </ReanimatedNativeEdgeFadeView>
+    </AnimatedEdgeFadeView>
   );
 }
 ```
 
-> **Note** — animate the flat native props (`fadeTop`, `fadeBottom`,
-> `fadeLeft`, `fadeRight`) rather than the ergonomic JS props (`top`, `bottom`,
-> `left`, `right`). The JS props are normalized by `EdgeFadeView`; Reanimated
-> animated props mutate the native view directly.
+> Reanimated is an **optional** peer dependency. Install
+> `react-native-reanimated` and follow its Babel setup to use
+> `AnimatedEdgeFadeView`. If Reanimated is missing the component throws a
+> clear error on first render; the static `EdgeFadeView` works without it.
+
+### Power-user escape hatch
+
+The raw Fabric component is available via a dedicated subpath for cases that
+need full control over the flat native props (`fadeTop`, `fadeBottom`, …,
+`fadeRadius`):
+
+```tsx
+import { NativeEdgeFadeView } from 'react-native-edge-fade/native';
+```
+
+Most apps never need this — prefer `AnimatedEdgeFadeView`.
 
 ---
 
@@ -369,6 +366,7 @@ All types are exported from the package root:
 ```ts
 import type {
   EdgeFadeViewProps,
+  AnimatedEdgeFadeViewProps,
   EdgeFadeCurve,
   EdgeFadeMode,
   EdgeConfig,
