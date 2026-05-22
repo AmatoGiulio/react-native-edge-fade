@@ -25,7 +25,12 @@
       "Bash(adb -s emulator-5554 pull /sdcard/Download/sc.png \"C:\\\\\\\\Dev\\\\\\\\react-native-edge-fade\\\\\\\\docs\\\\\\\\screen_current.png\")",
       "Bash(adb -s emulator-5554 shell input tap 135 755)",
       "Bash(npx expo *)",
-      "Bash(adb -s emulator-5554 shell am start -a android.intent.action.VIEW -d \"exp+react-native-edge-fade-example://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081\")"
+      "Bash(adb -s emulator-5554 shell am start -a android.intent.action.VIEW -d \"exp+react-native-edge-fade-example://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081\")",
+      "Bash(ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -30)",
+      "Bash(awk -F: '$1<=1205 && $1>=894 {print}')",
+      "WebSearch",
+      "Bash(git checkout *)",
+      "Bash(git merge *)"
     ]
   }
 }
