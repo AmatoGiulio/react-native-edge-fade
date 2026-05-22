@@ -2,8 +2,12 @@
   "expo": {
     "name": "EdgeFade Example",
     "slug": "react-native-edge-fade-example",
+    "scheme": "edgefade",
     "version": "1.0.0",
     "orientation": "portrait",
+    "experiments": {
+      "typedRoutes": true
+    },
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
@@ -26,6 +30,10 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-video"
+    ]
   }
 }

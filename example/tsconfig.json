@@ -1,6 +1,16 @@
 {
   "extends": "../tsconfig",
   "compilerOptions": {
-    // Avoid expo-cli auto-generating a tsconfig
-  }
+    // Drop the strict-api customConditions used by the library so example
+    // code can use the standard react-native typings (e.g. `style` on
+    // class components like expo-video's VideoView).
+    "customConditions": []
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": ["node_modules", "android", "ios", ".expo"]
 }

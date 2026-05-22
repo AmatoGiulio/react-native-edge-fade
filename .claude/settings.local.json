@@ -30,7 +30,21 @@
       "Bash(awk -F: '$1<=1205 && $1>=894 {print}')",
       "WebSearch",
       "Bash(git checkout *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(git branch *)",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:shopify.github.io)",
+      "Bash(cd /c/Dev/react-native-edge-fade && ls example/)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(npx jest *)",
+      "Bash(npm view *)",
+      "Bash(yarn install *)",
+      "Bash(mv \"reflection of cranes in a lake at sunset Stock Video Footage Artgrid.io.mp4\" crane-reflection.mp4)",
+      "Bash(mv \"Birds flying in formation against large white clouds Stock Video Footage Artgrid.io.mp4\" birds-clouds.mp4)",
+      "Bash(mv \"Dreamy Blur Artistic Smeared Stock Video Footage Artgrid.io.mp4\" dreamy-blur.mp4)",
+      "Bash(mv \"Power Lines Urban Environment Birds In Flight Overcast Sky Stock Video Footage Artgrid.io.mp4\" power-lines.mp4)",
+      "Bash(mv \"Dreamy Hands Soft Blur Stock Video Footage Artgrid.io.mp4\" dreamy-hands.mp4)",
+      "Bash(npx eslint *)"
     ]
   }
 }
