@@ -2,6 +2,7 @@ package com.edgefade
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -239,7 +240,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
   private val maskPaint    = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG).apply {
-    xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+    // BlendMode is the modern (API 29+) replacement for PorterDuffXfermode.
+    // Same DST_IN semantics, but the legacy Xfermode path is deprecated.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      blendMode = BlendMode.DST_IN
+    } else {
+      @Suppress("DEPRECATION")
+      xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+    }
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────────
