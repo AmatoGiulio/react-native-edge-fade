@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { StyleSheet } from 'react-native';
 
 import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
-import { resolveNativeProps } from './normalize';
+import { resolveNativeProps, resolveRadius } from './normalize';
 import type { EdgeFadeViewProps } from './types';
 
 export const EdgeFadeView = memo(function EdgeFadeView(
@@ -31,8 +31,8 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   // (it would trigger a Fabric "unsupported property" warning). We apply it
   // instead via fadeRadius → native clipPath, which is our corner-clip path.
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
-  const { borderRadius: styleBorderRadius, ...cleanStyle } = flat;
-  const resolvedRadius = (radius ?? styleBorderRadius) as number | undefined;
+  const { borderRadius: _ignoredBorderRadius, ...cleanStyle } = flat;
+  const resolvedRadius = resolveRadius(radius, style);
 
   return (
     <NativeEdgeFadeView

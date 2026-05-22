@@ -74,7 +74,7 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
 | `mode`   | `'mask' \| 'overlay'`                 | auto       | Render mode; inferred from `color` when omitted      |
 | `color`  | `ColorValue`                          | —          | Global overlay color (implies `mode="overlay"`)      |
-| `radius` | `number`                              | —          | Corner radius, applied as a native clip path         |
+| `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
 
 ### Edge prop forms

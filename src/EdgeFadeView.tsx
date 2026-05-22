@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { View } from 'react-native';
 
 import type { EdgeFadeViewProps } from './types';
-import { resolveNativeProps } from './normalize';
+import { resolveNativeProps, resolveRadius } from './normalize';
 
 // ── Curve sampling ─────────────────────────────────────────────────────────────
 // Returns N alpha values going outer→inner (0 → 1).
@@ -137,9 +137,10 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   delete viewProps.style;
   delete viewProps.children;
 
+  const resolvedRadius = resolveRadius(radius, style);
   const radiusStyle =
-    radius !== undefined
-      ? { borderRadius: radius, overflow: 'hidden' as const }
+    resolvedRadius !== undefined
+      ? { borderRadius: resolvedRadius, overflow: 'hidden' as const }
       : null;
 
   if (n.mode === 'overlay') {
