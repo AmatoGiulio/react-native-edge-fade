@@ -83,6 +83,13 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
 
   const mode: EdgeFadeMode = props.mode ?? (hasColor ? 'overlay' : 'mask');
 
+  if (__DEV__ && hasColor && props.mode === 'mask') {
+    console.warn(
+      '[EdgeFadeView] `color` is ignored when `mode="mask"` is set explicitly. ' +
+        'Either remove `color` or switch to `mode="overlay"`.'
+    );
+  }
+
   return {
     fadeTop: top?.size ?? 0,
     fadeBottom: bottom?.size ?? 0,

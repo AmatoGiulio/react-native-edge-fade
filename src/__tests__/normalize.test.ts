@@ -180,3 +180,44 @@ describe('resolveNativeProps — edge independence', () => {
     expect(n.fadeRight).toBe(40);
   });
 });
+
+// ── DEV warnings ───────────────────────────────────────────────────────────────
+
+describe('resolveNativeProps — DEV warnings', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  test('warns when global color is set with explicit mode="mask"', () => {
+    resolveNativeProps({ bottom: true, color: '#fff', mode: 'mask' });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('`color` is ignored when `mode="mask"`')
+    );
+  });
+
+  test('warns when EdgeConfig.color is set with explicit mode="mask"', () => {
+    resolveNativeProps({ bottom: { color: '#fff' }, mode: 'mask' });
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  test('does not warn when mode is not set explicitly (auto-infers overlay)', () => {
+    resolveNativeProps({ bottom: true, color: '#fff' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('does not warn when color is absent', () => {
+    resolveNativeProps({ bottom: true, mode: 'mask' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('does not warn for explicit mode="overlay" with color', () => {
+    resolveNativeProps({ bottom: true, color: '#fff', mode: 'overlay' });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
