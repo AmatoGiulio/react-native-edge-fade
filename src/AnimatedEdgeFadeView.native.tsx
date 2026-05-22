@@ -66,6 +66,30 @@ function isSharedValue(x: unknown): x is SharedValueLike<unknown> {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
+function useEdgeFadeAnimatedProps(
+  topSV: SharedValueLike<number> | null,
+  bottomSV: SharedValueLike<number> | null,
+  leftSV: SharedValueLike<number> | null,
+  rightSV: SharedValueLike<number> | null,
+  startSV: SharedValueLike<number> | null,
+  endSV: SharedValueLike<number> | null,
+  radiusSV: SharedValueLike<number> | null
+) {
+  return Reanimated.useAnimatedProps(() => {
+    'worklet';
+
+    const out: any = {};
+    if (topSV) out.fadeTop = topSV.value;
+    if (bottomSV) out.fadeBottom = bottomSV.value;
+    if (leftSV) out.fadeLeft = leftSV.value;
+    if (rightSV) out.fadeRight = rightSV.value;
+    if (startSV) out.fadeLeft = startSV.value; // LTR mapping (matches static API default)
+    if (endSV) out.fadeRight = endSV.value;
+    if (radiusSV) out.fadeRadius = radiusSV.value;
+    return out;
+  });
+}
+
 export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   props: AnimatedEdgeFadeViewProps
 ): ReactElement {
@@ -76,8 +100,6 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
         'use the static `EdgeFadeView` instead.'
     );
   }
-
-  const { useAnimatedProps } = Reanimated;
 
   // Identify SharedValue inputs on the animatable surface (sizes + radius).
   // Capturing the references at render time is required so the worklet can
@@ -145,19 +167,15 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   // the LTR/RTL mapping that resolveNativeProps applies for non-animated edges.
   // We assume LTR at the JS thread level (default); for RTL the user should pass
   // `start` instead of `left` etc. — same convention as the static API.
-  const animatedProps = useAnimatedProps(() => {
-    'worklet';
-
-    const out: any = {};
-    if (topSV) out.fadeTop = topSV.value;
-    if (bottomSV) out.fadeBottom = bottomSV.value;
-    if (leftSV) out.fadeLeft = leftSV.value;
-    if (rightSV) out.fadeRight = rightSV.value;
-    if (startSV) out.fadeLeft = startSV.value; // LTR mapping (matches static API default)
-    if (endSV) out.fadeRight = endSV.value;
-    if (radiusSV) out.fadeRadius = radiusSV.value;
-    return out;
-  });
+  const animatedProps = useEdgeFadeAnimatedProps(
+    topSV,
+    bottomSV,
+    leftSV,
+    rightSV,
+    startSV,
+    endSV,
+    radiusSV
+  );
 
   return (
     <AnimatedNativeEdgeFadeView
