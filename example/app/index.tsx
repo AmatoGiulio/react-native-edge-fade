@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { FlashList } from '@shopify/flash-list';
 import Animated, {
   Extrapolation,
@@ -21,13 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { EdgeFadeView, AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
-import {
-  CATALOG,
-  CATEGORIES,
-  type CatalogItem,
-  type ImageItem,
-  type VideoItem,
-} from './lib/catalog';
+import { CATALOG, CATEGORIES, type CatalogItem } from './lib/catalog';
 
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
@@ -50,9 +43,9 @@ const COLUMN_WIDTH =
 
 const heightFor = (it: CatalogItem) => COLUMN_WIDTH / it.ratio;
 
-// ── Cards ─────────────────────────────────────────────────────────────────────
+// ── Card ──────────────────────────────────────────────────────────────────────
 
-function ImageCard({ item }: { item: ImageItem }) {
+function MasonryCard({ item }: { item: CatalogItem }) {
   return (
     <Pressable
       onPress={() => router.push(`/item/${item.id}` as never)}
@@ -62,59 +55,11 @@ function ImageCard({ item }: { item: ImageItem }) {
         source={item.source}
         style={[card.media, { height: heightFor(item) }]}
       />
-      <CardLabel category={item.category} accent={item.accent} />
-    </Pressable>
-  );
-}
-
-function VideoCard({ item }: { item: VideoItem }) {
-  // The cell is mounted only while it's near the viewport (FlashList
-  // virtualization). When it scrolls off the recycle buffer the player is
-  // destroyed entirely, so no off-screen video keeps decoding.
-  const player = useVideoPlayer(item.source, (p) => {
-    p.loop = true;
-    p.muted = true;
-    p.play();
-  });
-
-  return (
-    <Pressable
-      onPress={() => router.push(`/item/${item.id}` as never)}
-      style={card.root}
-    >
-      <VideoView
-        player={player}
-        style={[card.media, { height: heightFor(item) }]}
-        nativeControls={false}
-        contentFit="cover"
-        // SurfaceView (the Android default) glitches the z-order inside a
-        // scrollable list. TextureView trades a bit of decode cost for a
-        // clean composite with the fade overlay.
-        surfaceType="textureView"
-      />
-      <View style={card.liveBadge}>
-        <View style={card.liveDot} />
-        <Text style={card.liveText}>LIVE</Text>
+      <View style={card.label}>
+        <View style={[card.dot, { backgroundColor: item.accent }]} />
+        <Text style={card.text}>{item.category.toUpperCase()}</Text>
       </View>
-      <CardLabel category={item.category} accent={item.accent} />
     </Pressable>
-  );
-}
-
-function CardLabel({ category, accent }: { category: string; accent: string }) {
-  return (
-    <View style={card.label}>
-      <View style={[card.dot, { backgroundColor: accent }]} />
-      <Text style={card.text}>{category.toUpperCase()}</Text>
-    </View>
-  );
-}
-
-function MasonryCard({ item }: { item: CatalogItem }) {
-  return item.type === 'video' ? (
-    <VideoCard item={item} />
-  ) : (
-    <ImageCard item={item} />
   );
 }
 
@@ -148,30 +93,6 @@ const card = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
     letterSpacing: 0.8,
-  },
-  liveBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ef4444',
-  },
-  liveText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.9,
-    color: '#fff',
   },
 });
 
@@ -269,7 +190,7 @@ export default function DiscoverScreen() {
         </Pressable>
       </View>
 
-      {/* Category strip — overlay fade into background */}
+      {/* Category strip */}
       <EdgeFadeView
         left={120}
         right={120}
@@ -295,13 +216,12 @@ export default function DiscoverScreen() {
         </ScrollView>
       </EdgeFadeView>
 
-      {/* Masonry — virtualized via FlashList. Off-screen cells are unmounted
-       * so video players are destroyed when they leave the recycle buffer. */}
+      {/* Masonry grid */}
       <AnimatedEdgeFadeView
         top={topFade}
         bottom={{ size: 600, curve: 'smooth' }}
-        mode="mask"
-        curve="gentle"
+        mode="overlay"
+        color={C.bg}
         style={s.gridWrap}
       >
         <AnimatedFlashList
