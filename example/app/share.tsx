@@ -1,161 +1,73 @@
 import { useLocalSearchParams, router } from 'expo-router';
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { EdgeFadeView } from 'react-native-edge-fade';
-import { PORTRAIT_ITEMS, getCatalogItem } from './lib/catalog';
 
-// ── Palette ───────────────────────────────────────────────────────────────────
+import { getCatalogItem } from '../constants/catalog';
+import {
+  ContactAvatar,
+  type PresenceStatus,
+} from '../components/ContactAvatar';
+import { ActionTile, type IoniconName } from '../components/ActionTile';
+import { useAppTheme } from '../hooks/useAppTheme';
 
-const C = {
-  bg: '#111',
-  surface: '#1a1a1a',
-  border: '#222',
-  text: '#f2f2f2',
-  sub: '#666',
-};
+// ── Contacts ──────────────────────────────────────────────────────────────────
+// seed → DiceBear Dylan avatar (unique per name)
 
-// ── Action icons (placeholder SF-symbol style) ────────────────────────────────
-
-const ACTIONS = [
-  { label: 'Copy', emoji: '📋' },
-  { label: 'Save', emoji: '⬇️' },
-  { label: 'Message', emoji: '💬' },
-  { label: 'Mail', emoji: '✉️' },
-  { label: 'Notes', emoji: '📝' },
-  { label: 'More', emoji: '•••' },
+const CONTACTS: Array<{ name: string; status: PresenceStatus }> = [
+  { name: 'Sofia', status: 'online' },
+  { name: 'Marco', status: 'online' },
+  { name: 'Elena', status: 'dnd' },
+  { name: 'Luca', status: 'online' },
+  { name: 'Anna', status: 'away' },
+  { name: 'Davide', status: 'online' },
+  { name: 'Sara', status: 'offline' },
+  { name: 'Matteo', status: 'online' },
+  { name: 'Giulia', status: 'dnd' },
+  { name: 'Francesco', status: 'away' },
+  { name: 'Laura', status: 'online' },
+  { name: 'Riccardo', status: 'offline' },
 ];
 
-// ── Contact avatar ────────────────────────────────────────────────────────────
+// ── Actions ───────────────────────────────────────────────────────────────────
 
-function ContactAvatar({
-  item,
-  label,
-}: {
-  item: (typeof PORTRAIT_ITEMS)[number];
-  label: string;
-}) {
-  return (
-    <Pressable style={av.wrap} onPress={() => router.back()}>
-      <Image source={item.source} style={av.avatar} />
-      <Text style={av.name} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const av = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    width: 100,
-    marginRight: 4,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: '#222',
-  },
-  name: {
-    marginTop: 6,
-    fontSize: 11,
-    color: C.sub,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-});
-
-// ── App action tile ───────────────────────────────────────────────────────────
-
-function ActionTile({ label, emoji }: { label: string; emoji: string }) {
-  return (
-    <Pressable style={tile.wrap} onPress={() => router.back()}>
-      <View style={tile.icon}>
-        <Text style={tile.emoji}>{emoji}</Text>
-      </View>
-      <Text style={tile.label} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const tile = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    width: 72,
-    marginRight: 4,
-  },
-  icon: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 24,
-  },
-  label: {
-    marginTop: 6,
-    fontSize: 11,
-    color: C.sub,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-});
-
-// ── Share sheet ───────────────────────────────────────────────────────────────
-
-// Names for the portrait avatars (just for visual polish)
-const CONTACT_NAMES = [
-  'Sofia',
-  'Marco',
-  'Elena',
-  'Luca',
-  'Anna',
-  'Davide',
-  'Sara',
-  'Matteo',
-  'Giulia',
-  'Francesco',
-  'Laura',
-  'Riccardo',
+const ACTIONS: Array<{ label: string; icon: IoniconName; tint?: string }> = [
+  { label: 'AirDrop', icon: 'radio-outline', tint: '#34aadc' },
+  { label: 'Message', icon: 'chatbubble-outline', tint: '#2dd36f' },
+  { label: 'Mail', icon: 'mail-outline' },
+  { label: 'Save', icon: 'bookmark-outline' },
+  { label: 'Copy', icon: 'copy-outline' },
+  { label: 'Notes', icon: 'document-text-outline' },
+  { label: 'Remix', icon: 'shuffle-outline' },
+  { label: 'More', icon: 'ellipsis-horizontal' },
 ];
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ShareSheet() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const item = getCatalogItem(id ?? '');
+  const t = useAppTheme();
 
   return (
-    <View style={s.root}>
-      {/* Handle bar */}
-      <View style={s.handle} />
+    <View style={[s.root, { backgroundColor: t.bg }]}>
+      <View style={[s.handle, { backgroundColor: t.border }]} />
 
-      {/* Title row */}
+      {/* Title */}
       <View style={s.titleRow}>
-        <Text style={s.title}>Share</Text>
+        <Text style={[s.title, { color: t.text }]}>Share</Text>
         {item && (
           <View style={[s.accentDot, { backgroundColor: item.accent }]} />
         )}
       </View>
 
-      {/* ── Contacts row ── */}
-      <Text style={s.sectionLabel}>Suggested</Text>
+      {/* Contacts */}
+      <Text style={[s.sectionLabel, { color: t.sub }]}>Suggested</Text>
       <EdgeFadeView
-        left={120}
-        right={120}
-        curve="gentle"
-        color={C.bg}
+        left={100}
+        right={100}
+        curve="smooth"
+        mode="overlay"
+        color={t.bg}
         style={s.stripWrap}
       >
         <ScrollView
@@ -163,27 +75,27 @@ export default function ShareSheet() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.stripContent}
         >
-          {PORTRAIT_ITEMS.map((contact, i) => (
+          {CONTACTS.map((c) => (
             <ContactAvatar
-              key={contact.id}
-              item={contact}
-              label={CONTACT_NAMES[i % CONTACT_NAMES.length] ?? ''}
+              key={c.name}
+              seed={c.name}
+              label={c.name}
+              status={c.status}
             />
           ))}
         </ScrollView>
       </EdgeFadeView>
 
-      {/* Separator */}
-      <View style={s.separator} />
+      <View style={[s.separator, { backgroundColor: t.border }]} />
 
-      {/* ── Apps / actions row ── */}
-      <Text style={s.sectionLabel}>Actions</Text>
+      {/* Actions */}
+      <Text style={[s.sectionLabel, { color: t.sub }]}>Actions</Text>
       <EdgeFadeView
         left={60}
         right={60}
         curve="smooth"
         mode="overlay"
-        color={C.bg}
+        color={t.bg}
         style={s.stripWrap}
       >
         <ScrollView
@@ -197,9 +109,12 @@ export default function ShareSheet() {
         </ScrollView>
       </EdgeFadeView>
 
-      {/* Cancel button */}
-      <Pressable style={s.cancelBtn} onPress={() => router.back()}>
-        <Text style={s.cancelText}>Cancel</Text>
+      {/* Cancel */}
+      <Pressable
+        style={[s.cancelBtn, { backgroundColor: t.surface }]}
+        onPress={() => router.back()}
+      >
+        <Text style={[s.cancelText, { color: t.text }]}>Cancel</Text>
       </Pressable>
     </View>
   );
@@ -208,17 +123,12 @@ export default function ShareSheet() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: C.bg,
-    paddingTop: 12,
-  },
+  root: { flex: 1, paddingTop: 12 },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#333',
     marginBottom: 20,
   },
   titleRow: {
@@ -228,51 +138,28 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 20,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: C.text,
-    letterSpacing: -0.3,
-  },
-  accentDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+  title: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
+  accentDot: { width: 8, height: 8, borderRadius: 4 },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: C.sub,
     letterSpacing: 0.6,
     paddingHorizontal: 24,
     marginBottom: 14,
   },
-  stripWrap: {
-    height: 96,
-    marginBottom: 8,
-  },
+  stripWrap: { height: 108, marginBottom: 8 },
   stripContent: {
     paddingHorizontal: 24,
     alignItems: 'flex-start',
     paddingTop: 2,
   },
-  separator: {
-    height: 1,
-    backgroundColor: C.border,
-    marginHorizontal: 24,
-    marginVertical: 20,
-  },
+  separator: { height: 1, marginHorizontal: 24, marginVertical: 20 },
   cancelBtn: {
     marginHorizontal: 24,
     marginTop: 28,
     paddingVertical: 16,
     borderRadius: 14,
-    backgroundColor: C.surface,
     alignItems: 'center',
   },
-  cancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: C.text,
-  },
+  cancelText: { fontSize: 16, fontWeight: '600' },
 });

@@ -7046,7 +7046,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-image@npm:^55.0.11":
+"expo-image@npm:^55.0.11, expo-image@npm:~55.0.11":
   version: 55.0.11
   resolution: "expo-image@npm:55.0.11"
   dependencies:
@@ -11405,6 +11405,7 @@ __metadata:
     expo: "npm:~55.0.25"
     expo-constants: "npm:~55.0.16"
     expo-dev-client: "npm:~55.0.35"
+    expo-image: "npm:~55.0.11"
     expo-linking: "npm:~55.0.15"
     expo-router: "npm:~55.0.16"
     expo-status-bar: "npm:~55.0.6"

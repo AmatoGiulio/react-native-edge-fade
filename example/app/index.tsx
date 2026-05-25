@@ -1,7 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  Dimensions,
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -20,150 +18,37 @@ import Animated, {
 } from 'react-native-reanimated';
 import { EdgeFadeView, AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
-import { CATALOG, CATEGORIES, type CatalogItem } from './lib/catalog';
+import { CATALOG, CATEGORIES, type CatalogItem } from '../constants/catalog';
+import { MasonryCard } from '../components/MasonryCard';
+import { CategoryPill } from '../components/CategoryPill';
+import { useAppTheme } from '../hooks/useAppTheme';
 
-const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
-
-// ── Palette ───────────────────────────────────────────────────────────────────
-
-const C = {
-  bg: '#080808',
-  surface: '#111',
-  border: '#1e1e1e',
-  text: '#f2f2f2',
-  sub: '#777',
-};
-
-// ── Layout ────────────────────────────────────────────────────────────────────
-
-const GRID_H_PADDING = 12;
-const COLUMN_GAP = 8;
-const COLUMN_WIDTH =
-  (Dimensions.get('window').width - GRID_H_PADDING * 2 - COLUMN_GAP) / 2;
-
-const heightFor = (it: CatalogItem) => COLUMN_WIDTH / it.ratio;
-
-// ── Card ──────────────────────────────────────────────────────────────────────
-
-function MasonryCard({ item }: { item: CatalogItem }) {
-  return (
-    <Pressable
-      onPress={() => router.push(`/item/${item.id}` as never)}
-      style={card.root}
-    >
-      <Image
-        source={item.source}
-        style={[card.media, { height: heightFor(item) }]}
-      />
-      <View style={card.label}>
-        <View style={[card.dot, { backgroundColor: item.accent }]} />
-        <Text style={card.text}>{item.category.toUpperCase()}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-const card = StyleSheet.create({
-  root: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 8,
-    marginHorizontal: COLUMN_GAP / 2,
-    backgroundColor: C.surface,
-  },
-  media: {
-    width: '100%',
-    backgroundColor: '#0a0a0a',
-  },
-  label: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: C.surface,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  text: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 0.8,
-  },
-});
-
-// ── Category pill ─────────────────────────────────────────────────────────────
-
-function CategoryPill({
-  cat,
-  active,
-  onPress,
-}: {
-  cat: (typeof CATEGORIES)[number];
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        pill.root,
-        active
-          ? { backgroundColor: cat.accent, borderColor: cat.accent }
-          : pill.inactive,
-      ]}
-    >
-      <Text
-        style={[
-          pill.text,
-          { color: active ? (cat.label === 'All' ? '#000' : '#fff') : C.sub },
-        ]}
-      >
-        {cat.label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const pill = StyleSheet.create({
-  root: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginRight: 8,
-  },
-  text: {
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  inactive: {
-    backgroundColor: 'transparent',
-    borderColor: C.border,
-  },
-});
-
-// ── Discover screen ───────────────────────────────────────────────────────────
-
-const keyExtractor = (item: CatalogItem) => item.id;
-const renderItem = ({ item }: { item: CatalogItem }) => (
-  <MasonryCard item={item} />
+// Reanimated-wrapped FlashList so useAnimatedScrollHandler works
+const AnimatedFlashList = Animated.createAnimatedComponent(
+  FlashList<CatalogItem>
 );
 
+const GRID_H_PADDING = 12;
+
+// Stable render function — defined outside component to prevent recreation
+function renderItem({ item }: { item: CatalogItem }) {
+  return <MasonryCard item={item} />;
+}
+
+function keyExtractor(item: CatalogItem) {
+  return item.id;
+}
+
 export default function DiscoverScreen() {
+  const t = useAppTheme();
   const [activeCategory, setActiveCategory] = useState('All');
 
   const scrollY = useSharedValue(0);
-  const onScroll = useAnimatedScrollHandler((event) => {
-    scrollY.set(event.contentOffset.y);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y);
   });
   const topFade = useDerivedValue(() =>
-    interpolate(scrollY.value, [0, 120], [0, 120], Extrapolation.CLAMP)
+    interpolate(scrollY.value, [0, 60], [0, 60], Extrapolation.CLAMP)
   );
 
   const data = useMemo(
@@ -174,34 +59,51 @@ export default function DiscoverScreen() {
     [activeCategory]
   );
 
+  const handleBenchmark = useCallback(() => {
+    router.push('/benchmark' as never);
+  }, []);
+
+  const handleDemo = useCallback(() => {
+    router.push('/demo' as never);
+  }, []);
+
   return (
-    <View style={s.screen}>
+    <View style={[s.screen, { backgroundColor: t.bg }]}>
       {/* Header */}
       <View style={s.header}>
         <View>
-          <Text style={s.title}>Discover</Text>
-          <Text style={s.subtitle}>{CATALOG.length} pieces</Text>
+          <Text style={[s.title, { color: t.text }]}>Discover</Text>
+          <Text style={[s.subtitle, { color: t.sub }]}>
+            {CATALOG.length} pieces
+          </Text>
         </View>
-        <Pressable
-          style={s.benchBtn}
-          onPress={() => router.push('/benchmark' as never)}
-        >
-          <Text style={s.benchText}>Benchmark</Text>
-        </Pressable>
+        <View style={s.headerActions}>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handleDemo}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Demo</Text>
+          </Pressable>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handleBenchmark}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Bench</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Category strip */}
+      {/* Category filter strip */}
       <EdgeFadeView
         left={120}
         right={120}
         curve="gentle"
         mode="overlay"
-        color={C.bg}
+        color={t.bg}
         style={s.filterWrap}
       >
         <ScrollView
           horizontal
-          nestedScrollEnabled
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.filterContent}
         >
@@ -216,12 +118,12 @@ export default function DiscoverScreen() {
         </ScrollView>
       </EdgeFadeView>
 
-      {/* Masonry grid */}
+      {/* Masonry grid with animated top+bottom fade */}
       <AnimatedEdgeFadeView
         top={topFade}
         bottom={{ size: 600, curve: 'smooth' }}
         mode="overlay"
-        color={C.bg}
+        color={t.bg}
         style={s.gridWrap}
       >
         <AnimatedFlashList
@@ -241,12 +143,9 @@ export default function DiscoverScreen() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-
 const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: C.bg,
     paddingTop: Platform.OS === 'android' ? 48 : 60,
   },
   header: {
@@ -259,39 +158,24 @@ const s = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: '700',
-    color: C.text,
     letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 13,
-    color: C.sub,
     marginTop: 2,
   },
+  headerActions: { flexDirection: 'row', gap: 8 },
   benchBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: C.border,
   },
-  benchText: {
-    fontSize: 12,
-    color: C.sub,
-    fontWeight: '500',
-  },
-  filterWrap: {
-    height: 44,
-    marginBottom: 16,
-  },
-  filterContent: {
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  gridWrap: {
-    flex: 1,
-  },
+  benchText: { fontSize: 12, fontWeight: '500' },
+  filterWrap: { height: 44, marginBottom: 16 },
+  filterContent: { paddingHorizontal: 20, alignItems: 'center' },
+  gridWrap: { flex: 1 },
   gridContent: {
-    paddingHorizontal: GRID_H_PADDING - COLUMN_GAP / 2,
-    paddingBottom: 120,
+    paddingHorizontal: GRID_H_PADDING,
   },
 });

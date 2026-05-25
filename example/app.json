@@ -33,7 +33,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-video"
+      "expo-video",
+      "expo-image"
     ]
   }
 }
