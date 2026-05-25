@@ -50,8 +50,6 @@ export default function ShareSheet() {
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
-      <View style={[s.handle, { backgroundColor: t.border }]} />
-
       {/* Title */}
       <View style={s.titleRow}>
         <Text style={[s.title, { color: t.text }]}>Share</Text>
@@ -123,7 +121,7 @@ export default function ShareSheet() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
-  root: { flex: 1, paddingTop: 12 },
+  root: { flex: 1, paddingVertical: 32 },
   handle: {
     alignSelf: 'center',
     width: 36,
