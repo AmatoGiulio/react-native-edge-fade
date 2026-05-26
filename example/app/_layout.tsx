@@ -40,7 +40,7 @@ export default function RootLayout() {
             options={{
               presentation: 'formSheet',
               animation: 'slide_from_bottom',
-              sheetAllowedDetents: [0.7, 1.0],
+              sheetAllowedDetents: [0.65, 1.0],
               sheetGrabberVisible: true,
               sheetExpandsWhenScrolledToEdge: true,
               sheetCornerRadius: 36,

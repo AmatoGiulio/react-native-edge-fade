@@ -61,8 +61,8 @@ export default function ShareSheet() {
       {/* Contacts */}
       <Text style={[s.sectionLabel, { color: t.sub }]}>Suggested</Text>
       <EdgeFadeView
-        left={100}
-        right={100}
+        left={120}
+        right={120}
         curve="smooth"
         mode="overlay"
         color={t.bg}
