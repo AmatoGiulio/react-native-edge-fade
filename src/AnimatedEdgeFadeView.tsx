@@ -1,19 +1,12 @@
 import { memo, type ReactElement } from 'react';
 
 import { EdgeFadeView } from './EdgeFadeView';
+import { isSharedValueLike, type SharedValueLike } from './sharedValue';
 import type { EdgeConfig, EdgeFadeViewProps } from './types';
 
 // Web has no equivalent to Reanimated's UI-thread updates, so we only support
 // reading SharedValue-like objects once at render time. The component renders
 // through the regular EdgeFadeView with the unwrapped values.
-
-type SharedValueLike<T> = {
-  readonly value: T;
-  readonly addListener: (
-    listenerID: number,
-    listener: (newValue: T) => void
-  ) => void;
-};
 
 type EdgeProp =
   | boolean
@@ -33,15 +26,6 @@ export interface AnimatedEdgeFadeViewProps extends Omit<
   start?: EdgeProp;
   end?: EdgeProp;
   radius?: number | SharedValueLike<number>;
-}
-
-function isSharedValueLike(x: unknown): x is SharedValueLike<unknown> {
-  return (
-    typeof x === 'object' &&
-    x !== null &&
-    'value' in x &&
-    typeof (x as any).addListener === 'function'
-  );
 }
 
 function unwrap<T>(v: T | SharedValueLike<T> | undefined): T | undefined {

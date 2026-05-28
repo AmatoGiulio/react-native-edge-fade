@@ -2,25 +2,48 @@
 
 # react-native-edge-fade
 
-Smooth, customisable edge fading for React Native — mask and overlay modes, per-pixel AGSL shaders on Android API 33+, zero extra dependencies.
+> **Fade any edge of any view.** Scroll lists that dissolve into the background, hero images that melt into the screen, horizontal strips that hint at more content off-screen — in one component, on iOS, Android, and Web.
 
 [![npm](https://img.shields.io/npm/v/react-native-edge-fade)](https://www.npmjs.com/package/react-native-edge-fade)
 [![license](https://img.shields.io/npm/l/react-native-edge-fade)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20web-lightgrey)](#platform-notes)
+[![New Architecture](https://img.shields.io/badge/Fabric-ready-blueviolet)](#installation)
+
+```tsx
+<EdgeFadeView bottom={80} style={{ flex: 1 }}>
+  <ScrollView>{/* your content fades smoothly at the bottom */}</ScrollView>
+</EdgeFadeView>
+```
+
+That's it. Wrap any view, declare which edges to fade, and you get a native-quality gradient that respects rounded corners, animates on the UI thread (via Reanimated), and works without a single extra dependency.
 
 ---
 
-## Features
+## Why edge-fade?
 
-- **Two render modes** — `mask` (alpha transparency) and `overlay` (painted color)
-- **Per-pixel AGSL shaders** on Android API 33+ — zero discrete-stop banding, exact curve math
-- **Custom curve LUT** — `cubicBezier` and `stops` curves rendered via AGSL uniform array on API 33+
-- **Five preset curves** — `smooth`, `sharp`, `gentle`, `soft`, `linear`
-- **Per-edge control** — independent `size`, `curve`, and `color` per edge
-- **Rounded corners** — `radius` prop applies a native clip path
-- **Web support** — CSS `mask-image` with `mask-composite: intersect` for zero-banding in browsers
-- **Fabric / New Architecture** — built with `codegenNativeComponent`, no Paper renderer
-- **Zero extra dependencies** — only `react` and `react-native`
+Implementing edge fades by hand means juggling `MaskedView`, multiple `LinearGradient` layers, native shaders, and platform-specific clipping just to avoid visible banding. This library hides all of that behind one declarative prop surface:
+
+| You wanted                                | You'd otherwise reach for                          | With edge-fade            |
+| ----------------------------------------- | -------------------------------------------------- | ------------------------- |
+| Scroll list that fades into a blur/image  | `@react-native-masked-view` + `LinearGradient`     | `mode="mask"` (default)   |
+| Carousel hinting at off-screen items      | Stacked `LinearGradient` views with manual sizing  | `left` + `right` props    |
+| Smooth gradient with no banding on Android | Custom AGSL shader + API gating + fallbacks       | Built in (API 33+)        |
+| Rounded card with a faded bottom          | Nested `View` + `overflow: hidden` + mask hacks    | `radius` prop             |
+| Animated fade tied to scroll position     | Bridge-roundtrip prop updates                      | `AnimatedEdgeFadeView`    |
+
+---
+
+## What you get
+
+- **Two modes** — `mask` (true alpha fade, reveals what's behind) and `overlay` (paints a color over content)
+- **Four edges, independently controlled** — different `size`, `curve`, and `color` per side
+- **Five preset curves** + full `cubicBezier` and `stops` support
+- **Per-pixel AGSL shaders on Android 13+** — zero banding, exact curve math, dithered
+- **iOS `CALayer` mask** with `kCGBlendModeDestinationIn` — composes cleanly with rounded corners and continuous (squircle) curvature
+- **Web** via CSS `mask-image` + `mask-composite: intersect`
+- **Fabric / New Architecture** — `codegenNativeComponent`, no Paper
+- **Optional Reanimated integration** — UI-thread animated fades, no React re-renders
+- **Zero required dependencies** beyond `react` + `react-native`
 
 ---
 
