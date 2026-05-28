@@ -121,21 +121,22 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   props: EdgeFadeViewProps
 ) {
   const n = resolveNativeProps(props);
-  const { radius, style, children } = props;
-  const viewProps = { ...props };
-  delete viewProps.top;
-  delete viewProps.bottom;
-  delete viewProps.left;
-  delete viewProps.right;
-  delete viewProps.start;
-  delete viewProps.end;
-  delete viewProps.size;
-  delete viewProps.curve;
-  delete viewProps.mode;
-  delete viewProps.color;
-  delete viewProps.radius;
-  delete viewProps.style;
-  delete viewProps.children;
+  const {
+    top: _t,
+    bottom: _b,
+    left: _l,
+    right: _r,
+    start: _st,
+    end: _en,
+    size: _s,
+    curve: _c,
+    mode: _m,
+    color: _col,
+    radius,
+    style,
+    children,
+    ...viewProps
+  } = props;
 
   const resolvedRadius = resolveRadius(radius, style);
   const radiusStyle =

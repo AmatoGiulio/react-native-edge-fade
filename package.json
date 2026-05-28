@@ -1,6 +1,6 @@
 {
   "name": "react-native-edge-fade",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Smooth, customizable edge fading for React Native",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -22,7 +22,6 @@
     "lib",
     "android",
     "ios",
-    "cpp",
     "*.podspec",
     "react-native.config.js",
     "!ios/build",

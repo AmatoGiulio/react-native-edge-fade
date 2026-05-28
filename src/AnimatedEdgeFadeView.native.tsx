@@ -3,20 +3,8 @@ import { StyleSheet } from 'react-native';
 
 import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
 import { resolveNativeProps, resolveRadius } from './normalize';
+import { isSharedValueLike, type SharedValueLike } from './sharedValue';
 import type { EdgeConfig, EdgeFadeViewProps } from './types';
-
-// ── SharedValue typing (structural) ────────────────────────────────────────────
-// We avoid a hard type-import from `react-native-reanimated` so the package
-// keeps it as a soft peer dependency. The structural shape below matches any
-// Reanimated SharedValue<T> (and any user-defined object with the same surface).
-
-type SharedValueLike<T> = {
-  readonly value: T;
-  readonly addListener: (
-    listenerID: number,
-    listener: (newValue: T) => void
-  ) => void;
-};
 
 type EdgeProp =
   | boolean
@@ -53,15 +41,8 @@ try {
 }
 
 function isSharedValue(x: unknown): x is SharedValueLike<unknown> {
-  if (Reanimated?.isSharedValue) {
-    return Reanimated.isSharedValue(x);
-  }
-  return (
-    typeof x === 'object' &&
-    x !== null &&
-    'value' in x &&
-    typeof (x as any).addListener === 'function'
-  );
+  if (Reanimated?.isSharedValue) return Reanimated.isSharedValue(x);
+  return isSharedValueLike(x);
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
