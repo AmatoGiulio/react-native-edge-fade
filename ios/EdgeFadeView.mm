@@ -1,4 +1,6 @@
 #import "EdgeFadeView.h"
+#import "EdgeFadeCurves.h"
+#import "EdgeFadeMaskLayer.h"
 
 #import <React/RCTConversions.h>
 #import <react/renderer/components/EdgeFadeViewSpec/ComponentDescriptors.h>
@@ -8,150 +10,19 @@
 
 using namespace facebook::react;
 
-// ─── Curve data ───────────────────────────────────────────────────────────────
+// ─── Overlay colors ───────────────────────────────────────────────────────────
 //
-// 32-stop arrays computed once via dispatch_once:
-//   smooth → (1−t)³   sharp  → (1−t)⁵
-//   gentle → (1−t)²   soft   → cos(t·π/2)
-// Dense stops eliminate visible banding at any fade size.
+// Builds the `CAGradientLayer.colors` array for the given curve and base color:
+// transparent (inner, reversed curve) → color (outer). Allocates `CGColorRef`
+// instances directly to skip the UIColor round-trip — roughly half the work of
+// going through `[UIColor colorWithRed:...].CGColor` for a 32-stop curve.
 
-static const int    kN          = 32;
-static const CGFloat kTwoStops[2] = {0, 1.0};
-
-static CGFloat smoothFn(CGFloat t) { return pow(1-t, 3); }
-static CGFloat sharpFn (CGFloat t) { return pow(1-t, 5); }
-static CGFloat gentleFn(CGFloat t) { return pow(1-t, 2); }
-static CGFloat softFn  (CGFloat t) { return cos(t * M_PI_2); }
-
-static CGFloat sSmoothAlphas[32], sSharpAlphas[32], sGentleAlphas[32], sSoftAlphas[32];
-static CGFloat sNStops[32];
-static const CGFloat kLinearAlphas[2] = {1, 0};
-
-static void computePresetCurves(void) {
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    for (int i = 0; i < kN; i++) {
-      CGFloat t      = (CGFloat)i / (kN - 1);
-      sNStops[i]      = t;
-      sSmoothAlphas[i] = smoothFn(t);
-      sSharpAlphas[i]  = sharpFn(t);
-      sGentleAlphas[i] = gentleFn(t);
-      sSoftAlphas[i]   = softFn(t);
-    }
-  });
-}
-
-// Fills preset pointers only — does NOT handle custom curves.
-static void presetCurveData(NSString *curve,
-                             const CGFloat **alphasOut,
-                             const CGFloat **stopsOut,
-                             size_t *countOut)
-{
-  computePresetCurves();
-  if      ([curve isEqualToString:@"sharp"])  { *alphasOut = sSharpAlphas;  *stopsOut = sNStops; *countOut = kN; }
-  else if ([curve isEqualToString:@"gentle"]) { *alphasOut = sGentleAlphas; *stopsOut = sNStops; *countOut = kN; }
-  else if ([curve isEqualToString:@"soft"])   { *alphasOut = sSoftAlphas;   *stopsOut = sNStops; *countOut = kN; }
-  else if ([curve isEqualToString:@"linear"]) { *alphasOut = kLinearAlphas; *stopsOut = kTwoStops; *countOut = 2; }
-  else                                        { *alphasOut = sSmoothAlphas; *stopsOut = sNStops; *countOut = kN; }
-}
-
-static BOOL isCustomCurve(NSString *curve) {
-  return [curve containsString:@","];
-}
-
-// ─── Custom curve parsing ─────────────────────────────────────────────────────
-// Returns heap-allocated buffers when successful; caller must free().
-// Returns NO and leaves buffers nil if parsing fails.
-
-static BOOL parseCustomCurve(NSString *curve,
-                              CGFloat **alphasOut,
-                              CGFloat **stopsOut,
-                              size_t *countOut)
-{
-  NSArray<NSString *> *parts = [curve componentsSeparatedByString:@","];
-  NSUInteger n = parts.count;
-  if (n < 2) return NO;
-
-  CGFloat *alphas = (CGFloat *)malloc(n * sizeof(CGFloat));
-  CGFloat *stops  = (CGFloat *)malloc(n * sizeof(CGFloat));
-  for (NSUInteger i = 0; i < n; i++) {
-    alphas[i] = [parts[i] doubleValue];
-    stops[i]  = (CGFloat)i / (n - 1);
-  }
-  *alphasOut = alphas; *stopsOut = stops; *countOut = n;
-  return YES;
-}
-
-// ─── Gradient factories ───────────────────────────────────────────────────────
-
-// Builds a DeviceGray mask gradient for any curve (preset or custom).
-// The returned CGGradientRef is always retained — caller is responsible for
-// releasing custom-curve gradients. Preset gradients live in the static cache.
-static CGGradientRef _buildMaskGradient(NSString *curve)
-{
-  const CGFloat *alphas; const CGFloat *stops; size_t count;
-  CGFloat *dynAlphas = NULL; CGFloat *dynStops = NULL;
-
-  if (isCustomCurve(curve)) {
-    if (!parseCustomCurve(curve, &dynAlphas, &dynStops, &count)) {
-      presetCurveData(@"smooth", &alphas, &stops, &count);
-    } else {
-      alphas = dynAlphas; stops = dynStops;
-    }
-  } else {
-    presetCurveData(curve, &alphas, &stops, &count);
-  }
-
-  // Use 1−alphas[count−1−i] so the mask curve matches overlay direction:
-  // content stays visible until near the outer edge, then fades quickly.
-  CGColorSpaceRef space = CGColorSpaceCreateDeviceGray();
-  CGFloat *components   = (CGFloat *)malloc(count * 2 * sizeof(CGFloat));
-  for (size_t i = 0; i < count; i++) { components[i*2] = 1.0; components[i*2+1] = 1.0 - alphas[count - 1 - i]; }
-  CGGradientRef g = CGGradientCreateWithColorComponents(space, components, stops, count);
-  free(components);
-  CGColorSpaceRelease(space);
-  if (dynAlphas) { free(dynAlphas); free(dynStops); }
-  return g;
-}
-
-// Static cache: one gradient per preset, built once for the process lifetime.
-static CGGradientRef maskGradientForPreset(NSString *curve)
-{
-  static CGGradientRef cache[5];
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    cache[0] = _buildMaskGradient(@"smooth");
-    cache[1] = _buildMaskGradient(@"sharp");
-    cache[2] = _buildMaskGradient(@"gentle");
-    cache[3] = _buildMaskGradient(@"soft");
-    cache[4] = _buildMaskGradient(@"linear");
-  });
-  if ([curve isEqualToString:@"sharp"])  return cache[1];
-  if ([curve isEqualToString:@"gentle"]) return cache[2];
-  if ([curve isEqualToString:@"soft"])   return cache[3];
-  if ([curve isEqualToString:@"linear"]) return cache[4];
-  return cache[0];
-}
-
-// Overlay colors: transparent (inner, reversed curve) → color (outer).
-// Builds CGColorRef instances directly (skipping the UIColor round-trip) so
-// per-rebuild cost is one CGColorCreate per stop instead of one UIColor +
-// one autoreleased CGColor cast — roughly half the work for the 32-stop case.
 static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 {
-  const CGFloat *alphas; size_t count;
-  const CGFloat *stops;
-  CGFloat *dynAlphas = NULL; CGFloat *dynStops = NULL;
-
-  if (isCustomCurve(curve)) {
-    if (!parseCustomCurve(curve, &dynAlphas, &dynStops, &count)) {
-      presetCurveData(@"smooth", &alphas, &stops, &count);
-    } else {
-      alphas = dynAlphas;
-    }
-  } else {
-    presetCurveData(curve, &alphas, &stops, &count);
-  }
+  const CGFloat *alphas; const CGFloat *stops; size_t count;
+  CGFloat *dynAlphas, *dynStops;
+  EdgeFadeResolveCurve(curve, &alphas, &stops, &count, &dynAlphas, &dynStops);
+  (void)stops; // overlay uses EdgeFadeLocationsForCurve(); stops are consumed by the mask path only.
 
   CGFloat r, g, b, a;
   [color getRed:&r green:&g blue:&b alpha:&a];
@@ -168,143 +39,10 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
   return [result copy];
 }
 
-// Cached locations arrays — these are identical for every preset and shared
-// between all four edges. The previous code re-allocated kN NSNumbers per
-// edge on every overlay color rebuild.
-static NSArray<NSNumber *> *cachedPresetLocations(void)
-{
-  static NSArray<NSNumber *> *cached;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    computePresetCurves();
-    NSMutableArray *locs = [NSMutableArray arrayWithCapacity:kN];
-    for (int i = 0; i < kN; i++) [locs addObject:@(sNStops[i])];
-    cached = [locs copy];
-  });
-  return cached;
-}
-
-static NSArray<NSNumber *> *cachedLinearLocations(void)
-{
-  static NSArray<NSNumber *> *cached;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{ cached = @[@0, @1]; });
-  return cached;
-}
-
-static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
-{
-  if (isCustomCurve(curve)) {
-    NSArray<NSString *> *parts = [curve componentsSeparatedByString:@","];
-    NSUInteger n = parts.count;
-    NSMutableArray *locs = [NSMutableArray arrayWithCapacity:n];
-    for (NSUInteger i = 0; i < n; i++) [locs addObject:@((CGFloat)i / (n - 1))];
-    return [locs copy];
-  }
-  if ([curve isEqualToString:@"linear"]) return cachedLinearLocations();
-  return cachedPresetLocations();
-}
-
-// ─── EdgeFadeMaskLayer ────────────────────────────────────────────────────────
-//
-// Draws a combined alpha mask for all four edges into a single CALayer.
-// Uses kCGBlendModeDestinationIn (R = D · Sa). The destination is initialized
-// to opaque white; each edge gradient (clipped to its own strip) multiplies
-// existing alpha by the gradient's alpha. Sequential passes over an overlapping
-// corner therefore compound: alpha_top × alpha_left.
-
-@interface EdgeFadeMaskLayer : CALayer
-@property CGFloat fadeTop, fadeBottom, fadeLeft, fadeRight;
-@property (nonatomic, copy, nullable) NSString *curveTop, *curveBottom, *curveLeft, *curveRight;
-@end
-
-@implementation EdgeFadeMaskLayer
-
-- (instancetype)init {
-  self = [super init];
-  self.needsDisplayOnBoundsChange = YES;
-  // contentsScale is updated to traitCollection.displayScale by the owning
-  // view in didMoveToWindow:/traitCollectionDidChange:. Seed with main screen
-  // for environments where the view never reaches a window (snapshot tests).
-  self.contentsScale = UIScreen.mainScreen.scale;
-  return self;
-}
-
-// Returns a gradient ref for the given curve.
-// mustRelease is set to YES for custom curves — caller must CGGradientRelease.
-- (CGGradientRef)_gradForCurve:(NSString *)curve mustRelease:(BOOL *)mustRelease {
-  if (isCustomCurve(curve)) {
-    *mustRelease = YES;
-    return _buildMaskGradient(curve);
-  }
-  *mustRelease = NO;
-  return maskGradientForPreset(curve);
-}
-
-- (void)drawInContext:(CGContextRef)ctx {
-  const CGFloat w = CGRectGetWidth(self.bounds);
-  const CGFloat h = CGRectGetHeight(self.bounds);
-  if (w <= 0 || h <= 0) return;
-
-  CGContextSetFillColorWithColor(ctx, UIColor.whiteColor.CGColor);
-  CGContextFillRect(ctx, self.bounds);
-  // DestinationIn: R = D * Sa. Each edge gradient (clipped to its own rect)
-  // multiplies the mask alpha by the gradient's alpha. Sequential passes on
-  // overlapping corners compound (Sa_top * Sa_left), matching the intended
-  // per-corner falloff.
-  CGContextSetBlendMode(ctx, kCGBlendModeDestinationIn);
-
-  BOOL release = NO;
-  CGGradientRef grad;
-
-  if (self.fadeTop > 0) {
-    grad = [self _gradForCurve:self.curveTop ?: @"smooth" mustRelease:&release];
-    CGContextSaveGState(ctx);
-    CGContextClipToRect(ctx, CGRectMake(0, 0, w, self.fadeTop));
-    CGContextDrawLinearGradient(ctx, grad,
-      CGPointMake(0, self.fadeTop), CGPointMake(0, 0),
-      kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
-    CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
-  }
-  if (self.fadeBottom > 0) {
-    grad = [self _gradForCurve:self.curveBottom ?: @"smooth" mustRelease:&release];
-    CGContextSaveGState(ctx);
-    CGContextClipToRect(ctx, CGRectMake(0, h - self.fadeBottom, w, self.fadeBottom));
-    CGContextDrawLinearGradient(ctx, grad,
-      CGPointMake(0, h - self.fadeBottom), CGPointMake(0, h),
-      kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
-    CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
-  }
-  if (self.fadeLeft > 0) {
-    grad = [self _gradForCurve:self.curveLeft ?: @"smooth" mustRelease:&release];
-    CGContextSaveGState(ctx);
-    CGContextClipToRect(ctx, CGRectMake(0, 0, self.fadeLeft, h));
-    CGContextDrawLinearGradient(ctx, grad,
-      CGPointMake(self.fadeLeft, 0), CGPointMake(0, 0),
-      kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
-    CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
-  }
-  if (self.fadeRight > 0) {
-    grad = [self _gradForCurve:self.curveRight ?: @"smooth" mustRelease:&release];
-    CGContextSaveGState(ctx);
-    CGContextClipToRect(ctx, CGRectMake(w - self.fadeRight, 0, self.fadeRight, h));
-    CGContextDrawLinearGradient(ctx, grad,
-      CGPointMake(w - self.fadeRight, 0), CGPointMake(w, 0),
-      kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
-    CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
-  }
-}
-
-@end
-
 // ─── EdgeFadeView ─────────────────────────────────────────────────────────────
 
 // invalidateLayer is implemented in RCTViewComponentView but not exposed in any
-// header. Forward-declare here so the override below can call super.
+// header. Forward-declare so the override below can call super.
 @interface RCTViewComponentView (EdgeFadeInternal)
 - (void)invalidateLayer;
 @end
@@ -317,7 +55,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   // (no intermediate container view) to avoid an extra compositing pass.
   CAGradientLayer *_overlayTop, *_overlayBottom, *_overlayLeft, *_overlayRight;
 
-  // Per-layer color cache — avoid rebuilding colors on unrelated prop changes
+  // Per-layer color cache — avoid rebuilding colors on unrelated prop changes.
   NSString *_cachedCurveTop, *_cachedCurveBottom, *_cachedCurveLeft, *_cachedCurveRight;
   UIColor  *_cachedColorTop, *_cachedColorBottom, *_cachedColorLeft, *_cachedColorRight;
 
@@ -339,8 +77,8 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
     static const auto defaultProps = std::make_shared<const EdgeFadeViewProps>();
     _props = defaultProps;
     _isMaskMode = YES;
-    // Continuous corner curve matches Apple's system squircle and composes
-    // more cleanly with `layer.mask` than the default circular curve.
+    // Continuous corner curve matches Apple's system squircle and composes more
+    // cleanly with `layer.mask` than the default circular curve.
     if (@available(iOS 13.0, *)) {
       self.layer.cornerCurve = kCACornerCurveContinuous;
     }
@@ -348,8 +86,8 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   return self;
 }
 
-// ── Scale sync ────────────────────────────────────────────────────────────────
-// Use the actual window's screen scale rather than UIScreen.mainScreen — the
+// ─── Scale sync ──────────────────────────────────────────────────────────────
+// Use the actual window's screen scale rather than `UIScreen.mainScreen` — the
 // latter is wrong on iPad multi-window and external displays.
 
 - (CGFloat)_effectiveScale {
@@ -379,11 +117,11 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   [self _syncLayerScales];
 }
 
-// ── Props update ──────────────────────────────────────────────────────────────
+// ─── Props update ────────────────────────────────────────────────────────────
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps {
   const auto &p  = *std::static_pointer_cast<EdgeFadeViewProps const>(props);
-  // `oldProps` may be null on the first updateProps call. `_props` is guaranteed
+  // `oldProps` may be null on the first updateProps call. `_props` is always
   // valid (initialized to defaultProps in initWithFrame) and reflects the last
   // applied props after [super updateProps:].
   const auto &op = *std::static_pointer_cast<EdgeFadeViewProps const>(_props);
@@ -397,7 +135,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
                          || p.overlayColorBottom != op.overlayColorBottom
                          || p.overlayColorLeft   != op.overlayColorLeft
                          || p.overlayColorRight  != op.overlayColorRight;
-  const BOOL modeChanged  = p.mode != op.mode;
+  const BOOL modeChanged   = p.mode       != op.mode;
   const BOOL radiusChanged = p.fadeRadius != op.fadeRadius;
 
   _fadeTop    = (CGFloat)p.fadeTop;    _fadeBottom = (CGFloat)p.fadeBottom;
@@ -415,9 +153,9 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   NSString *modeStr = [NSString stringWithUTF8String:p.mode.c_str()];
   BOOL newIsMask = ![@"overlay" isEqualToString:modeStr];
 
-  // Build (or rebuild) layers when the mode flips, OR when the layer for the
-  // current mode is still missing (first updateProps call, since _props
-  // defaults don't trigger a mode flip when the user picks the default mode).
+  // Rebuild layers when the mode flips OR when the layer for the current mode
+  // is still missing (first updateProps call — `_props` defaults don't trigger
+  // a mode flip when the user picks the default mode).
   BOOL layerMissing = newIsMask ? (_maskLayer == nil) : (_overlayTop == nil);
   if ((modeChanged && newIsMask != _isMaskMode) || layerMissing) {
     _isMaskMode = newIsMask;
@@ -439,7 +177,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   [super updateProps:props oldProps:oldProps];
 }
 
-// ── Layout ────────────────────────────────────────────────────────────────────
+// ─── Layout ──────────────────────────────────────────────────────────────────
 
 - (void)layoutSubviews {
   [super layoutSubviews];
@@ -447,8 +185,8 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 }
 
 // RCTViewComponentView.invalidateLayer resets self.currentContainerView.layer.mask
-// to nil during its border/clipping pipeline. We must re-apply our mask after
-// super has finished, otherwise mask mode never paints.
+// to nil during its border/clipping pipeline. Re-apply our mask after super has
+// finished, otherwise mask mode never paints.
 - (void)invalidateLayer {
   [super invalidateLayer];
   if (_isMaskMode && _maskLayer && self.layer.mask != _maskLayer) {
@@ -458,9 +196,9 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
 - (void)didAddSubview:(UIView *)subview {
   [super didAddSubview:subview];
-  // Subview layers are appended to self.layer.sublayers and would otherwise
-  // sit above our overlay gradient layers. Re-attaching with addSublayer:
-  // moves a layer to the end of the sublayers array → back on top.
+  // Subview layers are appended to self.layer.sublayers and would otherwise sit
+  // above our overlay gradient layers. Re-attaching with addSublayer: moves a
+  // layer to the end of the sublayers array → back on top.
   if (!_isMaskMode && _overlayTop) {
     [self.layer addSublayer:_overlayTop];
     [self.layer addSublayer:_overlayBottom];
@@ -469,7 +207,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   }
 }
 
-// ── Fade layer management ─────────────────────────────────────────────────────
+// ─── Fade layer management ───────────────────────────────────────────────────
 
 - (void)_teardownFadeLayers {
   self.layer.mask = nil;
@@ -501,7 +239,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   }
 }
 
-// ── Mask mode ─────────────────────────────────────────────────────────────────
+// ─── Mask mode ───────────────────────────────────────────────────────────────
 
 // Update the mask layer state and invalidate only the strips that actually
 // changed. Each dirty rect spans MAX(old, new) so the previous fade extent is
@@ -528,7 +266,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   const CGFloat w = CGRectGetWidth(_maskLayer.bounds);
   const CGFloat h = CGRectGetHeight(_maskLayer.bounds);
   if (w <= 0 || h <= 0) {
-    // No bounds yet — full invalidate; layoutSubviews will trigger the first draw.
+    // No bounds yet — full invalidate; layoutSubviews triggers the first draw.
     [_maskLayer setNeedsDisplay];
     return;
   }
@@ -556,7 +294,7 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   }
 }
 
-// ── Overlay mode ──────────────────────────────────────────────────────────────
+// ─── Overlay mode ────────────────────────────────────────────────────────────
 
 - (CAGradientLayer *)_makeGradientLayerWithScale:(CGFloat)scale {
   CAGradientLayer *layer = [CAGradientLayer layer];
@@ -565,13 +303,12 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
   return layer;
 }
 
-// Returns the effective overlay color for a given edge:
-// per-edge override → global overlayColor → opaque black fallback.
+// per-edge override → global overlayColor → opaque black fallback
 - (UIColor *)_effectiveColorForEdge:(UIColor *)edgeColor {
   return edgeColor ?: _overlayColor ?: UIColor.blackColor;
 }
 
-// Rebuilds gradient colors only when the relevant color or curve changed.
+// Rebuild gradient colors only when the relevant color or curve changed.
 - (void)_rebuildOverlayColors {
   UIColor *cTop    = [self _effectiveColorForEdge:_overlayColorTop];
   UIColor *cBottom = [self _effectiveColorForEdge:_overlayColorBottom];
@@ -580,27 +317,27 @@ static NSArray<NSNumber *> *locationsForCurve(NSString *curve)
 
   if (![_curveTop isEqualToString:_cachedCurveTop] || ![cTop isEqual:_cachedColorTop]) {
     _overlayTop.colors    = overlayColors(_curveTop, cTop);
-    _overlayTop.locations = locationsForCurve(_curveTop);
+    _overlayTop.locations = EdgeFadeLocationsForCurve(_curveTop);
     _cachedCurveTop = _curveTop; _cachedColorTop = cTop;
   }
   if (![_curveBottom isEqualToString:_cachedCurveBottom] || ![cBottom isEqual:_cachedColorBottom]) {
     _overlayBottom.colors    = overlayColors(_curveBottom, cBottom);
-    _overlayBottom.locations = locationsForCurve(_curveBottom);
+    _overlayBottom.locations = EdgeFadeLocationsForCurve(_curveBottom);
     _cachedCurveBottom = _curveBottom; _cachedColorBottom = cBottom;
   }
   if (![_curveLeft isEqualToString:_cachedCurveLeft] || ![cLeft isEqual:_cachedColorLeft]) {
     _overlayLeft.colors    = overlayColors(_curveLeft, cLeft);
-    _overlayLeft.locations = locationsForCurve(_curveLeft);
+    _overlayLeft.locations = EdgeFadeLocationsForCurve(_curveLeft);
     _cachedCurveLeft = _curveLeft; _cachedColorLeft = cLeft;
   }
   if (![_curveRight isEqualToString:_cachedCurveRight] || ![cRight isEqual:_cachedColorRight]) {
     _overlayRight.colors    = overlayColors(_curveRight, cRight);
-    _overlayRight.locations = locationsForCurve(_curveRight);
+    _overlayRight.locations = EdgeFadeLocationsForCurve(_curveRight);
     _cachedCurveRight = _curveRight; _cachedColorRight = cRight;
   }
 }
 
-// ── Frame sync ────────────────────────────────────────────────────────────────
+// ─── Frame sync ──────────────────────────────────────────────────────────────
 
 - (void)_updateLayerFrames {
   const CGFloat w = CGRectGetWidth(self.bounds);
