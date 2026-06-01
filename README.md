@@ -4,6 +4,10 @@
 
 > **Fade any edge of any view.** Scroll lists that dissolve into the background, hero images that melt into the screen, horizontal strips that hint at more content off-screen — in one component, on iOS, Android, and Web.
 
+<video src="https://github.com/AmatoGiulio/react-native-edge-fade/raw/main/docs/demo.mp4" controls muted playsinline width="320"></video>
+
+> _A filter carousel whose edges dissolve, built with a single `EdgeFadeView`._
+
 [![npm](https://img.shields.io/npm/v/react-native-edge-fade)](https://www.npmjs.com/package/react-native-edge-fade)
 [![license](https://img.shields.io/npm/l/react-native-edge-fade)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-android%20%7C%20ios%20%7C%20web-lightgrey)](#platform-notes)

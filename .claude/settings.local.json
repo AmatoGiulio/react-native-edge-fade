@@ -81,7 +81,20 @@
       "Bash(Get-Item \"C:\\\\Dev\\\\react-native-edge-fade\\\\example\\\\assets\\\\footages\\\\dreamy-blur.mp4\")",
       "Bash(Select-Object Name, Length)",
       "Bash(./gradlew assembleRelease)",
-      "Bash(ffmpeg -i \"C:\\\\Dev\\\\react-native-edge-fade\\\\example\\\\assets\\\\footages\\\\dreamy-blur.mp4\" -vframes 1 -q:v 2 \"C:\\\\Dev\\\\react-native-edge-fade\\\\example\\\\assets\\\\images\\\\demo-frame.jpg\" -y)"
+      "Bash(ffmpeg -i \"C:\\\\Dev\\\\react-native-edge-fade\\\\example\\\\assets\\\\footages\\\\dreamy-blur.mp4\" -vframes 1 -q:v 2 \"C:\\\\Dev\\\\react-native-edge-fade\\\\example\\\\assets\\\\images\\\\demo-frame.jpg\" -y)",
+      "Bash(yarn typecheck *)",
+      "Bash(echo \"---exit:$?---\")",
+      "Bash(git push *)",
+      "Bash(npx release-it *)",
+      "Bash(git stash *)",
+      "Bash(npx conventional-changelog-cli *)",
+      "Bash(git commit *)",
+      "Bash(git tag *)",
+      "Bash(ls -la \"C:/Users/giuli/Desktop/Edge-Fade/\" 2>&1 | head -20)",
+      "Read(//c/Users/giuli/Downloads/**)",
+      "Bash(dir \"C:\\\\Users\\\\giuli\\\\Downloads\\\\editor-export.mp4\")",
+      "PowerShell($f = Get-Command ffmpeg -ErrorAction SilentlyContinue; if \\($f\\) { $f.Source } else { \"no ffmpeg\" }; Write-Output \"---\"; Get-Command ffprobe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)",
+      "PowerShell(\"cleaned\")"
     ]
   }
 }
