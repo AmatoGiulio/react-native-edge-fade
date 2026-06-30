@@ -94,7 +94,14 @@
       "Read(//c/Users/giuli/Downloads/**)",
       "Bash(dir \"C:\\\\Users\\\\giuli\\\\Downloads\\\\editor-export.mp4\")",
       "PowerShell($f = Get-Command ffmpeg -ErrorAction SilentlyContinue; if \\($f\\) { $f.Source } else { \"no ffmpeg\" }; Write-Output \"---\"; Get-Command ffprobe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)",
-      "PowerShell(\"cleaned\")"
+      "PowerShell(\"cleaned\")",
+      "Bash(./gradlew installDebug -Dorg.gradle.jvmargs=-Xmx4g)",
+      "Bash(ls -d ~/Library/Android/sdk 2>/dev/null && echo \"FOUND\"; echo \"---METRO---\"; tail -15 /private/tmp/claude-501/-Users-giulioamato-Documents-GitHub-react-native-edge-fade/0810b449-2744-42b9-b2a6-a9fd6076ae55/tasks/bxdbjwwtm.output)",
+      "Bash(export ANDROID_HOME=\"$HOME/Library/Android/sdk\")",
+      "Bash(rm -rf .gradle/configuration-cache)",
+      "Bash(./gradlew app:assembleDebug -x lint -x test --build-cache -PreactNativeDevServerPort=8081 -PreactNativeArchitectures=arm64-v8a)",
+      "Bash(adb -s emulator-5554 shell dumpsys window)",
+      "Bash(grep -n \"smooth\\\\b\\\\|smoother\\\\|'gentle'\\\\|sharp\\\\|CurvePreset\\\\|Curve presets\\\\|| \\\\`curve\\\\`\" README.md)"
     ]
   }
 }

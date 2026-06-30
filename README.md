@@ -221,13 +221,14 @@ In overlay mode each edge can have its own independent color:
 
 ### Presets
 
-| Name       | Shape                                |
-| ---------- | ------------------------------------ |
-| `'smooth'` | Cubic ease-out — default             |
-| `'sharp'`  | Quintic ease-out — aggressive        |
-| `'gentle'` | Quadratic ease-out — soft            |
-| `'soft'`   | Sinusoidal — very gradual            |
-| `'linear'` | Linear — constant rate               |
+| Name         | Shape                                                              |
+| ------------ | ------------------------------------------------------------------ |
+| `'smooth'`   | Cubic ease-out — default                                           |
+| `'smoother'` | Smootherstep S-curve — eased at both ends, the least direct cutoff |
+| `'sharp'`    | Quintic ease-out — aggressive                                      |
+| `'gentle'`   | Quadratic ease-out — soft                                          |
+| `'soft'`     | Sinusoidal — very gradual                                          |
+| `'linear'`   | Linear — constant rate                                             |
 
 ### `cubicBezier`
 

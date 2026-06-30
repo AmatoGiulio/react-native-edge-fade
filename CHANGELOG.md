@@ -3,7 +3,9 @@
 ### Features
 
 * **android:** add `mode="blur"` — frosted-glass edge blur (iOS scroll-edge style). A single hardware Gaussian blur (`RenderEffect.createBlurEffect`) is masked by the per-edge curve and dissolved into a translucent material veil — matching iOS' uniform edge blur rather than a progressive radius ramp, at a fraction of the cost. New `blurRadius` prop (dp, default 20); `color` sets the frost material color (default white). Requires Android 12 (API 31)+; degrades to `mask` on older Android, iOS, and Web.
+* **curves:** add `'smoother'` preset — a smootherstep S-curve (`6t⁵−15t⁴+10t³`) eased at both ends, so the fade eases in at the inner edge instead of breaking away immediately. Works across `mask`, `overlay`, and `blur`.
 * **example:** add blur playground (`Lab`) with a floating glass control panel and live sliders, plus an editorial blur demo.
+* **example:** add a live-editing glass panel to the Photos showcase — sliders for blur radius and top/bottom fade depth, plus segmented controls for curve and frost material.
 
 ### Notes
 

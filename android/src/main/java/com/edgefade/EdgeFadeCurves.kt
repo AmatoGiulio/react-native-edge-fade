@@ -26,11 +26,14 @@ internal object EdgeFadeCurves {
     DoubleArray(n) { i -> fn(i.toDouble() / (n - 1)) }
 
   private val PRESET_ALPHAS: Map<String, DoubleArray> = mapOf(
-    "smooth" to samples(PRESET_N) { t -> (1 - t).pow(3.0) },
-    "sharp"  to samples(PRESET_N) { t -> (1 - t).pow(5.0) },
-    "gentle" to samples(PRESET_N) { t -> (1 - t).pow(2.0) },
-    "soft"   to samples(PRESET_N) { t -> cos(t * Math.PI / 2) },
-    "linear" to doubleArrayOf(1.0, 0.0),
+    "smooth"   to samples(PRESET_N) { t -> (1 - t).pow(3.0) },
+    // Smootherstep S-curve (Perlin 6t⁵−15t⁴+10t³): zero slope at both ends, so
+    // the fade eases in at the inner edge instead of breaking away immediately.
+    "smoother" to samples(PRESET_N) { t -> 1.0 - (t * t * t * (t * (t * 6 - 15) + 10)) },
+    "sharp"    to samples(PRESET_N) { t -> (1 - t).pow(5.0) },
+    "gentle"   to samples(PRESET_N) { t -> (1 - t).pow(2.0) },
+    "soft"     to samples(PRESET_N) { t -> cos(t * Math.PI / 2) },
+    "linear"   to doubleArrayOf(1.0, 0.0),
   )
 
   // ── LinearGradient fallback inputs ────────────────────────────────────────
@@ -51,14 +54,19 @@ internal object EdgeFadeCurves {
 
   // ── AGSL path ─────────────────────────────────────────────────────────────
 
-  /** Returns `(curveExp, isSoft)` for analytical preset evaluation in AGSL, or `null` for custom curves. */
+  /**
+   * Returns `(curveExp, softMode)` for analytical preset evaluation in AGSL, or
+   * `null` for custom curves. `softMode`: 0 = pow(t, curveExp), 1 = sine ("soft"),
+   * 2 = smootherstep ("smoother"). See `AGSL_SRC` in [EdgeFadeShader].
+   */
   fun agslPresetParams(curve: String): Pair<Float, Float>? = when (curve) {
-    "smooth" -> 3f to 0f
-    "sharp"  -> 5f to 0f
-    "gentle" -> 2f to 0f
-    "linear" -> 1f to 0f
-    "soft"   -> 1f to 1f
-    else     -> null
+    "smooth"   -> 3f to 0f
+    "sharp"    -> 5f to 0f
+    "gentle"   -> 2f to 0f
+    "linear"   -> 1f to 0f
+    "soft"     -> 1f to 1f
+    "smoother" -> 1f to 2f
+    else       -> null
   }
 
   /**

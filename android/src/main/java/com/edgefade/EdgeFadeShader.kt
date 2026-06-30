@@ -184,6 +184,9 @@ internal class EdgeShaderSlot {
         float maskAlpha;
         if (useLUT > 0.5) {
           maskAlpha = lutSample(t);
+        } else if (isSoft > 1.5) {
+          // smootherstep: 6t⁵−15t⁴+10t³ — eased at both ends
+          maskAlpha = 1.0 - (t * t * t * (t * (t * 6.0 - 15.0) + 10.0));
         } else if (isSoft > 0.5) {
           maskAlpha = 1.0 - sin(t * 1.5707963);
         } else {

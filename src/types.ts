@@ -1,6 +1,12 @@
 import type { ColorValue, StyleProp, ViewProps, ViewStyle } from 'react-native';
 
-export type CurvePreset = 'smooth' | 'sharp' | 'gentle' | 'soft' | 'linear';
+export type CurvePreset =
+  | 'smooth'
+  | 'smoother'
+  | 'sharp'
+  | 'gentle'
+  | 'soft'
+  | 'linear';
 
 export interface CubicBezierCurve {
   type: 'cubicBezier';
