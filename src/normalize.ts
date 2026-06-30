@@ -16,6 +16,7 @@ import type {
 
 const DEFAULT_SIZE = 80;
 const DEFAULT_CURVE: EdgeFadeCurve = 'smooth';
+const DEFAULT_BLUR_RADIUS = 20;
 
 interface ResolvedEdge {
   size: number;
@@ -63,6 +64,7 @@ export interface NativeEdgeProps {
   overlayColorBottom?: ColorValue;
   overlayColorLeft?: ColorValue;
   overlayColorRight?: ColorValue;
+  blurRadius: number;
 }
 
 /**
@@ -138,5 +140,6 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
     overlayColorBottom: bottom?.color,
     overlayColorLeft: left?.color,
     overlayColorRight: right?.color,
+    blurRadius: props.blurRadius ?? DEFAULT_BLUR_RADIUS,
   };
 }

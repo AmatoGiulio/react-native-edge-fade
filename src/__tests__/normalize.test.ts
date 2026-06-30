@@ -101,6 +101,34 @@ describe('resolveNativeProps — mode inference', () => {
   });
 });
 
+// ── Blur radius ──────────────────────────────────────────────────────────────────
+
+describe('resolveNativeProps — blurRadius', () => {
+  test('defaults to 20 when unset', () => {
+    expect(resolveNativeProps({ bottom: true }).blurRadius).toBe(20);
+  });
+
+  test('forwards explicit blurRadius', () => {
+    expect(
+      resolveNativeProps({ bottom: true, mode: 'blur', blurRadius: 40 })
+        .blurRadius
+    ).toBe(40);
+  });
+
+  test('blur mode is forwarded', () => {
+    expect(resolveNativeProps({ bottom: true, mode: 'blur' }).mode).toBe(
+      'blur'
+    );
+  });
+
+  test('blurRadius of 0 is preserved (not overridden by default)', () => {
+    expect(
+      resolveNativeProps({ bottom: true, mode: 'blur', blurRadius: 0 })
+        .blurRadius
+    ).toBe(0);
+  });
+});
+
 // ── Colors ─────────────────────────────────────────────────────────────────────
 
 describe('resolveNativeProps — colors', () => {

@@ -83,6 +83,11 @@ class EdgeFadeViewManager :
   @ReactProp(name = "fadeRadius")
   override fun setFadeRadius(view: EdgeFadeView, value: Float) { view.fadeRadius = dp(view, value) }
 
+  // ── Blur ───────────────────────────────────────────────────────────────────
+
+  @ReactProp(name = "blurRadius")
+  override fun setBlurRadius(view: EdgeFadeView, value: Float) { view.blurRadius = dp(view, value) }
+
   companion object {
     const val NAME = "EdgeFadeView"
   }

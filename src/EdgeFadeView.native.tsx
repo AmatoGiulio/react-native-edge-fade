@@ -20,6 +20,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     curve: _c,
     mode: _m,
     color: _col,
+    blurRadius: _br,
     radius,
     style,
     children,
@@ -47,6 +48,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
       curveLeft={n.curveLeft}
       curveRight={n.curveRight}
       mode={n.mode}
+      blurRadius={n.blurRadius}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

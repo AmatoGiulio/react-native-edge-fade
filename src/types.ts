@@ -18,7 +18,7 @@ export interface StopsCurve {
 
 export type EdgeFadeCurve = CurvePreset | CubicBezierCurve | StopsCurve;
 
-export type EdgeFadeMode = 'mask' | 'overlay';
+export type EdgeFadeMode = 'mask' | 'overlay' | 'blur';
 
 export interface EdgeConfig {
   /** Fade depth in dp. Overrides the component-level `size`. */
@@ -45,10 +45,21 @@ export interface EdgeFadeViewProps extends ViewProps {
   /**
    * 'mask'    — true alpha fade via native compositing (default).
    * 'overlay' — paint gradient from transparent to `color` over content.
+   * 'blur'    — fade content into a blurred copy of itself toward the enabled
+   *             edges (progressive blur). Sharp at the inner edge, fully blurred
+   *             at the outer edge, following the per-edge `size`/`curve`.
    */
   mode?: EdgeFadeMode;
   /** Global overlay color (overlay mode). Per-edge `EdgeConfig.color` overrides this. */
   color?: ColorValue;
+  /**
+   * Maximum blur radius (dp) reached at the outer edge in `mode="blur"`.
+   * Ignored in other modes. Defaults to 20.
+   *
+   * Requires Android 12 (API 31)+. On older Android and on web/iOS the blur mode
+   * degrades to a transparent `mask` fade.
+   */
+  blurRadius?: number;
   /**
    * Corner radius (dp) applied as a native clip path that also clips the fade
    * mask, keeping the gradient flush with the rounded edge.

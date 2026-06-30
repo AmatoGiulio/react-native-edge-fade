@@ -33,13 +33,14 @@ Implementing edge fades by hand means juggling `MaskedView`, multiple `LinearGra
 | Carousel hinting at off-screen items      | Stacked `LinearGradient` views with manual sizing  | `left` + `right` props    |
 | Smooth gradient with no banding on Android | Custom AGSL shader + API gating + fallbacks       | Built in (API 33+)        |
 | Rounded card with a faded bottom          | Nested `View` + `overflow: hidden` + mask hacks    | `radius` prop             |
+| Content frosting under a nav bar (iOS scroll-edge) | Hand-rolled progressive blur + material layers | `mode="blur"` (Android 12+) |
 | Animated fade tied to scroll position     | Bridge-roundtrip prop updates                      | `AnimatedEdgeFadeView`    |
 
 ---
 
 ## What you get
 
-- **Two modes** — `mask` (true alpha fade, reveals what's behind) and `overlay` (paints a color over content)
+- **Three modes** — `mask` (true alpha fade, reveals what's behind), `overlay` (paints a color over content), and `blur` (progressive frosted-glass blur, iOS scroll-edge style)
 - **Four edges, independently controlled** — different `size`, `curve`, and `color` per side
 - **Five preset curves** + full `cubicBezier` and `stops` support
 - **Per-pixel AGSL shaders on Android 13+** — zero banding, exact curve math, dithered
@@ -99,8 +100,9 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `end`    | `boolean \| number \| EdgeConfig`     | `false`    | Logical trailing edge — maps to `right` in LTR, `left` in RTL |
 | `size`   | `number`                              | `80`       | Default fade depth (dp) for all active edges         |
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
-| `mode`   | `'mask' \| 'overlay'`                 | auto       | Render mode; inferred from `color` when omitted      |
-| `color`  | `ColorValue`                          | —          | Global overlay color (implies `mode="overlay"`)      |
+| `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
+| `color`  | `ColorValue`                          | —          | Overlay color, or frost material color in `blur` mode (default white) |
+| `blurRadius` | `number`                          | `20`       | Max blur radius (dp) at the outer edge, `blur` mode only |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
 
@@ -176,6 +178,29 @@ Use this when the fade should blend content into a known solid background color.
   <ScrollView>{/* … */}</ScrollView>
 </EdgeFadeView>
 ```
+
+### `mode="blur"`
+
+Progressively blurs the wrapped content toward the enabled edges and dissolves it into a
+translucent frosted-glass material — the iOS "scroll edge" look, where content scrolling under
+a bar softly blurs and fades into it. Sharp at the inner edge, fully blurred and veiled at the
+outer edge, following the per-edge `size`/`curve`.
+
+`blurRadius` sets the maximum blur depth (dp). `color` sets the frost material color (default
+white). Use a gentle/linear `curve` for the most gradual ramp.
+
+```tsx
+<EdgeFadeView mode="blur" top={120} bottom={160} blurRadius={24} curve="gentle">
+  <ScrollView>{/* … */}</ScrollView>
+</EdgeFadeView>
+```
+
+> **Requires Android 12 (API 31)+.** On older Android, and on iOS and Web, `blur` mode
+> degrades gracefully to a transparent `mask` fade.
+>
+> **Blur needs opaque content.** Blurring content with transparent gaps produces dark
+> premultiplied-alpha fringes. Give the `EdgeFadeView` (or its content) a solid
+> `backgroundColor` — the view composites that opaque backdrop before blurring.
 
 ### Per-edge colors
 
@@ -298,8 +323,11 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
 | Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
+| Android API 31+   | `blur` mode — stacked hardware Gaussian levels (`RenderEffect.createBlurEffect`) + material veil |
 | iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
+
+> `mode="blur"` is currently Android-only (API 31+); iOS and Web fall back to `mask`. Native iOS blur is planned.
 
 ### Android — nested scrolling
 

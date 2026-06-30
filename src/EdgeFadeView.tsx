@@ -132,6 +132,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     curve: _c,
     mode: _m,
     color: _col,
+    blurRadius: _br,
     radius,
     style,
     children,

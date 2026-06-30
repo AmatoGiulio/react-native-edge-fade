@@ -1,3 +1,15 @@
+## Unreleased
+
+### Features
+
+* **android:** add `mode="blur"` — progressive frosted-glass edge blur (iOS scroll-edge style). Stacks hardware Gaussian levels (`RenderEffect.createBlurEffect`) at increasing radii blended along the curve, dissolving content into a translucent material veil. New `blurRadius` prop (dp, default 20); `color` sets the frost material color (default white). Requires Android 12 (API 31)+; degrades to `mask` on older Android, iOS, and Web.
+* **example:** add blur playground (`Lab`) with a floating glass control panel and live sliders, plus an editorial blur demo.
+
+### Notes
+
+* `mode="blur"` needs opaque content — give the `EdgeFadeView` (or its content) a solid `backgroundColor` so the blur backdrop has no transparent gaps (avoids dark premultiplied-alpha fringes).
+* Native iOS `blur` is not yet implemented (falls back to `mask`).
+
 ## 0.0.1 (2026-05-28)
 
 

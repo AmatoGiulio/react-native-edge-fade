@@ -67,6 +67,18 @@ export default function DiscoverScreen() {
     router.push('/demo' as never);
   }, []);
 
+  const handleBlur = useCallback(() => {
+    router.push('/blur' as never);
+  }, []);
+
+  const handleBlurLab = useCallback(() => {
+    router.push('/blur-lab' as never);
+  }, []);
+
+  const handlePhotos = useCallback(() => {
+    router.push('/photos' as never);
+  }, []);
+
   return (
     <View style={[s.screen, { backgroundColor: t.bg }]}>
       {/* Header */}
@@ -83,6 +95,24 @@ export default function DiscoverScreen() {
             onPress={handleDemo}
           >
             <Text style={[s.benchText, { color: t.sub }]}>Demo</Text>
+          </Pressable>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handleBlur}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Blur</Text>
+          </Pressable>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handleBlurLab}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Lab</Text>
+          </Pressable>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handlePhotos}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Photos</Text>
           </Pressable>
           <Pressable
             style={[s.benchBtn, { borderColor: t.border }]}
@@ -164,7 +194,14 @@ const s = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  headerActions: { flexDirection: 'row', gap: 8 },
+  headerActions: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginLeft: 12,
+  },
   benchBtn: {
     paddingHorizontal: 14,
     paddingVertical: 7,
