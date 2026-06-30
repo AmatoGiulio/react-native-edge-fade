@@ -33,14 +33,14 @@ Implementing edge fades by hand means juggling `MaskedView`, multiple `LinearGra
 | Carousel hinting at off-screen items      | Stacked `LinearGradient` views with manual sizing  | `left` + `right` props    |
 | Smooth gradient with no banding on Android | Custom AGSL shader + API gating + fallbacks       | Built in (API 33+)        |
 | Rounded card with a faded bottom          | Nested `View` + `overflow: hidden` + mask hacks    | `radius` prop             |
-| Content frosting under a nav bar (iOS scroll-edge) | Hand-rolled progressive blur + material layers | `mode="blur"` (Android 12+) |
+| Content frosting under a nav bar (iOS scroll-edge) | Hand-rolled blur + masked material layers | `mode="blur"` (Android 12+) |
 | Animated fade tied to scroll position     | Bridge-roundtrip prop updates                      | `AnimatedEdgeFadeView`    |
 
 ---
 
 ## What you get
 
-- **Three modes** — `mask` (true alpha fade, reveals what's behind), `overlay` (paints a color over content), and `blur` (progressive frosted-glass blur, iOS scroll-edge style)
+- **Three modes** — `mask` (true alpha fade, reveals what's behind), `overlay` (paints a color over content), and `blur` (frosted-glass blur, iOS scroll-edge style)
 - **Four edges, independently controlled** — different `size`, `curve`, and `color` per side
 - **Five preset curves** + full `cubicBezier` and `stops` support
 - **Per-pixel AGSL shaders on Android 13+** — zero banding, exact curve math, dithered
@@ -181,10 +181,12 @@ Use this when the fade should blend content into a known solid background color.
 
 ### `mode="blur"`
 
-Progressively blurs the wrapped content toward the enabled edges and dissolves it into a
-translucent frosted-glass material — the iOS "scroll edge" look, where content scrolling under
-a bar softly blurs and fades into it. Sharp at the inner edge, fully blurred and veiled at the
-outer edge, following the per-edge `size`/`curve`.
+Blurs the wrapped content toward the enabled edges and dissolves it into a translucent
+frosted-glass material — the iOS "scroll edge" look, where content scrolling under a bar softly
+blurs and fades into it. A single hardware Gaussian blur is masked by the per-edge `curve`, so
+the content reads sharp at the inner edge and dissolves into the blurred, veiled material at the
+outer edge — matching iOS, which applies one uniform edge blur rather than a progressive radius
+ramp.
 
 `blurRadius` sets the maximum blur depth (dp). `color` sets the frost material color (default
 white). Use a gentle/linear `curve` for the most gradual ramp.
@@ -323,7 +325,7 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
 | Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
-| Android API 31+   | `blur` mode — stacked hardware Gaussian levels (`RenderEffect.createBlurEffect`) + material veil |
+| Android API 31+   | `blur` mode — single hardware Gaussian blur (`RenderEffect.createBlurEffect`) masked by the curve + material veil |
 | iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
 

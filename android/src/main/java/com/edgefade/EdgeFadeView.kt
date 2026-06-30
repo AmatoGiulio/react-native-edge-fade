@@ -404,9 +404,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   private companion object {
     // Number of hardware Gaussian levels blended to approximate a continuous,
-    // curve-following blur radius. Higher = smoother (less stepped) ramp at the
-    // cost of more overdraw.
-    private const val BLUR_LEVELS = 16
+    // curve-following blur radius. iOS' scroll-edge effect is a single uniform
+    // blur that dissolves into the bar material, not a progressive radius ramp,
+    // so 1 level matches it — and is ~16× cheaper than the old multi-level chain.
+    private const val BLUR_LEVELS = 1
 
     // Max opacity of the frost material veil at the outer edge. < 1 keeps a hint
     // of blurred content showing through, like iOS frosted glass.
