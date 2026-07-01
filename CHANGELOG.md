@@ -9,6 +9,7 @@
 
 ### Notes
 
+* **android:** blur presence is boosted so the Gaussian blur saturates early and stays full across most of the fade band (instead of only showing in a thin outer sliver under the frost veil); veil max opacity eased 0.9 → 0.8 so more blurred content shows through. Default `blurRadius` raised 20 → 28 for a more visible effect out of the box.
 * `mode="blur"` needs opaque content — give the `EdgeFadeView` (or its content) a solid `backgroundColor` so the blur backdrop has no transparent gaps (avoids dark premultiplied-alpha fringes).
 * Native iOS `blur` is not yet implemented (falls back to `mask`).
 

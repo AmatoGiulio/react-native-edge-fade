@@ -16,7 +16,7 @@ import type {
 
 const DEFAULT_SIZE = 80;
 const DEFAULT_CURVE: EdgeFadeCurve = 'smooth';
-const DEFAULT_BLUR_RADIUS = 20;
+const DEFAULT_BLUR_RADIUS = 28;
 
 interface ResolvedEdge {
   size: number;

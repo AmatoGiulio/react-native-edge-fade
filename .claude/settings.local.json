@@ -101,7 +101,8 @@
       "Bash(rm -rf .gradle/configuration-cache)",
       "Bash(./gradlew app:assembleDebug -x lint -x test --build-cache -PreactNativeDevServerPort=8081 -PreactNativeArchitectures=arm64-v8a)",
       "Bash(adb -s emulator-5554 shell dumpsys window)",
-      "Bash(grep -n \"smooth\\\\b\\\\|smoother\\\\|'gentle'\\\\|sharp\\\\|CurvePreset\\\\|Curve presets\\\\|| \\\\`curve\\\\`\" README.md)"
+      "Bash(grep -n \"smooth\\\\b\\\\|smoother\\\\|'gentle'\\\\|sharp\\\\|CurvePreset\\\\|Curve presets\\\\|| \\\\`curve\\\\`\" README.md)",
+      "Bash(grep -n \"Defaults to 20\\\\|default 20\\\\|default: 20\\\\|\\\\`20\\\\`\\\\|reached at the outer\" src/types.ts README.md)"
     ]
   }
 }

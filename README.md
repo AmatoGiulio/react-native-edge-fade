@@ -102,7 +102,7 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
 | `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
 | `color`  | `ColorValue`                          | —          | Overlay color, or frost material color in `blur` mode (default white) |
-| `blurRadius` | `number`                          | `20`       | Max blur radius (dp) at the outer edge, `blur` mode only |
+| `blurRadius` | `number`                          | `28`       | Max blur radius (dp) at the outer edge, `blur` mode only |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
 

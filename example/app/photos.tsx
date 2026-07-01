@@ -36,7 +36,7 @@ export default function PhotosScreen() {
   const insets = useSafeAreaInsets();
   const handleBack = useCallback(() => router.back(), []);
 
-  const [blur, setBlur] = useState(22);
+  const [blur, setBlur] = useState(30);
   const [zoneTop, setZoneTop] = useState(Math.round(insets.top) + 120);
   const [zoneBtm, setZoneBtm] = useState(160);
   const [curveIdx, setCurveIdx] = useState(0); // smoother
