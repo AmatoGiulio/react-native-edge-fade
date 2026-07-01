@@ -8,22 +8,23 @@
  */
 
 import { useCallback } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EdgeFadeView } from 'react-native-edge-fade';
 
 import { CATALOG } from '../../constants/catalog';
 import { FROST_COLOR, useFade } from './fade-context';
 
-const PHOTOS = CATALOG.slice(0, 44);
 const GAP = 2;
 
 export default function PhotosScreen() {
   const insets = useSafeAreaInsets();
-  const { blur, top, bottom, curve, frost } = useFade();
+  const { blur, top, bottom, left, right, radius, curve, frost } = useFade();
 
   const handleBack = useCallback(() => router.back(), []);
   const handleTune = useCallback(() => router.push('/photos/tune'), []);
@@ -31,33 +32,44 @@ export default function PhotosScreen() {
   const onDark = frost === 'dark';
   const pageBg = onDark ? '#000000' : '#FFFFFF';
 
+  const renderItem = useCallback(
+    ({ item }: { item: (typeof CATALOG)[number] }) => (
+      <Pressable
+        style={s.cell}
+        onPress={() => router.push('/photos/' + item.id)}
+      >
+        <Image source={item.source} style={s.img} contentFit="cover" />
+      </Pressable>
+    ),
+    []
+  );
+
   return (
     <View style={[s.root, { backgroundColor: pageBg }]}>
+      <StatusBar style={onDark ? 'light' : 'dark'} />
       <EdgeFadeView
         top={top || false}
         bottom={bottom || false}
+        left={left || false}
+        right={right || false}
+        radius={radius}
         curve={curve}
         mode="blur"
         blurRadius={blur}
         color={FROST_COLOR[frost]}
         style={StyleSheet.absoluteFill}
       >
-        <ScrollView
-          style={[s.scroll, { backgroundColor: pageBg }]}
+        <FlashList
+          data={CATALOG}
+          numColumns={4}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             paddingTop: insets.top + 56,
             paddingBottom: insets.bottom + 96,
           }}
-        >
-          <View style={s.grid}>
-            {PHOTOS.map((item) => (
-              <View key={item.id} style={s.cell}>
-                <Image source={item.source} style={s.img} contentFit="cover" />
-              </View>
-            ))}
-          </View>
-        </ScrollView>
+        />
       </EdgeFadeView>
 
       {/* Floating controls (top) */}
@@ -89,10 +101,9 @@ export default function PhotosScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { flex: 1 },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: '25%', aspectRatio: 1, padding: GAP / 2 },
+  // ponytail: flex:1 + aspectRatio:1 gives square cells inside FlashList numColumns
+  cell: { flex: 1, aspectRatio: 1, padding: GAP / 2 },
   img: { flex: 1, backgroundColor: '#141414' },
 
   topBar: {

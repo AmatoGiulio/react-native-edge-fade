@@ -29,8 +29,19 @@ const ACCENT = '#ffffff';
 
 export default function TuneSheet() {
   const insets = useSafeAreaInsets();
-  const { blur, top, bottom, curve, frost, presetId, applyPreset, patch } =
-    useFade();
+  const {
+    blur,
+    top,
+    bottom,
+    left,
+    right,
+    radius,
+    curve,
+    frost,
+    presetId,
+    applyPreset,
+    patch,
+  } = useFade();
 
   return (
     <View style={s.root}>
@@ -79,6 +90,33 @@ export default function TuneSheet() {
             step={2}
             unit="px"
             onChange={(v) => patch({ bottom: v })}
+          />
+          <SliderRow
+            label="Left fade"
+            value={left}
+            min={0}
+            max={320}
+            step={2}
+            unit="px"
+            onChange={(v) => patch({ left: v })}
+          />
+          <SliderRow
+            label="Right fade"
+            value={right}
+            min={0}
+            max={320}
+            step={2}
+            unit="px"
+            onChange={(v) => patch({ right: v })}
+          />
+          <SliderRow
+            label="Corner radius"
+            value={radius}
+            min={0}
+            max={48}
+            step={1}
+            unit="px"
+            onChange={(v) => patch({ radius: v })}
           />
         </View>
 

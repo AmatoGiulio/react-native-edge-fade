@@ -17,6 +17,9 @@ export interface FadeConfig {
   blur: number;
   top: number;
   bottom: number;
+  left: number;
+  right: number;
+  radius: number;
   curve: CurvePreset;
   frost: Frost;
 }
@@ -34,6 +37,9 @@ export const PRESETS: FadePreset[] = [
     blur: 14,
     top: 110,
     bottom: 110,
+    left: 0,
+    right: 0,
+    radius: 0,
     curve: 'smoother',
     frost: 'dark',
   },
@@ -43,6 +49,9 @@ export const PRESETS: FadePreset[] = [
     blur: 30,
     top: 150,
     bottom: 160,
+    left: 0,
+    right: 0,
+    radius: 0,
     curve: 'smoother',
     frost: 'dark',
   },
@@ -52,6 +61,9 @@ export const PRESETS: FadePreset[] = [
     blur: 24,
     top: 130,
     bottom: 0,
+    left: 0,
+    right: 0,
+    radius: 0,
     curve: 'smooth',
     frost: 'dark',
   },
@@ -61,6 +73,9 @@ export const PRESETS: FadePreset[] = [
     blur: 52,
     top: 240,
     bottom: 240,
+    left: 0,
+    right: 0,
+    radius: 0,
     curve: 'smooth',
     frost: 'dark',
   },
@@ -118,6 +133,6 @@ export function useFade(): FadeContextValue {
 }
 
 function stripId(p: FadePreset): FadeConfig {
-  const { blur, top, bottom, curve, frost } = p;
-  return { blur, top, bottom, curve, frost };
+  const { blur, top, bottom, left, right, radius, curve, frost } = p;
+  return { blur, top, bottom, left, right, radius, curve, frost };
 }
