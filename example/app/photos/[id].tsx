@@ -21,6 +21,12 @@ import Slider from '@react-native-community/slider';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { runOnJS } from 'react-native-reanimated';
+import ColorPicker, {
+  Panel1,
+  HueSlider,
+  Preview,
+} from 'reanimated-color-picker';
 import { EdgeFadeView } from 'react-native-edge-fade';
 import type { CurvePreset, EdgeFadeMode } from 'react-native-edge-fade';
 
@@ -43,6 +49,8 @@ interface FadeState {
   bottom: number;
   blur: number;
   curve: CurvePreset;
+  /** Frost/overlay tint. `undefined` = pure blur (no material veil). */
+  color?: string;
 }
 
 const DEFAULT: FadeState = {
@@ -51,7 +59,14 @@ const DEFAULT: FadeState = {
   bottom: 80,
   blur: 20,
   curve: 'smooth',
+  color: undefined,
 };
+
+const FROSTS: { label: string; value: string | undefined }[] = [
+  { label: 'None', value: undefined },
+  { label: 'Dark', value: '#000000' },
+  { label: 'Light', value: '#ffffff' },
+];
 
 export default function PhotoDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,6 +79,16 @@ export default function PhotoDetailScreen() {
     (partial: Partial<FadeState>) =>
       setFade((prev) => ({ ...prev, ...partial })),
     []
+  );
+
+  // reanimated-color-picker fires onChange on the UI thread; hop back to JS.
+  const setColor = useCallback((hex: string) => patch({ color: hex }), [patch]);
+  const onPickColor = useCallback(
+    (c: { hex: string }) => {
+      'worklet';
+      runOnJS(setColor)(c.hex);
+    },
+    [setColor]
   );
 
   if (!item) {
@@ -99,7 +124,7 @@ export default function PhotoDetailScreen() {
             curve={fade.curve}
             mode={fade.mode}
             blurRadius={fade.blur}
-            //color="#000000"
+            color={fade.color}
             radius={20}
             style={s.edgeFade}
           >
@@ -171,6 +196,31 @@ export default function PhotoDetailScreen() {
               />
             ))}
           </ChipRow>
+
+          {/* Frost material tint — None = pure blur, else tinted veil */}
+          <SectionLabel>Frost</SectionLabel>
+          <ChipRow>
+            {FROSTS.map((f) => (
+              <Chip
+                key={f.label}
+                label={f.label}
+                active={fade.color === f.value}
+                onPress={() => patch({ color: f.value })}
+              />
+            ))}
+          </ChipRow>
+
+          {/* Custom tint picker — saturation/value panel + hue slider, live */}
+          <SectionLabel>Custom tint</SectionLabel>
+          <ColorPicker
+            style={s.picker}
+            value={fade.color ?? '#3aa0ff'}
+            onChange={onPickColor}
+          >
+            <Preview hideInitialColor style={s.pickerPreview} />
+            <Panel1 style={s.pickerPanel} />
+            <HueSlider style={s.pickerHue} />
+          </ColorPicker>
         </View>
       </ScrollView>
     </View>
@@ -282,6 +332,11 @@ const s = StyleSheet.create({
   subtitle: { color: 'rgba(255,255,255,0.45)', fontSize: 14 },
 
   panel: { marginTop: 28, width: '100%' },
+
+  picker: { gap: 14 },
+  pickerPreview: { height: 34, borderRadius: 10 },
+  pickerPanel: { height: 160, borderRadius: 12 },
+  pickerHue: { borderRadius: 10 },
 
   chipRow: { gap: 8, paddingVertical: 4, paddingRight: 8 },
   chip: {

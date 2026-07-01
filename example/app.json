@@ -17,7 +17,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "edgefade.example"
+      "bundleIdentifier": "com.edgefadeexample"
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +26,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "edgefade.example"
+      "package": "com.edgefadeexample"
     },
     "web": {
       "favicon": "./assets/favicon.png"
