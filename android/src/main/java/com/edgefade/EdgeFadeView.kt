@@ -20,6 +20,7 @@ import android.util.Log
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
@@ -80,15 +81,28 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   @Suppress("NewApi")
   private var blurNode: RenderNode? = null
 
-  // Three level nodes, one per LEVEL_FRACTIONS entry, each recording only a
-  // reference draw of blurNode's display list (cheap — the blur pass itself
-  // is what costs). Lazily created alongside blurNode, discarded together.
+  // Per-edge × per-level nodes: levelNodes[edge][k], edge order TOP/BOTTOM/
+  // LEFT/RIGHT (see companion consts). Each node's rect is clipped to just its
+  // edge's blurred strip (expanded by a per-level inner padding — see the pad
+  // calculation in recordLevelNodesForEdge) — NOT the full view — so the blur
+  // RenderEffect only has to process pixels that are actually visible in the
+  // band. Cost is now ∝ strip area, not view area. Nodes for inactive edges
+  // stay null and are never created/recorded.
   @Suppress("NewApi")
-  private var levelNodes: Array<RenderNode?> = arrayOfNulls(LEVEL_FRACTIONS.size)
+  private var levelNodes: Array<Array<RenderNode?>> =
+    Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
 
-  // RenderEffect is a native object; skip recreating it when blurRadius hasn't
-  // changed since the last frame instead of reallocating on every draw. The
-  // nodes keep their own reference once set — no field needed here.
+  // Last recorded absolute rect per edge/level node, used to detect when a
+  // node was resized (fade size or view size changed) so its RenderEffect —
+  // and not just its display list — needs to be reassigned. A blur radius
+  // change alone is handled by lastBlurEffectRadius below; a rect change can
+  // happen independently (e.g. fade prop animated) and must also invalidate.
+  private val lastLevelRect: Array<Array<RectF?>> =
+    Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
+
+  // RenderEffect is a native object; skip recreating it when neither blurRadius
+  // nor the node's rect has changed since the last frame instead of
+  // reallocating on every draw.
   private var lastBlurEffectRadius = -1f
 
   // Per-edge cache for the level/veil gradients built in blur mode — without
@@ -153,10 +167,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     rightSlot.release()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       blurNode?.discardDisplayList()
-      levelNodes.forEach { it?.discardDisplayList() }
+      levelNodes.forEach { edge -> edge.forEach { it?.discardDisplayList() } }
     }
     blurNode = null
-    levelNodes = arrayOfNulls(LEVEL_FRACTIONS.size)
+    levelNodes = Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
+    lastLevelRect.forEach { edge -> edge.fill(null) }
     lastBlurEffectRadius = -1f
     super.onDetachedFromWindow()
   }
@@ -322,9 +337,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
-    // Record children once into the content node; each level node just draws
-    // a reference to this recording, then gets its own blur RenderEffect at
-    // an increasing radius.
+    // Record children once (full view) into the content node; each per-edge,
+    // per-level node then draws a reference to this recording but is itself
+    // sized to just that edge's strip (see recordLevelNodesForEdge below), so
+    // the blur RenderEffect on each level node only has to process the strip's
+    // pixels — not the whole view.
     val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
     content.setPosition(0, 0, width, height)
     val rc = content.beginRecording()
@@ -340,49 +357,33 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       content.endRecording()
     }
 
-    // Re-record each level node's display list every frame — this is just a
-    // reference draw of `content`, not a re-blur, so it's cheap. The actual
-    // blur RenderEffect is only reassigned when blurRadius changes below.
-    for (k in LEVEL_FRACTIONS.indices) {
-      val levelNode = levelNodes[k] ?: RenderNode("EdgeFadeBlurLevel$k").also { levelNodes[k] = it }
-      levelNode.setPosition(0, 0, width, height)
-      val lrc = levelNode.beginRecording()
-      try {
-        lrc.drawRenderNode(content)
-      } finally {
-        levelNode.endRecording()
-      }
-    }
+    // Re-record + (re)blur only the level nodes for active edges, each clipped
+    // to its own strip rect (band + inner padding) — see recordLevelNodesForEdge.
+    if (fadeTop > 0f)    recordLevelNodesForEdge(EDGE_TOP,    content, 0f, 0f, w, fadeTop)
+    if (fadeBottom > 0f) recordLevelNodesForEdge(EDGE_BOTTOM, content, 0f, h - fadeBottom, w, h)
+    if (fadeLeft > 0f)   recordLevelNodesForEdge(EDGE_LEFT,   content, 0f, 0f, fadeLeft, h)
+    if (fadeRight > 0f)  recordLevelNodesForEdge(EDGE_RIGHT,  content, w - fadeRight, 0f, w, h)
 
-    if (blurRadius != lastBlurEffectRadius) {
-      lastBlurEffectRadius = blurRadius
-      for (k in LEVEL_FRACTIONS.indices) {
-        val radius = blurRadius * LEVEL_FRACTIONS[k]
-        val levelNode = levelNodes[k]!!
-        levelNode.setRenderEffect(
-          if (radius > 0f) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null,
-        )
-      }
-    }
+    lastBlurEffectRadius = blurRadius
 
     // Sharp base underneath the level stack. Content stays opaque (no
     // dissolve) — like iOS, it stays visible under the bar, just blurred.
     super.dispatchDraw(canvas)
 
     if (fadeTop > 0f) {
-      drawEdgeLevels(canvas, curveTop, levelTopCaches, fadeTop, 0f,
+      drawEdgeLevels(canvas, EDGE_TOP, curveTop, levelTopCaches, fadeTop, 0f,
         0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
     }
     if (fadeBottom > 0f) {
-      drawEdgeLevels(canvas, curveBottom, levelBottomCaches, fadeBottom, h,
+      drawEdgeLevels(canvas, EDGE_BOTTOM, curveBottom, levelBottomCaches, fadeBottom, h,
         0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
     }
     if (fadeLeft > 0f) {
-      drawEdgeLevels(canvas, curveLeft, levelLeftCaches, fadeLeft, 0f,
+      drawEdgeLevels(canvas, EDGE_LEFT, curveLeft, levelLeftCaches, fadeLeft, 0f,
         0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
     }
     if (fadeRight > 0f) {
-      drawEdgeLevels(canvas, curveRight, levelRightCaches, fadeRight, w,
+      drawEdgeLevels(canvas, EDGE_RIGHT, curveRight, levelRightCaches, fadeRight, w,
         w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
     }
 
@@ -394,14 +395,82 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
   }
 
+  // (Re)records the per-level RenderNodes for one active edge, each clipped to
+  // that edge's blurred strip rect expanded inward by a per-level padding —
+  // NOT the full view. This is the band-clipping optimization: the gaussian
+  // blur pass only has to process the strip's pixels (~20-30% of the view per
+  // edge) instead of the whole view, cutting blurred-area cost by ~70% versus
+  // always sizing level nodes to (0,0,w,h).
+  //
+  // Padding rationale: RenderEffect's blur clamps samples at the node's own
+  // bounds (TileMode.CLAMP repeats the edge pixel). If the node rect were
+  // exactly the band rect, the inner edge of the strip would sample clamped
+  // (repeated) pixels instead of the true content just inside the band,
+  // producing a visible seam. Expanding the rect inward by
+  // pad_k = ceil(blurRadius * LEVEL_FRACTIONS[k]) gives the blur real
+  // neighboring pixels to sample from. The padded margin is never shown: the
+  // presence-curve mask in compositeLevel clips to the true band rect (not
+  // the padded rect), and the mask's alpha is 0 at the innermost edge of the
+  // band by construction, so no extra blur "leaks" past what the mask lets
+  // through.
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun recordLevelNodesForEdge(
+    edge: Int, content: RenderNode, bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
+  ) {
+    val edgeNodes = levelNodes[edge]
+    val edgeRects = lastLevelRect[edge]
+    val vw = width.toFloat(); val vh = height.toFloat()
+
+    for (k in LEVEL_FRACTIONS.indices) {
+      val pad = ceil(blurRadius * LEVEL_FRACTIONS[k])
+      val left   = (bandLeft   - pad).coerceAtLeast(0f)
+      val top    = (bandTop    - pad).coerceAtLeast(0f)
+      val right  = (bandRight  + pad).coerceAtMost(vw)
+      val bottom = (bandBottom + pad).coerceAtMost(vh)
+
+      val node = edgeNodes[k] ?: RenderNode("EdgeFadeBlurLevel_${edge}_$k").also { edgeNodes[k] = it }
+      node.setPosition(left.roundToInt(), top.roundToInt(), right.roundToInt(), bottom.roundToInt())
+
+      // The node's recording canvas is in LOCAL coordinates (origin at the
+      // node's left/top corner), while `content` is recorded in absolute view
+      // coordinates (0,0,w,h). Translate by (-left, -top) so the correct
+      // portion of the content falls inside the node's rect — without this,
+      // bottom/right strips would show content shifted by the strip's origin.
+      val rc = node.beginRecording()
+      try {
+        rc.translate(-left, -top)
+        rc.drawRenderNode(content)
+      } finally {
+        node.endRecording()
+      }
+
+      // Reassign the blur RenderEffect whenever the radius changed OR this
+      // node's rect changed (new node, or resized due to a fade/size change) —
+      // a resized node needs its effect re-set even at the same radius.
+      val prevRect = edgeRects[k]
+      val rectChanged = prevRect == null ||
+        prevRect.left != left || prevRect.top != top || prevRect.right != right || prevRect.bottom != bottom
+      if (blurRadius != lastBlurEffectRadius || rectChanged) {
+        val radius = blurRadius * LEVEL_FRACTIONS[k]
+        node.setRenderEffect(
+          if (radius > 0f) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null,
+        )
+      }
+      edgeRects[k] = (prevRect ?: RectF()).apply { set(left, top, right, bottom) }
+    }
+  }
+
   // Composites the 3 blur levels for one edge, in increasing-radius order, each
   // masked to its own [lo, hi] slice of the presence curve so the perceived
   // blur radius ramps smoothly across the band instead of jumping at once.
   // `size`/`dim` mirror the (fadeEdge, edgeOrigin) pair used as the cache key
   // in the pre-existing per-edge caches (fadeTop/0f, fadeBottom/h, etc.).
+  // The saveLayer/clip in compositeLevel stays on the true band rect
+  // (left/top/right/bottom here) — never the padded node rect — so the padding
+  // margin recorded in recordLevelNodesForEdge is never visible.
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawEdgeLevels(
-    canvas: Canvas, curve: String, caches: Array<GradientCache<LevelGradKey>>,
+    canvas: Canvas, edge: Int, curve: String, caches: Array<GradientCache<LevelGradKey>>,
     size: Float, dim: Float,
     left: Float, top: Float, right: Float, bottom: Float,
     gx0: Float, gy0: Float, gx1: Float, gy1: Float,
@@ -409,7 +478,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     var lo = 0f
     for (k in LEVEL_FRACTIONS.indices) {
       val hi = LEVEL_FRACTIONS[k]
-      val levelNode = levelNodes[k]!!
+      val levelNode = levelNodes[edge][k]!!
       val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k)) {
         levelGradient(curve, lo, hi, gx0, gy0, gx1, gy1)
       }
@@ -462,6 +531,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   // Draw the blurred node clipped to the edge strip, masked (DST_IN) by this
   // level's alpha ramp so only its slice of the radius range survives.
+  // `node`'s own rect (set via setPosition in recordLevelNodesForEdge) is the
+  // band expanded by the level's blur padding — larger than [left,top,right,
+  // bottom] here. drawRenderNode places the node at its setPosition rect in
+  // this canvas; the node's recording was translated by (-left, -top) so the
+  // right slice of the content lands there (see recordLevelNodesForEdge).
+  // This saveLayer's bounds (the true, unpadded band rect) then clip away the
+  // padding margin, so it's recorded/blurred but never visible.
   @RequiresApi(Build.VERSION_CODES.S)
   private fun compositeLevel(
     canvas: Canvas, node: RenderNode,
@@ -509,6 +585,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   private companion object {
+    // Edge indices into levelNodes / lastLevelRect. Order is arbitrary but
+    // fixed across the file.
+    private const val EDGE_TOP = 0
+    private const val EDGE_BOTTOM = 1
+    private const val EDGE_LEFT = 2
+    private const val EDGE_RIGHT = 3
+    private const val EDGE_COUNT = 4
+
     // Fractions of blurRadius used by the 3 progressive blur levels, and the
     // [lo, hi] boundaries (cumulative) of the presence band each level owns.
     // Level k's radius = blurRadius * LEVEL_FRACTIONS[k]; its mask slice is
