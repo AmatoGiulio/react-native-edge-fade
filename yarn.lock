@@ -3656,6 +3656,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@react-native-community/slider@npm:^5.2.0":
+  version: 5.2.0
+  resolution: "@react-native-community/slider@npm:5.2.0"
+  checksum: 10c0/58ec6a47b5aafefd98a61c79aeae05f1ab8371782eb497d9af665bf2f62a1c372da8fed6dead30e1d6c9e01bfb12bfdbafcde7890736f4f5d55502dabf2e01ad
+  languageName: node
+  linkType: hard
+
 "@react-native/assets-registry@npm:0.83.6":
   version: 0.83.6
   resolution: "@react-native/assets-registry@npm:0.83.6"
@@ -11401,6 +11408,7 @@ __metadata:
     "@babel/runtime": "npm:^7.29.2"
     "@expo/log-box": "npm:55.0.12"
     "@expo/metro-runtime": "npm:~55.0.11"
+    "@react-native-community/slider": "npm:^5.2.0"
     "@shopify/flash-list": "npm:2.0.2"
     expo: "npm:~55.0.25"
     expo-constants: "npm:~55.0.16"

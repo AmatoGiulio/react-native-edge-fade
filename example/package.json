@@ -16,6 +16,7 @@
     "@babel/runtime": "^7.29.2",
     "@expo/log-box": "55.0.12",
     "@expo/metro-runtime": "~55.0.11",
+    "@react-native-community/slider": "^5.2.0",
     "@shopify/flash-list": "2.0.2",
     "expo": "~55.0.25",
     "expo-constants": "~55.0.16",
