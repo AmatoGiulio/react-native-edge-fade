@@ -20,7 +20,6 @@ import android.util.Log
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 /**
@@ -74,13 +73,41 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private val rightSlot  = EdgeShaderSlot()
 
   // ── Blur (API 31+) ────────────────────────────────────────────────────────
-  // Variable-radius blur via N hardware Gaussian levels (createBlurEffect) at
-  // increasing radii, composited so each pixel shows a linear blend of the two
-  // adjacent levels bracketing its target radius. Hardware blur = grain-free real
-  // Gaussian; narrow per-level transitions = no ghosting.
+  // Single hardware Gaussian blur (createBlurEffect) of the recorded children,
+  // composited per edge through a gradient mask. See drawBlurLayered.
 
   @Suppress("NewApi")
   private var blurNode: RenderNode? = null
+
+  // RenderEffect is a native object; skip recreating it when blurRadius hasn't
+  // changed since the last frame instead of reallocating on every draw. The
+  // node keeps its own reference once set — no field needed here.
+  private var lastBlurEffectRadius = -1f
+
+  // Per-edge cache for the level/veil gradients built in blur mode — without
+  // this, drawBlurLayered/drawFrostVeil would rebuild a native LinearGradient
+  // shader every single frame instead of only when the curve or size changes,
+  // same as EdgeShaderSlot does for mask/overlay.
+  private data class LevelGradKey(val curve: String, val size: Float, val dim: Float)
+  private data class VeilGradKey(val curve: String, val size: Float, val dim: Float, val color: Int)
+
+  private class GradientCache<K> {
+    private var key: K? = null
+    private var shader: LinearGradient? = null
+    fun acquire(k: K, build: () -> LinearGradient): LinearGradient {
+      shader?.let { if (key == k) return it }
+      return build().also { key = k; shader = it }
+    }
+  }
+
+  private val levelTopCache    = GradientCache<LevelGradKey>()
+  private val levelBottomCache = GradientCache<LevelGradKey>()
+  private val levelLeftCache   = GradientCache<LevelGradKey>()
+  private val levelRightCache  = GradientCache<LevelGradKey>()
+  private val veilTopCache     = GradientCache<VeilGradKey>()
+  private val veilBottomCache  = GradientCache<VeilGradKey>()
+  private val veilLeftCache    = GradientCache<VeilGradKey>()
+  private val veilRightCache   = GradientCache<VeilGradKey>()
 
   // ── Paints ────────────────────────────────────────────────────────────────
 
@@ -103,6 +130,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private var lastClipW = 0f
   private var lastClipH = 0f
 
+  // Reused for the single-edge mask fast path so it doesn't allocate every frame.
+  private val singleEdgeRect = RectF()
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   override fun onDetachedFromWindow() {
@@ -114,6 +144,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       blurNode?.discardDisplayList()
     }
     blurNode = null
+    lastBlurEffectRadius = -1f
     super.onDetachedFromWindow()
   }
 
@@ -201,11 +232,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   private fun drawMaskSingleEdge(canvas: Canvas, w: Float, h: Float) {
-    val edge: RectF = when {
-      fadeTop > 0f    -> RectF(0f, 0f, w, fadeTop)
-      fadeBottom > 0f -> RectF(0f, h - fadeBottom, w, h)
-      fadeLeft > 0f   -> RectF(0f, 0f, fadeLeft, h)
-      else            -> RectF(w - fadeRight, 0f, w, h)
+    val edge = singleEdgeRect.apply {
+      when {
+        fadeTop > 0f    -> set(0f, 0f, w, fadeTop)
+        fadeBottom > 0f -> set(0f, h - fadeBottom, w, h)
+        fadeLeft > 0f   -> set(0f, 0f, fadeLeft, h)
+        else            -> set(w - fadeRight, 0f, w, h)
+      }
     }
 
     // Pass 1 — content outside the edge strip is drawn directly to the main canvas.
@@ -248,14 +281,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   // ── Blur mode ───────────────────────────────────────────────────────────────
   //
-  // Variable-radius blur from [BLUR_LEVELS] hardware Gaussian copies of the
-  // children at radii max·1/N … max·N/N. For a pixel whose target radius is
-  // max·f (f = the curve profile, 0 inner → 1 outer), level k contributes with
-  // alpha = clamp(f·N − (k−1), 0, 1): levels below the target are fully opaque
-  // (and overpainted by the next), and exactly one level is mid-transition, so
-  // the visible result is a linear blend of the two levels bracketing max·f.
-  // Hardware blur is a true grain-free Gaussian; adjacent-only blending avoids
-  // the ghosting of cross-fading sharp↔fully-blurred copies.
+  // Single hardware Gaussian blur of the children, masked per edge by a gradient
+  // so the blurred copy fades in from the inner edge (curve profile) to fully
+  // opaque at the outer edge. Matches iOS' scroll-edge effect: one uniform blur
+  // that dissolves into the bar material, not a progressive radius ramp.
 
   private fun drawBlur(canvas: Canvas) {
     Trace.beginSection("EdgeFade.blur")
@@ -294,28 +323,37 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       node.endRecording()
     }
 
-    // Sharp center + progressively-blurred edges. Content stays opaque (no
-    // dissolve) — like iOS, it stays visible under the bar, just blurred.
+    // Sharp center + a single progressively-masked blurred edge. Content stays
+    // opaque (no dissolve) — like iOS, it stays visible under the bar, just
+    // blurred.
     super.dispatchDraw(canvas) // sharp base
-    for (k in 1..BLUR_LEVELS) {
-      val r = blurRadius * k / BLUR_LEVELS
-      node.setRenderEffect(RenderEffect.createBlurEffect(r, r, Shader.TileMode.CLAMP))
-      if (fadeTop > 0f) {
-        compositeLevel(canvas, node, 0f, 0f, w, fadeTop,
-          levelGradient(curveTop, 0f, fadeTop, 0f, 0f, k))
-      }
-      if (fadeBottom > 0f) {
-        compositeLevel(canvas, node, 0f, h - fadeBottom, w, h,
-          levelGradient(curveBottom, 0f, h - fadeBottom, 0f, h, k))
-      }
-      if (fadeLeft > 0f) {
-        compositeLevel(canvas, node, 0f, 0f, fadeLeft, h,
-          levelGradient(curveLeft, fadeLeft, 0f, 0f, 0f, k))
-      }
-      if (fadeRight > 0f) {
-        compositeLevel(canvas, node, w - fadeRight, 0f, w, h,
-          levelGradient(curveRight, w - fadeRight, 0f, w, 0f, k))
-      }
+    if (blurRadius != lastBlurEffectRadius) {
+      lastBlurEffectRadius = blurRadius
+      node.setRenderEffect(RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP))
+    }
+    if (fadeTop > 0f) {
+      compositeLevel(canvas, node, 0f, 0f, w, fadeTop,
+        levelTopCache.acquire(LevelGradKey(curveTop, fadeTop, 0f)) {
+          levelGradient(curveTop, 0f, fadeTop, 0f, 0f)
+        })
+    }
+    if (fadeBottom > 0f) {
+      compositeLevel(canvas, node, 0f, h - fadeBottom, w, h,
+        levelBottomCache.acquire(LevelGradKey(curveBottom, fadeBottom, h)) {
+          levelGradient(curveBottom, 0f, h - fadeBottom, 0f, h)
+        })
+    }
+    if (fadeLeft > 0f) {
+      compositeLevel(canvas, node, 0f, 0f, fadeLeft, h,
+        levelLeftCache.acquire(LevelGradKey(curveLeft, fadeLeft, 0f)) {
+          levelGradient(curveLeft, fadeLeft, 0f, 0f, 0f)
+        })
+    }
+    if (fadeRight > 0f) {
+      compositeLevel(canvas, node, w - fadeRight, 0f, w, h,
+        levelRightCache.acquire(LevelGradKey(curveRight, fadeRight, w)) {
+          levelGradient(curveRight, w - fadeRight, 0f, w, 0f)
+        })
     }
 
     // Frost material veil on top: translucent (inner) → opaque material color
@@ -328,19 +366,27 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private fun drawFrostVeil(canvas: Canvas, w: Float, h: Float) {
     val veil = overlayColor ?: Color.WHITE
     if (fadeTop > 0f) {
-      overlayPaint.shader = veilGradient(curveTop, 0f, fadeTop, 0f, 0f, veil)
+      overlayPaint.shader = veilTopCache.acquire(VeilGradKey(curveTop, fadeTop, 0f, veil)) {
+        veilGradient(curveTop, 0f, fadeTop, 0f, 0f, veil)
+      }
       canvas.drawRect(0f, 0f, w, fadeTop, overlayPaint)
     }
     if (fadeBottom > 0f) {
-      overlayPaint.shader = veilGradient(curveBottom, 0f, h - fadeBottom, 0f, h, veil)
+      overlayPaint.shader = veilBottomCache.acquire(VeilGradKey(curveBottom, fadeBottom, h, veil)) {
+        veilGradient(curveBottom, 0f, h - fadeBottom, 0f, h, veil)
+      }
       canvas.drawRect(0f, h - fadeBottom, w, h, overlayPaint)
     }
     if (fadeLeft > 0f) {
-      overlayPaint.shader = veilGradient(curveLeft, fadeLeft, 0f, 0f, 0f, veil)
+      overlayPaint.shader = veilLeftCache.acquire(VeilGradKey(curveLeft, fadeLeft, 0f, veil)) {
+        veilGradient(curveLeft, fadeLeft, 0f, 0f, 0f, veil)
+      }
       canvas.drawRect(0f, 0f, fadeLeft, h, overlayPaint)
     }
     if (fadeRight > 0f) {
-      overlayPaint.shader = veilGradient(curveRight, w - fadeRight, 0f, w, 0f, veil)
+      overlayPaint.shader = veilRightCache.acquire(VeilGradKey(curveRight, fadeRight, w, veil)) {
+        veilGradient(curveRight, w - fadeRight, 0f, w, 0f, veil)
+      }
       canvas.drawRect(w - fadeRight, 0f, w, h, overlayPaint)
     }
   }
@@ -374,21 +420,20 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     canvas.restoreToCount(sc)
   }
 
-  // LinearGradient along the inner→outer line whose alpha is the per-level weight
-  // clamp(fb·N − (k−1), 0, 1), where fb = min(f·BLUR_GAIN, 1) is the gained
-  // curve profile. The gain makes the blurred copy saturate early and plateau
-  // across most of the band — otherwise blur presence tracks the dissolve curve
-  // and is only visible in a thin outer sliver, exactly where the frost veil
-  // hides it. RGB is irrelevant under DST_IN — only the alpha ramp is consumed.
+  // LinearGradient along the inner→outer line whose alpha is the blur-presence
+  // weight min(f·BLUR_GAIN, 1), where f = the curve profile (0 inner → 1 outer).
+  // The gain makes the blurred copy saturate early and plateau across most of
+  // the band — otherwise blur presence tracks the dissolve curve and is only
+  // visible in a thin outer sliver, exactly where the frost veil hides it. RGB
+  // is irrelevant under DST_IN — only the alpha ramp is consumed.
   private fun levelGradient(
-    curve: String, x0: Float, y0: Float, x1: Float, y1: Float, k: Int,
+    curve: String, x0: Float, y0: Float, x1: Float, y1: Float,
   ): LinearGradient {
     val a = EdgeFadeCurves.alphas(curve); val n = a.size
     val stops = EdgeFadeCurves.stops(curve)
     val colors = IntArray(n) { i ->
       val f = a[n - 1 - i].toFloat() // blur fraction: 0 inner → 1 outer
-      val fb = (f * BLUR_GAIN).coerceAtMost(1f)
-      val weight = (fb * BLUR_LEVELS - (k - 1)).coerceIn(0f, 1f)
+      val weight = (f * BLUR_GAIN).coerceAtMost(1f)
       ColorUtils.setAlphaComponent(Color.BLACK, (weight * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
@@ -407,12 +452,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   private companion object {
-    // Number of hardware Gaussian levels blended to approximate a continuous,
-    // curve-following blur radius. iOS' scroll-edge effect is a single uniform
-    // blur that dissolves into the bar material, not a progressive radius ramp,
-    // so 1 level matches it — and is ~16× cheaper than the old multi-level chain.
-    private const val BLUR_LEVELS = 1
-
     // Gain applied to the blur-presence ramp so the blurred copy saturates early
     // and stays full across most of the band, instead of only appearing in a thin
     // outer sliver (where the veil would hide it). Higher = blur reaches full
@@ -423,11 +462,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // of blurred content showing through, like iOS frosted glass.
     private const val VEIL_MAX_ALPHA = 0.8f
 
-    // Per-process log when blur mode degrades to mask on API < 31.
-    private val blurFallbackLogged = AtomicBoolean(false)
+    // Per-process log when blur mode degrades to mask on API < 31. UI-thread only.
+    private var blurFallbackLogged = false
 
     private fun logBlurFallbackOnce() {
-      if (blurFallbackLogged.compareAndSet(false, true)) {
+      if (!blurFallbackLogged) {
+        blurFallbackLogged = true
         Log.w(
           "EdgeFadeView",
           "mode=\"blur\" requires Android 12 (API 31)+ — falling back to mask fade.",

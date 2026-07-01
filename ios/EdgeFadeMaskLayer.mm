@@ -51,7 +51,15 @@ static CGGradientRef maskGradientForPreset(NSString *curve)
 
 // ─── Layer ────────────────────────────────────────────────────────────────────
 
-@implementation EdgeFadeMaskLayer
+@implementation EdgeFadeMaskLayer {
+  // Per-edge cache for custom-curve gradients. Presets are process-wide static
+  // (see maskGradientForPreset); without this, a custom curve would re-parse the
+  // string and rebuild its CGGradientRef on every drawInContext: call instead of
+  // only when the curve actually changes — costly if fade size is driven by a
+  // scroll/gesture worklet redrawing every frame.
+  NSString *_cachedCustomTop, *_cachedCustomBottom, *_cachedCustomLeft, *_cachedCustomRight;
+  CGGradientRef _customGradTop, _customGradBottom, _customGradLeft, _customGradRight;
+}
 
 - (instancetype)init {
   self = [super init];
@@ -63,15 +71,26 @@ static CGGradientRef maskGradientForPreset(NSString *curve)
   return self;
 }
 
-// Returns a gradient ref for the given curve.
-// `mustRelease` is set to YES for custom curves — caller must CGGradientRelease.
-- (CGGradientRef)gradientForCurve:(NSString *)curve mustRelease:(BOOL *)mustRelease {
-  if (EdgeFadeCurveIsCustom(curve)) {
-    *mustRelease = YES;
-    return buildMaskGradient(curve);
+- (void)dealloc {
+  if (_customGradTop)    CGGradientRelease(_customGradTop);
+  if (_customGradBottom) CGGradientRelease(_customGradBottom);
+  if (_customGradLeft)   CGGradientRelease(_customGradLeft);
+  if (_customGradRight)  CGGradientRelease(_customGradRight);
+}
+
+// Returns a gradient ref for the given curve. Presets come from the static
+// process-wide cache; custom curves are cached in the given edge slot and only
+// rebuilt when that edge's curve string changes.
+- (CGGradientRef)gradientForCurve:(NSString *)curve
+                       cachedCurve:(NSString * __strong *)cachedCurve
+                        cachedGrad:(CGGradientRef *)cachedGrad {
+  if (!EdgeFadeCurveIsCustom(curve)) return maskGradientForPreset(curve);
+  if (![*cachedCurve isEqualToString:curve]) {
+    if (*cachedGrad) CGGradientRelease(*cachedGrad);
+    *cachedGrad = buildMaskGradient(curve);
+    *cachedCurve = curve;
   }
-  *mustRelease = NO;
-  return maskGradientForPreset(curve);
+  return *cachedGrad;
 }
 
 - (void)drawInContext:(CGContextRef)ctx {
@@ -83,48 +102,51 @@ static CGGradientRef maskGradientForPreset(NSString *curve)
   CGContextFillRect(ctx, self.bounds);
   CGContextSetBlendMode(ctx, kCGBlendModeDestinationIn);
 
-  BOOL release = NO;
   CGGradientRef grad;
 
   if (self.fadeTop > 0) {
-    grad = [self gradientForCurve:self.curveTop ?: @"smooth" mustRelease:&release];
+    grad = [self gradientForCurve:self.curveTop ?: @"smooth"
+                       cachedCurve:&_cachedCustomTop
+                        cachedGrad:&_customGradTop];
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx, CGRectMake(0, 0, w, self.fadeTop));
     CGContextDrawLinearGradient(ctx, grad,
       CGPointMake(0, self.fadeTop), CGPointMake(0, 0),
       kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
     CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
   }
   if (self.fadeBottom > 0) {
-    grad = [self gradientForCurve:self.curveBottom ?: @"smooth" mustRelease:&release];
+    grad = [self gradientForCurve:self.curveBottom ?: @"smooth"
+                       cachedCurve:&_cachedCustomBottom
+                        cachedGrad:&_customGradBottom];
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx, CGRectMake(0, h - self.fadeBottom, w, self.fadeBottom));
     CGContextDrawLinearGradient(ctx, grad,
       CGPointMake(0, h - self.fadeBottom), CGPointMake(0, h),
       kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
     CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
   }
   if (self.fadeLeft > 0) {
-    grad = [self gradientForCurve:self.curveLeft ?: @"smooth" mustRelease:&release];
+    grad = [self gradientForCurve:self.curveLeft ?: @"smooth"
+                       cachedCurve:&_cachedCustomLeft
+                        cachedGrad:&_customGradLeft];
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx, CGRectMake(0, 0, self.fadeLeft, h));
     CGContextDrawLinearGradient(ctx, grad,
       CGPointMake(self.fadeLeft, 0), CGPointMake(0, 0),
       kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
     CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
   }
   if (self.fadeRight > 0) {
-    grad = [self gradientForCurve:self.curveRight ?: @"smooth" mustRelease:&release];
+    grad = [self gradientForCurve:self.curveRight ?: @"smooth"
+                       cachedCurve:&_cachedCustomRight
+                        cachedGrad:&_customGradRight];
     CGContextSaveGState(ctx);
     CGContextClipToRect(ctx, CGRectMake(w - self.fadeRight, 0, self.fadeRight, h));
     CGContextDrawLinearGradient(ctx, grad,
       CGPointMake(w - self.fadeRight, 0), CGPointMake(w, 0),
       kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
     CGContextRestoreGState(ctx);
-    if (release) CGGradientRelease(grad);
   }
 }
 
