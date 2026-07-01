@@ -19,6 +19,33 @@ typedef NS_ENUM(NSInteger, EdgeFadeRenderMode) {
   EdgeFadeModeBlur,    // UIVisualEffectView blurred, edge-masked, optional veil
 };
 
+// ─── Progressive-blur model (blur mode) ───────────────────────────────────────
+//
+// True progressive blur (Apple Music) is not one blur cross-faded — it is a
+// stack of increasing-radius blurs, each visible only over its own slice of the
+// band. We model presence(t) = 1 − alpha(t) (the curve's own complement, rising
+// inner → outer) and cut the presence range into three fixed fractions
+//   F = { 1/3, 2/3, 1 }.
+// Level k (0-based) owns the slice [F[k-1], F[k]] (F[-1] = 0) and its mask weight
+// is weight_k(t) = clamp((presence(t) − lo) / (hi − lo), 0, 1), staying 1 past
+// hi so the next-higher level cross-fades over it. The three views stack in
+// increasing radius: the sharp content shows through where all weights are 0
+// (band interior), a light blur near the inner ramp, the heaviest blur at the
+// outer edge — a smooth radius ramp instead of a single hard blur.
+//
+// Per-level blur *intensity* is tied to _blurRadius scaled by F[k]: level 0
+// tops out at a third of the radius, level 2 at the full radius, so at
+// blurRadius = 0 every level's fraction is 0 and the stack is visually neutral.
+
+static const NSInteger kEdgeFadeBlurLevels = 3;
+
+// Upper presence boundary F[k] for each level; lower boundary is F[k-1] (F[-1]=0).
+static const CGFloat kEdgeFadeLevelFractions[kEdgeFadeBlurLevels] = {1.0 / 3.0, 2.0 / 3.0, 1.0};
+
+// Convenience: window [lo, hi] for level k.
+static inline CGFloat EdgeFadeLevelLo(NSInteger k) { return k == 0 ? 0.0 : kEdgeFadeLevelFractions[k - 1]; }
+static inline CGFloat EdgeFadeLevelHi(NSInteger k) { return kEdgeFadeLevelFractions[k]; }
+
 // ─── Overlay colors ───────────────────────────────────────────────────────────
 //
 // Builds the `CAGradientLayer.colors` array for the given curve and base color:
@@ -97,13 +124,19 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   // (no intermediate container view) to avoid an extra compositing pass.
   CAGradientLayer *_overlayTop, *_overlayBottom, *_overlayLeft, *_overlayRight;
 
-  // Blur mode — UIVisualEffectView covering bounds, masked by EdgeFadeBlurMaskLayer,
-  // driven by a paused UIViewPropertyAnimator to allow fractional blur intensity.
-  UIVisualEffectView    *_blurView;
-  UIViewPropertyAnimator *_blurAnimator;
-  EdgeFadeBlurMaskLayer *_blurMaskLayer;
+  // Blur mode — a 3-level progressive-blur stack (Apple-Music style). Each level
+  // is a UIVisualEffectView covering bounds, masked by its own EdgeFadeBlurMaskLayer
+  // windowed to one third of the presence range, driven by a paused
+  // UIViewPropertyAnimator for fractional intensity. Level 0 (smallest radius,
+  // presence window [0,1/3]) sits lowest; level 2 (largest, [2/3,1]) sits on top.
+  // Fixed C arrays rather than NSArray: the count is a compile-time constant (3),
+  // the elements are strong-held ivars anyway, and index-based access keeps the
+  // per-level loops terse without boxing.
+  UIVisualEffectView     *_blurViews[kEdgeFadeBlurLevels];
+  UIViewPropertyAnimator *_blurAnimators[kEdgeFadeBlurLevels];
+  EdgeFadeBlurMaskLayer  *_blurMaskLayers[kEdgeFadeBlurLevels];
 
-  // Frost veil — optional per-edge CAGradientLayers on top of _blurView,
+  // Frost veil — optional per-edge CAGradientLayers on top of the blur stack,
   // painted only when _overlayColor is set (opt-in, replicating Android behavior).
   CAGradientLayer *_frostTop, *_frostBottom, *_frostLeft, *_frostRight;
 
@@ -162,9 +195,12 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     _overlayTop.contentsScale = _overlayBottom.contentsScale =
     _overlayLeft.contentsScale = _overlayRight.contentsScale = scale;
   }
-  if (_blurMaskLayer && _blurMaskLayer.contentsScale != scale) {
-    _blurMaskLayer.contentsScale = scale;
-    [_blurMaskLayer setNeedsDisplay];
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    EdgeFadeBlurMaskLayer *m = _blurMaskLayers[k];
+    if (m && m.contentsScale != scale) {
+      m.contentsScale = scale;
+      [m setNeedsDisplay];
+    }
   }
   if (_frostTop) {
     _frostTop.contentsScale = _frostBottom.contentsScale =
@@ -231,7 +267,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   switch (newMode) {
     case EdgeFadeModeMask:    layerMissing = (_maskLayer == nil);  break;
     case EdgeFadeModeOverlay: layerMissing = (_overlayTop == nil); break;
-    case EdgeFadeModeBlur:    layerMissing = (_blurView == nil);   break;
+    case EdgeFadeModeBlur:    layerMissing = (_blurViews[0] == nil); break;
     default:                  layerMissing = NO;                   break;
   }
 
@@ -246,13 +282,13 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     if (sizeChanged) [self _updateLayerFrames];
   } else {
     // Blur mode — incremental updates.
-    if (sizeChanged || curveChanged) [self _syncBlurMaskLayer];
+    if (sizeChanged || curveChanged) [self _syncBlurMaskLayers];
     if (sizeChanged) {
       [self _updateLayerFrames];
-      [_blurMaskLayer setNeedsDisplay];
+      [self _invalidateBlurMaskLayers];
     }
     if (curveChanged) {
-      [_blurMaskLayer setNeedsDisplay];
+      [self _invalidateBlurMaskLayers];
       if (_overlayColor) [self _rebuildVeilColors];
     }
     if (colorChanged) {
@@ -306,9 +342,12 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     [self.layer addSublayer:_overlayBottom];
     [self.layer addSublayer:_overlayLeft];
     [self.layer addSublayer:_overlayRight];
-  } else if (_renderMode == EdgeFadeModeBlur && _blurView && subview != _blurView) {
-    // Keep _blurView (and frost veil layers on its superlayer) above all content.
-    [self addSubview:_blurView];
+  } else if (_renderMode == EdgeFadeModeBlur && _blurViews[0] && ![self _isBlurView:subview]) {
+    // Keep all 3 blur levels (and frost veil layers on their superlayer) above
+    // content. Re-add in level order so radius stacks low → high (0 under 2).
+    for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+      if (_blurViews[k]) [self addSubview:_blurViews[k]];
+    }
     if (_frostTop) {
       [self.layer addSublayer:_frostTop];
       [self.layer addSublayer:_frostBottom];
@@ -334,17 +373,19 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   _cachedCurveTop = _cachedCurveBottom = _cachedCurveLeft = _cachedCurveRight = nil;
   _cachedColorTop = _cachedColorBottom = _cachedColorLeft = _cachedColorRight = nil;
 
-  // Blur mode — frost veil first, then animator, then blur view.
+  // Blur mode — frost veil first, then each level's animator + view + mask.
   [self _teardownFrostVeil];
 
-  if (_blurAnimator) {
-    _blurAnimator.fractionComplete = 0;
-    [_blurAnimator stopAnimation:YES];
-    _blurAnimator = nil;
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    if (_blurAnimators[k]) {
+      _blurAnimators[k].fractionComplete = 0;
+      [_blurAnimators[k] stopAnimation:YES];
+      _blurAnimators[k] = nil;
+    }
+    [_blurViews[k] removeFromSuperview];
+    _blurViews[k] = nil;
+    _blurMaskLayers[k] = nil;
   }
-  [_blurView removeFromSuperview];
-  _blurView = nil;
-  _blurMaskLayer = nil;
 }
 
 - (void)_buildFadeLayers {
@@ -470,67 +511,94 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 
 // ─── Blur mode ───────────────────────────────────────────────────────────────
 
-// _blurMaskLayer's fade/curve properties are only ever set here — the layer
-// itself never reads _fadeTop/_curveTop etc. directly — so without this,
-// property changes after the initial build would leave the mask stale and
-// the fade sliders / curve chips would have no visible effect. Callers are
-// responsible for invalidating (setNeedsDisplay) after syncing.
-- (void)_syncBlurMaskLayer {
-  if (!_blurMaskLayer) return;
-  _blurMaskLayer.fadeTop    = _fadeTop;   _blurMaskLayer.fadeBottom = _fadeBottom;
-  _blurMaskLayer.fadeLeft   = _fadeLeft;  _blurMaskLayer.fadeRight  = _fadeRight;
-  _blurMaskLayer.curveTop   = _curveTop;  _blurMaskLayer.curveBottom = _curveBottom;
-  _blurMaskLayer.curveLeft  = _curveLeft; _blurMaskLayer.curveRight  = _curveRight;
+// YES if `view` is one of the blur-level effect views. Used by didAddSubview: to
+// avoid re-adding a blur view in response to its own insertion.
+- (BOOL)_isBlurView:(UIView *)view {
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    if (view == _blurViews[k]) return YES;
+  }
+  return NO;
 }
 
-// Build the UIVisualEffectView + paused animator + EdgeFadeBlurMaskLayer.
-// The blur view is inserted as a subview so RN's layout system ignores it, while
-// the mask layer is assigned to _blurView.layer.mask.
+// Each mask layer's fade/curve properties are only ever set here — the layers
+// themselves never read _fadeTop/_curveTop etc. directly — so without this,
+// property changes after the initial build would leave the masks stale and
+// the fade sliders / curve chips would have no visible effect. levelLo/levelHi
+// are set once at build time and never touched here (they define the fixed
+// presence window of each level). Callers invalidate via _invalidateBlurMaskLayers.
+- (void)_syncBlurMaskLayers {
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    EdgeFadeBlurMaskLayer *m = _blurMaskLayers[k];
+    if (!m) continue;
+    m.fadeTop  = _fadeTop;  m.fadeBottom = _fadeBottom;
+    m.fadeLeft = _fadeLeft; m.fadeRight  = _fadeRight;
+    m.curveTop  = _curveTop;  m.curveBottom = _curveBottom;
+    m.curveLeft = _curveLeft; m.curveRight  = _curveRight;
+  }
+}
+
+- (void)_invalidateBlurMaskLayers {
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    [_blurMaskLayers[k] setNeedsDisplay];
+  }
+}
+
+// Build the 3-level progressive-blur stack: for each level, a windowed
+// EdgeFadeBlurMaskLayer + a nil-effect UIVisualEffectView + a paused animator.
+// The views are inserted as subviews so RN's layout system ignores them; each
+// mask layer is assigned to its own view's layer.mask. Levels are added in
+// increasing radius order (0 first → lowest), so higher radii stack on top.
 - (void)_buildBlurView {
   const CGFloat scale = [self _effectiveScale];
 
-  // Blur mask layer — grayscale bitmap that gates blur visibility per edge.
-  _blurMaskLayer = [EdgeFadeBlurMaskLayer layer];
-  _blurMaskLayer.contentsScale = scale;
-  [self _syncBlurMaskLayer];
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    // Windowed blur mask — grayscale bitmap gating this level's slice of the band.
+    EdgeFadeBlurMaskLayer *mask = [EdgeFadeBlurMaskLayer layer];
+    mask.contentsScale = scale;
+    mask.levelLo = EdgeFadeLevelLo(k);
+    mask.levelHi = EdgeFadeLevelHi(k);
+    _blurMaskLayers[k] = mask;
 
-  // Create the blur view with nil effect; effect is driven by the animator below.
-  _blurView = [[UIVisualEffectView alloc] initWithEffect:nil];
-  _blurView.userInteractionEnabled = NO;
-  _blurView.layer.mask = _blurMaskLayer;
+    // Effect view with nil effect; the animator drives the effect below.
+    UIVisualEffectView *view = [[UIVisualEffectView alloc] initWithEffect:nil];
+    view.userInteractionEnabled = NO;
+    view.layer.mask = mask;
+    _blurViews[k] = view;
+    [self addSubview:view];
 
-  [self addSubview:_blurView];
+    // Paused UIViewPropertyAnimator trick: set fractionComplete to drive blur
+    // intensity without animating. Must retain the animator — paused animators
+    // dealloc mid-flight if released, producing a visual glitch.
+    //
+    // Style is unified to UIBlurEffectStyleRegular on every OS version — the
+    // `.systemXThinMaterial` family is not a pure gaussian blur: UIVisualEffectView
+    // layers extra tint/luminosity subviews on top of the backdrop blur to match
+    // system chrome, and at partial fractionComplete those subviews still show
+    // through as a milky white glow, even with the frost veil disabled. `.regular`
+    // gets us the closest thing to a plain backdrop blur (à la Apple Music's
+    // progressive blur), which _stripVisualEffectTintOn: then cleans up further.
+    __weak UIVisualEffectView *weakView = view;
+    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleRegular];
+    UIViewPropertyAnimator *animator = [[UIViewPropertyAnimator alloc] initWithDuration:1
+                                                                                 curve:UIViewAnimationCurveLinear
+                                                                            animations:^{
+      weakView.effect = effect;
+    }];
+    animator.pausesOnCompletion = YES;
+    _blurAnimators[k] = animator;
 
-  // Paused UIViewPropertyAnimator trick: set fractionComplete to drive blur
-  // intensity without animating. Must retain the animator — paused animators
-  // dealloc mid-flight if released, producing a visual glitch.
-  //
-  // Style is unified to UIBlurEffectStyleRegular on every OS version — the
-  // `.systemXThinMaterial` family is not a pure gaussian blur: UIVisualEffectView
-  // layers extra tint/luminosity subviews on top of the backdrop blur to match
-  // system chrome, and at partial fractionComplete those subviews still show
-  // through as a milky white glow, even with the frost veil disabled. `.regular`
-  // gets us the closest thing to a plain backdrop blur (à la Apple Music's
-  // progressive blur), which _stripVisualEffectTint then cleans up further below.
-  __weak UIVisualEffectView *weakBlurView = _blurView;
-  UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleRegular];
-  _blurAnimator = [[UIViewPropertyAnimator alloc] initWithDuration:1
-                                                             curve:UIViewAnimationCurveLinear
-                                                        animations:^{
-    weakBlurView.effect = effect;
-  }];
-  _blurAnimator.pausesOnCompletion = YES;
+    // A UIViewPropertyAnimator is `.inactive` after init; setting fractionComplete
+    // on an inactive animator is a no-op. Start then immediately pause to move it
+    // to the paused/active state so fractionComplete scrubbing takes effect.
+    [animator startAnimation];
+    [animator pauseAnimation];
 
-  // A UIViewPropertyAnimator is `.inactive` after init; setting fractionComplete
-  // on an inactive animator is a no-op. Start then immediately pause to move it
-  // to the paused/active state so fractionComplete scrubbing takes effect, then
-  // apply the initial blur intensity.
-  [_blurAnimator startAnimation];
-  [_blurAnimator pauseAnimation];
+    // The effect's tint/luminosity subviews are only instantiated once the effect
+    // has actually been applied, which just happened above.
+    [self _stripVisualEffectTintOn:view];
+  }
 
-  // The effect's tint/luminosity subviews are only instantiated once the effect
-  // has actually been applied to the view, which just happened above.
-  [self _stripVisualEffectTint];
+  [self _syncBlurMaskLayers];
   [self _applyBlurFraction];
 }
 
@@ -541,33 +609,35 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // gaussian blur behind. This only inspects public class-name strings (no
 // NSClassFromString, no KVC on private keys), so it stays within documented,
 // App Store-safe introspection.
-- (void)_stripVisualEffectTint {
-  for (UIView *subview in _blurView.subviews) {
+- (void)_stripVisualEffectTintOn:(UIVisualEffectView *)blurView {
+  for (UIView *subview in blurView.subviews) {
     subview.hidden = ![NSStringFromClass(subview.class) containsString:@"Backdrop"];
   }
 }
 
-// Expose _blurView as a property so the animator block can reference it via
-// the weak self pattern without triggering a "direct ivar access in block" warning.
-- (UIVisualEffectView *)blurView { return _blurView; }
-
-// Map blurRadius (default 28, range 0–∞) to a fraction in [0, 1] for the
-// animator. 40 pt radius → fraction 1.0 (full effect); default 28 → ~0.7.
+// Map blurRadius (default 28, range 0–∞) to a per-level fraction in [0, 1] for
+// each animator. Level k tops out at _blurRadius * F[k]; 40 pt radius → level 2
+// (F=1) reaches fraction 1.0, level 0 (F=1/3) reaches ~0.33 — a rising radius
+// ramp across the stack. At blurRadius = 0 every level's fraction is 0, so the
+// whole stack is visually neutral.
 - (void)_applyBlurFraction {
-  if (!_blurAnimator) return;
-  // UIKit can re-instantiate the effect's tint/luminosity subviews whenever it
-  // re-applies the effect (e.g. after a fractionComplete scrub), so re-strip on
-  // every call. The subview list is short (2-3 entries), so this is cheap.
-  [self _stripVisualEffectTint];
-  const CGFloat fraction = MIN(MAX(_blurRadius / 40.0, 0.0), 1.0);
-  _blurAnimator.fractionComplete = fraction;
+  for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+    UIViewPropertyAnimator *animator = _blurAnimators[k];
+    if (!animator) continue;
+    // UIKit can re-instantiate the effect's tint/luminosity subviews whenever it
+    // re-applies the effect (e.g. after a fractionComplete scrub), so re-strip on
+    // every call. The subview list is short (2-3 entries), so this is cheap.
+    [self _stripVisualEffectTintOn:_blurViews[k]];
+    const CGFloat fraction = MIN(MAX(_blurRadius * kEdgeFadeLevelFractions[k] / 40.0, 0.0), 1.0);
+    animator.fractionComplete = fraction;
+  }
 }
 
 // ─── Frost veil (blur mode only) ─────────────────────────────────────────────
 //
-// Four CAGradientLayers on top of _blurView's layer, one per edge, transparent
-// (inner) → overlayColor (outer, capped at VEIL_MAX_ALPHA). Opt-in: only created
-// when _overlayColor is non-nil, replicating Android's drawFrostVeil behavior.
+// Four CAGradientLayers stacked above the whole blur-level stack, one per edge,
+// transparent (inner) → overlayColor (outer, capped at VEIL_MAX_ALPHA). Opt-in:
+// only created when _overlayColor is non-nil, replicating Android's drawFrostVeil.
 
 - (void)_buildFrostVeil {
   if (_frostTop) return; // already built
@@ -640,12 +710,14 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   }
 
   if (_renderMode == EdgeFadeModeBlur) {
-    if (!_blurView) return;
+    if (!_blurViews[0]) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
 
-    _blurView.frame      = self.bounds;
-    _blurMaskLayer.frame = _blurView.bounds;
+    for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+      _blurViews[k].frame      = self.bounds;
+      _blurMaskLayers[k].frame = _blurViews[k].bounds;
+    }
 
     // Frost veil layers: same frame/startPoint/endPoint as overlay strips.
     if (_frostTop) {
