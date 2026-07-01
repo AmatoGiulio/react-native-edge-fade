@@ -5,15 +5,16 @@
 // 32-stop preset curves computed once via dispatch_once. Dense stops eliminate
 // visible banding at any fade size.
 //
-//   smooth → (1−t)³   sharp  → (1−t)⁵
-//   gentle → (1−t)²   soft   → cos(t·π/2)
-//   linear → kept as a 2-stop array (1, 0) since the curve is exact.
+//   smooth    → (1−t)³                    sharp  → (1−t)⁵
+//   gentle    → (1−t)²                    soft   → cos(t·π/2)
+//   smoother  → smootherstep 6t⁵−15t⁴+10t³
+//   linear    → kept as a 2-stop array (1, 0) since the curve is exact.
 
 static const int     kN              = 32;
 static const CGFloat kTwoStops[2]    = {0, 1.0};
 static const CGFloat kLinearAlphas[2] = {1, 0};
 
-static CGFloat sSmoothAlphas[32], sSharpAlphas[32], sGentleAlphas[32], sSoftAlphas[32];
+static CGFloat sSmoothAlphas[32], sSharpAlphas[32], sGentleAlphas[32], sSoftAlphas[32], sSmootherAlphas[32];
 static CGFloat sNStops[32];
 
 static void computePresetCurves(void) {
@@ -26,6 +27,7 @@ static void computePresetCurves(void) {
       sSharpAlphas[i]  = pow(1 - t, 5);
       sGentleAlphas[i] = pow(1 - t, 2);
       sSoftAlphas[i]   = cos(t * M_PI_2);
+      sSmootherAlphas[i] = 1 - (t * t * t * (t * (t * 6 - 15) + 10));
     }
   });
 }
@@ -39,6 +41,7 @@ static void presetCurveData(NSString *curve,
   if      ([curve isEqualToString:@"sharp"])  { *alphasOut = sSharpAlphas;  *stopsOut = sNStops;    *countOut = kN; }
   else if ([curve isEqualToString:@"gentle"]) { *alphasOut = sGentleAlphas; *stopsOut = sNStops;    *countOut = kN; }
   else if ([curve isEqualToString:@"soft"])   { *alphasOut = sSoftAlphas;   *stopsOut = sNStops;    *countOut = kN; }
+  else if ([curve isEqualToString:@"smoother"]) { *alphasOut = sSmootherAlphas; *stopsOut = sNStops; *countOut = kN; }
   else if ([curve isEqualToString:@"linear"]) { *alphasOut = kLinearAlphas; *stopsOut = kTwoStops;  *countOut = 2;  }
   else                                        { *alphasOut = sSmoothAlphas; *stopsOut = sNStops;    *countOut = kN; }
 }

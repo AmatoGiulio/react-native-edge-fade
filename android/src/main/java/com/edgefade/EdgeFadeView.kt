@@ -420,21 +420,24 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     canvas.restoreToCount(sc)
   }
 
-  // LinearGradient along the inner→outer line whose alpha is the blur-presence
-  // weight min(f·BLUR_GAIN, 1), where f = the curve profile (0 inner → 1 outer).
-  // The gain makes the blurred copy saturate early and plateau across most of
-  // the band — otherwise blur presence tracks the dissolve curve and is only
-  // visible in a thin outer sliver, exactly where the frost veil hides it. RGB
-  // is irrelevant under DST_IN — only the alpha ramp is consumed.
+  // LinearGradient along the inner→outer line whose alpha ramps from the
+  // curve profile: blur presence = 1 − alpha(t), so the blurred copy fades in
+  // from nothing at the inner edge (where the curve is opaque) to full visibility
+  // at the outer edge (where the curve is transparent). The gradient's positions
+  // follow the curve's stops directly across the entire band, with no compression
+  // or plateau — same semantics as mask mode. RGB is irrelevant under DST_IN —
+  // only the alpha ramp is consumed.
   private fun levelGradient(
     curve: String, x0: Float, y0: Float, x1: Float, y1: Float,
   ): LinearGradient {
     val a = EdgeFadeCurves.alphas(curve); val n = a.size
     val stops = EdgeFadeCurves.stops(curve)
     val colors = IntArray(n) { i ->
-      val f = a[n - 1 - i].toFloat() // blur fraction: 0 inner → 1 outer
-      val weight = (f * BLUR_GAIN).coerceAtMost(1f)
-      ColorUtils.setAlphaComponent(Color.BLACK, (weight * 255f).roundToInt())
+      // Blur presence = 1 − alpha(t): the blur takes over exactly what the curve
+      // dissolves (same semantics as mask mode), ramping across the whole band —
+      // 0 at the inner edge (a[0] = 1) up to full at the outer edge (a[n-1] = 0).
+      val presence = 1f - a[i].toFloat()
+      ColorUtils.setAlphaComponent(Color.BLACK, (presence * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
   }
@@ -452,12 +455,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   private companion object {
-    // Gain applied to the blur-presence ramp so the blurred copy saturates early
-    // and stays full across most of the band, instead of only appearing in a thin
-    // outer sliver (where the veil would hide it). Higher = blur reaches full
-    // closer to the inner edge → more of the strip reads as Gaussian-blurred.
-    private const val BLUR_GAIN = 2.6f
-
     // Max opacity of the frost material veil at the outer edge. < 1 keeps a hint
     // of blurred content showing through, like iOS frosted glass.
     private const val VEIL_MAX_ALPHA = 0.8f

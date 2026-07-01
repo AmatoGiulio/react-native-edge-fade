@@ -65,10 +65,12 @@ export default function PhotosScreen() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingTop: insets.top + 56,
-            paddingBottom: insets.bottom + 96,
-          }}
+          // Full-bleed: let cells scroll edge-to-edge, under the status bar and
+          // the floating action bar. Insetting the content with paddingTop/Bottom
+          // left an empty band beneath the bars that the blur frosted over
+          // nothing — the `mode="blur"` UIVisualEffectView frosts its whole
+          // backdrop, so the fade region must always sit over real image content.
+          contentContainerStyle={{ paddingTop: 100, paddingBottom: 0 }}
         />
       </EdgeFadeView>
 

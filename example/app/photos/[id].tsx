@@ -42,6 +42,7 @@ const CURVES: CurvePreset[] = [
   'linear',
 ];
 const ACCENT = '#ffffff';
+const DEBUG_FADE_BANDS = false; // bordo visivo sulle bande fade — solo debug, spegnere prima del commit
 
 interface FadeState {
   mode: EdgeFadeMode;
@@ -130,6 +131,24 @@ export default function PhotoDetailScreen() {
           >
             <Image source={item.source} style={s.photo} resizeMode="cover" />
           </EdgeFadeView>
+          {DEBUG_FADE_BANDS && fade.top > 0 && (
+            <View
+              pointerEvents="none"
+              style={[
+                s.debugBand,
+                { top: 0, height: fade.top, borderColor: '#00e5ff' },
+              ]}
+            />
+          )}
+          {DEBUG_FADE_BANDS && fade.bottom > 0 && (
+            <View
+              pointerEvents="none"
+              style={[
+                s.debugBand,
+                { bottom: 0, height: fade.bottom, borderColor: '#ff3b30' },
+              ]}
+            />
+          )}
         </View>
 
         {/* Title / subtitle */}
@@ -326,6 +345,14 @@ const s = StyleSheet.create({
   photoWrap: { width: '70%', aspectRatio: 3 / 4 },
   edgeFade: { flex: 1 },
   photo: { width: '100%', height: '100%' },
+  debugBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderWidth: 1,
+    borderStyle: 'dashed' as const,
+    borderRadius: 0,
+  },
 
   meta: { marginTop: 20, alignItems: 'center', gap: 6 },
   title: { color: '#ffffff', fontSize: 22, fontWeight: '700' },

@@ -44,7 +44,12 @@ export default function TuneSheet() {
   } = useFade();
 
   return (
-    <View style={s.root}>
+    // `collapsable={false}` stops RN from flattening this wrapper away. Without
+    // it, RNScreens' FormSheet receives the title + ScrollView as separate
+    // subviews ("expects at most 2 subviews. Got 3") and mislays them, so the
+    // title overlaps the preset chips. Keeping the wrapper intact gives the sheet
+    // a single child that lays its header and ScrollView out as a normal column.
+    <View style={s.root} collapsable={false}>
       <Text style={s.title}>Edge Fade</Text>
 
       <ScrollView
@@ -199,6 +204,7 @@ function ChipRow({ children }: { children: ReactNode }) {
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={s.chipRow}
+      style={s.chipRowOuter}
     >
       {children}
     </ScrollView>
@@ -232,11 +238,14 @@ const s = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
-    paddingTop: 14,
+    paddingTop: 20,
     paddingBottom: 12,
   },
 
   chipRow: { gap: 8, paddingVertical: 4, paddingRight: 8 },
+  // Explicit height so the horizontal ScrollView reserves vertical space inside
+  // the outer vertical ScrollView (otherwise it collapses to 0 and overlaps).
+  chipRowOuter: { height: 46 },
   chip: {
     paddingHorizontal: 16,
     paddingVertical: 9,
