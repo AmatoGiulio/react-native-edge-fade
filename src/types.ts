@@ -56,7 +56,14 @@ export interface EdgeFadeViewProps extends ViewProps {
    *             at the outer edge, following the per-edge `size`/`curve`.
    */
   mode?: EdgeFadeMode;
-  /** Global overlay color (overlay mode). Per-edge `EdgeConfig.color` overrides this. */
+  /**
+   * Overlay mode: gradient target color. Per-edge `EdgeConfig.color` overrides this.
+   *
+   * Blur mode: optional frosted-glass material tint painted over the blur
+   * (translucent inner → opaque outer). Omit it for a pure content-derived
+   * Gaussian fade that adapts to any background; pass a dark color when
+   * overlaying controls that need a legibility backdrop.
+   */
   color?: ColorValue;
   /**
    * Maximum blur radius (dp) reached at the outer edge in `mode="blur"`.

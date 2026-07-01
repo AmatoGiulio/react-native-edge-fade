@@ -357,14 +357,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
 
     // Frost material veil on top: translucent (inner) → opaque material color
-    // (outer). This is what makes it read as frosted glass rather than a plain
-    // blur, and mutes any bright-on-dark glow. Uses `color` (overlayColor), or
-    // white by default.
-    drawFrostVeil(canvas, w, h)
+    // (outer). Opt-in — painted only when `color` is set. Without it, blur mode
+    // stays a pure content-derived Gaussian fade (dark content reads dark, light
+    // reads light) instead of forcing a white haze that only suits light UI.
+    // Pass a dark `color` when overlaying controls that need a legibility backdrop.
+    overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
   }
 
-  private fun drawFrostVeil(canvas: Canvas, w: Float, h: Float) {
-    val veil = overlayColor ?: Color.WHITE
+  private fun drawFrostVeil(canvas: Canvas, w: Float, h: Float, veil: Int) {
     if (fadeTop > 0f) {
       overlayPaint.shader = veilTopCache.acquire(VeilGradKey(curveTop, fadeTop, 0f, veil)) {
         veilGradient(curveTop, 0f, fadeTop, 0f, 0f, veil)
