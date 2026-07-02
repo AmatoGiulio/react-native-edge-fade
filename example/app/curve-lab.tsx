@@ -2,12 +2,12 @@
  * Curve Lab — a DialKit-style debug tool for tuning the cubic-bezier curve
  * that drives EdgeFadeView's fade ramp, live, against real content.
  *
- * All parameters live in SharedValues: dial-row drags run as worklets on the
- * UI thread, and only throttled mirrors reach React state for the
- * non-animatable `curve` / `blurRadius` props. The preview fades on the TOP
- * edge (the panel covers the bottom), and the panel follows the light DialKit
- * reference: white card, plot on top, parameter rows below, readout at the
- * bottom.
+ * All parameters live in SharedValues: dial-row drags and direct curve
+ * editing on the plot (grab-nearest-point pan) run as worklets on the UI
+ * thread, and only throttled mirrors reach React state for the non-animatable
+ * `curve` / `blurRadius` props. The preview fades on the TOP edge (the panel
+ * covers the bottom), and the panel follows the light DialKit reference:
+ * white card, plot on top, parameter rows below, readout at the bottom.
  */
 
 import { useCallback, useMemo, useState } from 'react';
