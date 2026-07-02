@@ -97,6 +97,9 @@ export default function CurveLabScreen() {
   const panP1 = useMemo(
     () =>
       Gesture.Pan()
+        // Handlers use React refs/setState; with Reanimated installed they
+        // would otherwise run as worklets on the UI thread and crash.
+        .runOnJS(true)
         .onStart(() => {
           dragStartRef.current = {
             x1: p1x1Ref.current,
@@ -127,6 +130,9 @@ export default function CurveLabScreen() {
   const panP2 = useMemo(
     () =>
       Gesture.Pan()
+        // Handlers use React refs/setState; with Reanimated installed they
+        // would otherwise run as worklets on the UI thread and crash.
+        .runOnJS(true)
         .onStart(() => {
           dragStartRef.current = {
             x1: p1x1Ref.current,
