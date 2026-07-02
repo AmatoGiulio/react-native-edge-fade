@@ -34,6 +34,7 @@ export default function RootLayout() {
             <Stack.Screen name="benchmark" />
             <Stack.Screen name="blur" />
             <Stack.Screen name="blur-lab" />
+            <Stack.Screen name="curve-lab" />
             <Stack.Screen name="photos" />
             <Stack.Screen
               name="demo"

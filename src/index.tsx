@@ -2,6 +2,7 @@ import { EdgeFadeView } from './EdgeFadeView';
 import { AnimatedEdgeFadeView } from './AnimatedEdgeFadeView';
 
 export { EdgeFadeView, AnimatedEdgeFadeView };
+export { serializeCurve } from './curves';
 
 export type { AnimatedEdgeFadeViewProps } from './AnimatedEdgeFadeView';
 

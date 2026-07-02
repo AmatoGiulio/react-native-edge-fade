@@ -75,6 +75,10 @@ export default function DiscoverScreen() {
     router.push('/blur-lab' as never);
   }, []);
 
+  const handleCurveLab = useCallback(() => {
+    router.push('/curve-lab' as never);
+  }, []);
+
   const handlePhotos = useCallback(() => {
     router.push('/photos' as never);
   }, []);
@@ -107,6 +111,12 @@ export default function DiscoverScreen() {
             onPress={handleBlurLab}
           >
             <Text style={[s.benchText, { color: t.sub }]}>Lab</Text>
+          </Pressable>
+          <Pressable
+            style={[s.benchBtn, { borderColor: t.border }]}
+            onPress={handleCurveLab}
+          >
+            <Text style={[s.benchText, { color: t.sub }]}>Curves</Text>
           </Pressable>
           <Pressable
             style={[s.benchBtn, { borderColor: t.border }]}
