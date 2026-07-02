@@ -48,8 +48,8 @@ const PRESETS: Array<{ label: string; value: Bezier }> = [
   { label: 'gentle', value: { x1: 0.25, y1: 0.46, x2: 0.45, y2: 0.94 } },
 ];
 
-// Underwater shot — rich color and detail for the top fade to chew on.
-const HERO = CATALOG[21]!;
+// Bright landscape — the underwater shot was too dark for the top fade.
+const HERO = CATALOG[19]!;
 const ROW_IMAGES = CATALOG.slice(28, 34);
 
 function fmt2(v: number): string {
