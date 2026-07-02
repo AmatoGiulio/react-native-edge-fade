@@ -107,17 +107,21 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     ? (props.radius as SharedValueLike<number>)
     : null;
 
-  // Build the static prop set: replace any SharedValue with 0 so
-  // resolveNativeProps emits an inactive edge, then let animatedProps
-  // override the size on the UI thread.
+  // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
+  // an ACTIVE edge with zero size — so resolveNativeProps still resolves the
+  // component-level curve/color onto that edge (a plain `0` would make
+  // resolveEdge return null and silently fall back to the 'smooth' curve).
+  // animatedProps then overrides the size on the UI thread.
   const staticProps: EdgeFadeViewProps = {
     ...(props as EdgeFadeViewProps),
-    top: topSV ? 0 : (props.top as EdgeFadeViewProps['top']),
-    bottom: bottomSV ? 0 : (props.bottom as EdgeFadeViewProps['bottom']),
-    left: leftSV ? 0 : (props.left as EdgeFadeViewProps['left']),
-    right: rightSV ? 0 : (props.right as EdgeFadeViewProps['right']),
-    start: startSV ? 0 : (props.start as EdgeFadeViewProps['start']),
-    end: endSV ? 0 : (props.end as EdgeFadeViewProps['end']),
+    top: topSV ? { size: 0 } : (props.top as EdgeFadeViewProps['top']),
+    bottom: bottomSV
+      ? { size: 0 }
+      : (props.bottom as EdgeFadeViewProps['bottom']),
+    left: leftSV ? { size: 0 } : (props.left as EdgeFadeViewProps['left']),
+    right: rightSV ? { size: 0 } : (props.right as EdgeFadeViewProps['right']),
+    start: startSV ? { size: 0 } : (props.start as EdgeFadeViewProps['start']),
+    end: endSV ? { size: 0 } : (props.end as EdgeFadeViewProps['end']),
     radius: radiusSV ? undefined : (props.radius as number | undefined),
   };
 

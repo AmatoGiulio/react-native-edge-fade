@@ -1,4 +1,5 @@
 import { resolveNativeProps, resolveRadius } from '../normalize';
+import { serializeCurve } from '../curves';
 
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
@@ -104,8 +105,8 @@ describe('resolveNativeProps — mode inference', () => {
 // ── Blur radius ──────────────────────────────────────────────────────────────────
 
 describe('resolveNativeProps — blurRadius', () => {
-  test('defaults to 20 when unset', () => {
-    expect(resolveNativeProps({ bottom: true }).blurRadius).toBe(20);
+  test('defaults to 28 when unset', () => {
+    expect(resolveNativeProps({ bottom: true }).blurRadius).toBe(28);
   });
 
   test('forwards explicit blurRadius', () => {
@@ -187,6 +188,39 @@ describe('resolveNativeProps — curve serialization', () => {
     });
     expect(n.curveTop).toBe('sharp');
     expect(n.curveBottom).toBe('gentle');
+  });
+});
+
+// ── Animated placeholder edges (regression) ────────────────────────────────────
+// AnimatedEdgeFadeView substitutes SharedValue edges with `{ size: 0 }` so the
+// component-level curve/color still resolve onto the edge while animatedProps
+// drives the size on the UI thread. A plain `0` placeholder used to disable
+// the edge entirely, silently dropping a custom `curve` back to 'smooth'.
+
+describe('resolveNativeProps — animated `{ size: 0 }` placeholder edges', () => {
+  const bezier = {
+    type: 'cubicBezier',
+    x1: 0.7,
+    y1: 0,
+    x2: 0.84,
+    y2: 0,
+  } as const;
+
+  test('custom cubicBezier curve is serialized onto a { size: 0 } edge', () => {
+    const n = resolveNativeProps({ bottom: { size: 0 }, curve: bezier });
+    expect(n.curveBottom).toBe(serializeCurve(bezier));
+    expect(n.curveBottom).not.toBe('smooth');
+    expect(n.fadeBottom).toBe(0);
+  });
+
+  test('preset curve is preserved on a { size: 0 } edge', () => {
+    const n = resolveNativeProps({ top: { size: 0 }, curve: 'sharp' });
+    expect(n.curveTop).toBe('sharp');
+  });
+
+  test('per-edge color is preserved on a { size: 0 } edge', () => {
+    const n = resolveNativeProps({ bottom: { size: 0, color: '#123456' } });
+    expect(n.overlayColorBottom).toBe('#123456');
   });
 });
 
