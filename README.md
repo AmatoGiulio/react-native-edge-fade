@@ -33,14 +33,14 @@ Implementing edge fades by hand means juggling `MaskedView`, multiple `LinearGra
 | Carousel hinting at off-screen items      | Stacked `LinearGradient` views with manual sizing  | `left` + `right` props    |
 | Smooth gradient with no banding on Android | Custom AGSL shader + API gating + fallbacks       | Built in (API 33+)        |
 | Rounded card with a faded bottom          | Nested `View` + `overflow: hidden` + mask hacks    | `radius` prop             |
-| Content frosting under a nav bar (iOS scroll-edge) | Hand-rolled blur + masked material layers | `mode="blur"` (Android 12+) |
+| Content frosting under a nav bar (progressive blur) | Hand-rolled blur + masked material layers | `mode="blur"` (iOS 13+ / Android 12+) |
 | Animated fade tied to scroll position     | Bridge-roundtrip prop updates                      | `AnimatedEdgeFadeView`    |
 
 ---
 
 ## What you get
 
-- **Three modes** — `mask` (true alpha fade, reveals what's behind), `overlay` (paints a color over content), and `blur` (frosted-glass blur, iOS scroll-edge style)
+- **Three modes** — `mask` (true alpha fade, reveals what's behind), `overlay` (paints a color over content), and `blur` (true progressive blur, Apple-Music style)
 - **Four edges, independently controlled** — different `size`, `curve`, and `color` per side
 - **Five preset curves** + full `cubicBezier` and `stops` support
 - **Per-pixel AGSL shaders on Android 13+** — zero banding, exact curve math, dithered
@@ -101,7 +101,7 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `size`   | `number`                              | `80`       | Default fade depth (dp) for all active edges         |
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
 | `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
-| `color`  | `ColorValue`                          | —          | Overlay color, or frost material color in `blur` mode (default white) |
+| `color`  | `ColorValue`                          | —          | Overlay color, or optional frost veil color in `blur` mode (omit for pure blur) |
 | `blurRadius` | `number`                          | `28`       | Max blur radius (dp) at the outer edge, `blur` mode only |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
@@ -181,15 +181,18 @@ Use this when the fade should blend content into a known solid background color.
 
 ### `mode="blur"`
 
-Blurs the wrapped content toward the enabled edges and dissolves it into a translucent
-frosted-glass material — the iOS "scroll edge" look, where content scrolling under a bar softly
-blurs and fades into it. A single hardware Gaussian blur is masked by the per-edge `curve`, so
-the content reads sharp at the inner edge and dissolves into the blurred, veiled material at the
-outer edge — matching iOS, which applies one uniform edge blur rather than a progressive radius
-ramp.
+Blurs the wrapped content toward the enabled edges with a **true progressive blur** — the
+Apple Music / iOS scroll-edge look. Under the hood each fade band composites a stack of
+increasing-radius Gaussian blurs, cross-faded along the band, so the perceived blur radius ramps
+continuously from sharp at the inner edge to the full `blurRadius` at the outer edge. Blur passes
+are clipped to the fade strips, so cost scales with the band area, not the view size.
 
-`blurRadius` sets the maximum blur depth (dp). `color` sets the frost material color (default
-white). Use a gentle/linear `curve` for the most gradual ramp.
+The `curve` governs *how* the blur progresses across the band (its presence is the complement of
+the curve's alpha — the blur takes over exactly what the curve dissolves, same semantics as mask
+mode); the band extent is set only by `top` / `bottom` / `left` / `right`.
+
+`blurRadius` sets the maximum blur depth (dp) reached at the outer edge. `color` optionally adds
+a frosted material veil on top of the blur — omit it for a pure, tint-free Gaussian blur.
 
 ```tsx
 <EdgeFadeView mode="blur" top={120} bottom={160} blurRadius={24} curve="gentle">
@@ -197,7 +200,7 @@ white). Use a gentle/linear `curve` for the most gradual ramp.
 </EdgeFadeView>
 ```
 
-> **Requires Android 12 (API 31)+.** On older Android, and on iOS and Web, `blur` mode
+> **Requires iOS 13+ / Android 12 (API 31)+.** On older Android and on Web, `blur` mode
 > degrades gracefully to a transparent `mask` fade.
 >
 > **Blur needs opaque content.** Blurring content with transparent gaps produces dark
@@ -326,11 +329,12 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
 | Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
-| Android API 31+   | `blur` mode — single hardware Gaussian blur (`RenderEffect.createBlurEffect`) masked by the curve + material veil |
+| Android API 31+   | `blur` mode — progressive stack of `RenderEffect.createBlurEffect` levels, clipped to the fade strips, masked by curve-slice gradients |
 | iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
+| iOS 13+           | `blur` mode — progressive stack of masked `UIVisualEffectView`s (pure Gaussian, no material tint), intensity via paused `UIViewPropertyAnimator`; public API only |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
 
-> `mode="blur"` is currently Android-only (API 31+); iOS and Web fall back to `mask`. Native iOS blur is planned.
+> `mode="blur"` runs natively on iOS 13+ and Android 12+ (API 31); Web and older Android fall back to `mask`.
 
 ### Android — nested scrolling
 
