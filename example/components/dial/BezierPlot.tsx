@@ -9,6 +9,11 @@
  * The polyline is 31 segments; each has its own useAnimatedStyle worklet that
  * samples bezierEval at its two endpoints. Segments have a fixed width of 1
  * and use scaleX for length so no layout prop is animated.
+ *
+ * Theming: `tint` switches between the dark glass palette (default, backward
+ * compatible) and the light DialKit-reference palette. Handles and control
+ * lines render only when `handles` is true (off by default — DialKit edits
+ * the control points through parameter rows).
  */
 
 import { useCallback, useState } from 'react';
@@ -26,10 +31,46 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { bezierEval, SAMPLE_N } from './bezier';
+import type { DialTint } from './DialRow';
 
 const SEG_INDICES = Array.from({ length: SAMPLE_N - 1 }, (_, i) => i);
 const HANDLE_R = 14;
 const HANDLE_HIT = 14;
+
+interface PlotTheme {
+  bg: string;
+  radius: number;
+  curve: string;
+  curveHeight: number;
+  diagonal: string;
+  ctrl: string;
+  bands: [string, string, string];
+}
+
+const THEMES: Record<DialTint, PlotTheme> = {
+  dark: {
+    bg: 'rgba(255,255,255,0.04)',
+    radius: 12,
+    curve: '#ffffff',
+    curveHeight: 2,
+    diagonal: 'rgba(255,255,255,0.2)',
+    ctrl: 'rgba(255,255,255,0.25)',
+    bands: [
+      'rgba(255,255,255,0.03)',
+      'rgba(255,255,255,0.06)',
+      'rgba(255,255,255,0.1)',
+    ],
+  },
+  light: {
+    bg: '#F2F2F4',
+    radius: 14,
+    curve: '#4a4a4a',
+    curveHeight: 3,
+    diagonal: 'rgba(0,0,0,0.12)',
+    ctrl: 'rgba(0,0,0,0.2)',
+    bands: ['rgba(0,0,0,0.015)', 'rgba(0,0,0,0.03)', 'rgba(0,0,0,0.05)'],
+  },
+};
 
 function clamp01(v: number): number {
   'worklet';
@@ -44,8 +85,10 @@ export interface BezierPlotProps {
   height?: number;
   /** Three vertical presence-slice bands (blur mode visual aid). */
   showPresenceBands?: boolean;
-  /** Draggable P1/P2 handles (pan worklets writing into the SharedValues). */
+  /** Draggable P1/P2 handles + control lines (pan worklets writing into the SharedValues). */
   handles?: boolean;
+  /** Palette: 'dark' glass (default, backward compatible) or 'light' DialKit reference. */
+  tint?: DialTint;
 }
 
 export function BezierPlot({
@@ -55,7 +98,8 @@ export function BezierPlot({
   y2,
   height = 180,
   showPresenceBands = false,
-  handles = true,
+  handles = false,
+  tint = 'dark',
 }: BezierPlotProps) {
   const width = useSharedValue(0);
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -69,24 +113,36 @@ export function BezierPlot({
     [width]
   );
 
-  const plotStyle: ViewStyle = { height };
+  const theme = THEMES[tint];
+  const plotStyle: ViewStyle = {
+    height,
+    backgroundColor: theme.bg,
+    borderRadius: theme.radius,
+  };
+  const bandStyles: [ViewStyle, ViewStyle, ViewStyle] = [
+    { flex: 1, backgroundColor: theme.bands[0] },
+    { flex: 1, backgroundColor: theme.bands[1] },
+    { flex: 1, backgroundColor: theme.bands[2] },
+  ];
   // Static after layout: DialKit's dashed diagonal reference (top-left →
   // bottom-right). Real width so the dash pattern renders undistorted.
   const diagonalStyle: ViewStyle | null =
     layoutWidth > 0
       ? {
           width: Math.hypot(layoutWidth, height),
+          borderTopColor: theme.diagonal,
           transform: [{ rotate: `${Math.atan2(height, layoutWidth)}rad` }],
         }
       : null;
+  const ctrlColor: ViewStyle = { backgroundColor: theme.ctrl };
 
   return (
     <View style={[s.plot, plotStyle]} onLayout={onLayout}>
       {showPresenceBands && (
         <View pointerEvents="none" style={s.bands}>
-          <View style={s.band1} />
-          <View style={s.band2} />
-          <View style={s.band3} />
+          <View style={bandStyles[0]} />
+          <View style={bandStyles[1]} />
+          <View style={bandStyles[2]} />
         </View>
       )}
 
@@ -94,8 +150,26 @@ export function BezierPlot({
         <View pointerEvents="none" style={[s.diagonal, diagonalStyle]} />
       )}
 
-      <CtrlLine anchor="start" hx={x1} hy={y1} width={width} height={height} />
-      <CtrlLine anchor="end" hx={x2} hy={y2} width={width} height={height} />
+      {handles && (
+        <>
+          <CtrlLine
+            anchor="start"
+            hx={x1}
+            hy={y1}
+            width={width}
+            height={height}
+            colorStyle={ctrlColor}
+          />
+          <CtrlLine
+            anchor="end"
+            hx={x2}
+            hy={y2}
+            width={width}
+            height={height}
+            colorStyle={ctrlColor}
+          />
+        </>
+      )}
 
       {SEG_INDICES.map((i) => (
         <Segment
@@ -107,6 +181,8 @@ export function BezierPlot({
           y2={y2}
           width={width}
           height={height}
+          color={theme.curve}
+          thickness={theme.curveHeight}
         />
       ))}
 
@@ -126,9 +202,21 @@ interface SegmentProps {
   y2: SharedValue<number>;
   width: SharedValue<number>;
   height: number;
+  color: string;
+  thickness: number;
 }
 
-function Segment({ index, x1, y1, x2, y2, width, height }: SegmentProps) {
+function Segment({
+  index,
+  x1,
+  y1,
+  x2,
+  y2,
+  width,
+  height,
+  color,
+  thickness,
+}: SegmentProps) {
   const style = useAnimatedStyle(() => {
     const w = width.get();
     if (w <= 0) return { opacity: 0 };
@@ -145,14 +233,20 @@ function Segment({ index, x1, y1, x2, y2, width, height }: SegmentProps) {
       opacity: 1,
       transform: [
         { translateX: (ax + bx) / 2 - 0.5 },
-        { translateY: (ay + by) / 2 - 1 },
+        { translateY: (ay + by) / 2 - thickness / 2 },
         { rotate: `${Math.atan2(dy, dx)}rad` },
         { scaleX: len },
       ],
     };
   });
 
-  return <Animated.View pointerEvents="none" style={[s.segment, style]} />;
+  const colorStyle: ViewStyle = { backgroundColor: color, height: thickness };
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[s.segment, colorStyle, style]}
+    />
+  );
 }
 
 interface CtrlLineProps {
@@ -161,9 +255,17 @@ interface CtrlLineProps {
   hy: SharedValue<number>;
   width: SharedValue<number>;
   height: number;
+  colorStyle: ViewStyle;
 }
 
-function CtrlLine({ anchor, hx, hy, width, height }: CtrlLineProps) {
+function CtrlLine({
+  anchor,
+  hx,
+  hy,
+  width,
+  height,
+  colorStyle,
+}: CtrlLineProps) {
   const style = useAnimatedStyle(() => {
     const w = width.get();
     if (w <= 0) return { opacity: 0 };
@@ -185,7 +287,12 @@ function CtrlLine({ anchor, hx, hy, width, height }: CtrlLineProps) {
     };
   });
 
-  return <Animated.View pointerEvents="none" style={[s.ctrlLine, style]} />;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[s.ctrlLine, colorStyle, style]}
+    />
+  );
 }
 
 interface HandleProps {
@@ -225,17 +332,12 @@ function Handle({ hx, hy, width, height }: HandleProps) {
 
 const s = StyleSheet.create({
   plot: {
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
     overflow: 'hidden',
   },
   bands: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
   },
-  band1: { flex: 1, backgroundColor: 'rgba(255,255,255,0.03)' },
-  band2: { flex: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
-  band3: { flex: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
   diagonal: {
     position: 'absolute',
     left: 0,
@@ -243,7 +345,6 @@ const s = StyleSheet.create({
     height: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderStyle: 'dashed' as const,
-    borderTopColor: 'rgba(255,255,255,0.2)',
     transformOrigin: '0 0',
   },
   ctrlLine: {
@@ -252,15 +353,12 @@ const s = StyleSheet.create({
     top: 0,
     width: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   segment: {
     position: 'absolute',
     left: 0,
     top: 0,
     width: 1,
-    height: 2,
-    backgroundColor: '#ffffff',
   },
   handle: {
     position: 'absolute',

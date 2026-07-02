@@ -2,9 +2,12 @@
  * Curve Lab — a DialKit-style debug tool for tuning the cubic-bezier curve
  * that drives EdgeFadeView's fade ramp, live, against real content.
  *
- * All parameters live in SharedValues: drags run as worklets on the UI thread
- * (plot handles + dial rows), and only throttled mirrors reach React state for
- * the non-animatable `curve` / `blurRadius` props.
+ * All parameters live in SharedValues: dial-row drags run as worklets on the
+ * UI thread, and only throttled mirrors reach React state for the
+ * non-animatable `curve` / `blurRadius` props. The preview fades on the TOP
+ * edge (the panel covers the bottom), and the panel follows the light DialKit
+ * reference: white card, plot on top, parameter rows below, readout at the
+ * bottom.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -63,7 +66,7 @@ export default function CurveLabScreen() {
   const insets = useSafeAreaInsets();
 
   const [mode, setMode] = useState<EdgeFadeMode>('mask');
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [expanded, setExpanded] = useState(true);
 
   const x1 = useSharedValue(PRESETS[1]!.value.x1);
   const y1 = useSharedValue(PRESETS[1]!.value.y1);
@@ -80,6 +83,7 @@ export default function CurveLabScreen() {
   const blurRadius = useThrottledMirror(readBlurWorklet, 28);
 
   const handleBack = useCallback(() => router.back(), []);
+  const toggleExpanded = useCallback(() => setExpanded((v) => !v), []);
 
   const applyPreset = useCallback(
     (b: Bezier) => {
@@ -97,17 +101,17 @@ export default function CurveLabScreen() {
     height: zone.get(),
     opacity: zone.get() > 0 ? 1 : 0,
   }));
-  const marker1Style = useAnimatedStyle(() => ({ bottom: zone.get() / 3 }));
+  const marker1Style = useAnimatedStyle(() => ({ top: zone.get() / 3 }));
   const marker2Style = useAnimatedStyle(() => ({
-    bottom: (zone.get() * 2) / 3,
+    top: (zone.get() * 2) / 3,
   }));
-  const marker3Style = useAnimatedStyle(() => ({ bottom: zone.get() - 1 }));
+  const marker3Style = useAnimatedStyle(() => ({ top: zone.get() - 1 }));
 
   return (
     <View style={s.root}>
-      {/* ── Preview, full-screen ─────────────────────────────── */}
+      {/* ── Preview, full-screen, fading on the TOP edge ─────── */}
       <AnimatedEdgeFadeView
-        bottom={zone}
+        top={zone}
         curve={curve}
         mode={mode}
         blurRadius={blurRadius}
@@ -127,8 +131,8 @@ export default function CurveLabScreen() {
             <Text style={s.kicker}>CURVE LAB · DEBUG</Text>
             <Text style={s.title}>Bezier Tuning</Text>
             <Text style={s.lead}>
-              Drag the handles on the graph below to reshape the fade curve in
-              real time, across all three render modes.
+              Adjust the parameter rows below to reshape the fade curve in real
+              time, across all three render modes.
             </Text>
             <Text style={s.section}>Gallery</Text>
             {ROW_IMAGES.map((it, i) => (
@@ -150,7 +154,7 @@ export default function CurveLabScreen() {
         </ScrollView>
       </AnimatedEdgeFadeView>
 
-      {/* ── Debug overlay: fade band + blur level markers ───── */}
+      {/* ── Debug overlay: fade band + blur level markers (top) ── */}
       <Animated.View pointerEvents="none" style={[s.debugBand, debugBandStyle]}>
         {mode === 'blur' && (
           <>
@@ -174,128 +178,121 @@ export default function CurveLabScreen() {
         </Pressable>
       </View>
 
-      {/* ── Reopen button (panel closed) ────────────────────── */}
-      {!panelOpen && (
-        <Pressable
-          style={[s.fab, { bottom: insets.bottom + 22 }]}
-          onPress={() => setPanelOpen(true)}
-        >
-          <Ionicons name="options-outline" size={22} color="#000" />
-        </Pressable>
-      )}
-
-      {/* ── Floating glass curve editor ──────────────────────── */}
-      {panelOpen && (
-        <View style={[s.panelWrap, { paddingBottom: insets.bottom + 18 }]}>
-          <View style={s.panel}>
-            <View style={s.panelHeader}>
-              <Text style={s.panelTitle}>CURVE LAB</Text>
-              <Pressable
-                hitSlop={10}
-                onPress={() => setPanelOpen(false)}
-                style={s.panelClose}
-              >
-                <Ionicons
-                  name="close"
-                  size={16}
-                  color="rgba(255,255,255,0.7)"
-                />
-              </Pressable>
-            </View>
-
-            {/* Mode segmented control */}
-            <View style={s.segmented}>
-              {MODES.map((m) => (
-                <Pressable
-                  key={m}
-                  style={[s.segment, mode === m && s.segmentActive]}
-                  onPress={() => setMode(m)}
-                >
-                  <Text
-                    style={[s.segmentText, mode === m && s.segmentTextActive]}
-                  >
-                    {m}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <BezierPlot
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              showPresenceBands={mode === 'blur'}
+      {/* ── DialKit-style floating panel (light) ─────────────── */}
+      <View style={[s.panelWrap, { paddingBottom: insets.bottom + 18 }]}>
+        <View style={s.panel}>
+          <Pressable style={s.panelHeader} onPress={toggleExpanded}>
+            <Text style={s.panelTitle}>Curve Lab</Text>
+            <Ionicons
+              name={expanded ? 'chevron-down' : 'chevron-up'}
+              size={20}
+              color="#8a8a8e"
             />
+          </Pressable>
 
-            <DialReadout label="Ease" values={readoutValues} />
-
-            {/* Presets */}
-            <View style={s.presetRow}>
-              {PRESETS.map((p) => (
-                <Pressable
-                  key={p.label}
-                  style={s.presetPill}
-                  onPress={() => applyPreset(p.value)}
-                >
-                  <Text style={s.presetText}>{p.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <DialRow
-              label="x1"
-              value={x1}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-            />
-            <DialRow
-              label="y1"
-              value={y1}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-            />
-            <DialRow
-              label="x2"
-              value={x2}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-            />
-            <DialRow
-              label="y2"
-              value={y2}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-            />
-            <DialRow
-              label="Zone"
-              value={zone}
-              min={0}
-              max={400}
-              step={4}
-              format={fmtPx}
-            />
-            {mode === 'blur' && (
-              <DialRow
-                label="Blur"
-                value={blur}
-                min={0}
-                max={100}
-                step={1}
-                format={fmtPx}
+          {expanded && (
+            <View style={s.panelBody}>
+              <BezierPlot
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                tint="light"
+                showPresenceBands={mode === 'blur'}
               />
-            )}
-          </View>
+
+              {/* Mode segmented control */}
+              <View style={s.segmented}>
+                {MODES.map((m) => (
+                  <Pressable
+                    key={m}
+                    style={[s.segment, mode === m && s.segmentActive]}
+                    onPress={() => setMode(m)}
+                  >
+                    <Text
+                      style={[s.segmentText, mode === m && s.segmentTextActive]}
+                    >
+                      {m}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Presets — bezier starting points for the rows below */}
+              <View style={s.presetRow}>
+                {PRESETS.map((p) => (
+                  <Pressable
+                    key={p.label}
+                    style={s.presetPill}
+                    onPress={() => applyPreset(p.value)}
+                  >
+                    <Text style={s.presetText}>{p.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <DialRow
+                label="x1"
+                value={x1}
+                min={0}
+                max={1}
+                step={0.01}
+                format={fmt2}
+                tint="light"
+              />
+              <DialRow
+                label="y1"
+                value={y1}
+                min={0}
+                max={1}
+                step={0.01}
+                format={fmt2}
+                tint="light"
+              />
+              <DialRow
+                label="x2"
+                value={x2}
+                min={0}
+                max={1}
+                step={0.01}
+                format={fmt2}
+                tint="light"
+              />
+              <DialRow
+                label="y2"
+                value={y2}
+                min={0}
+                max={1}
+                step={0.01}
+                format={fmt2}
+                tint="light"
+              />
+              <DialRow
+                label="Zone"
+                value={zone}
+                min={0}
+                max={400}
+                step={4}
+                format={fmtPx}
+                tint="light"
+              />
+              {mode === 'blur' && (
+                <DialRow
+                  label="Blur"
+                  value={blur}
+                  min={0}
+                  max={100}
+                  step={1}
+                  format={fmtPx}
+                  tint="light"
+                />
+              )}
+
+              <DialReadout label="Ease" values={readoutValues} tint="light" />
+            </View>
+          )}
         </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -371,7 +368,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    top: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderStyle: 'dashed' as const,
     borderColor: '#ff3030',
@@ -391,23 +388,7 @@ const s = StyleSheet.create({
     fontSize: 9,
     fontFamily: 'monospace',
     paddingRight: 4,
-    transform: [{ translateY: -11 }],
-  },
-
-  fab: {
-    position: 'absolute',
-    right: 18,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    transform: [{ translateY: 2 }],
   },
 
   panelWrap: {
@@ -418,42 +399,33 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
   },
   panel: {
-    borderRadius: 22,
-    padding: 18,
-    backgroundColor: 'rgba(20,20,23,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
-    gap: 10,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 2,
   },
   panelTitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    fontFamily: 'monospace',
-    letterSpacing: 2,
+    color: '#1a1a1a',
+    fontSize: 17,
+    fontWeight: '700',
   },
-  panelClose: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  panelBody: {
+    marginTop: 12,
+    gap: 8,
   },
 
   segmented: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#F2F2F4',
     borderRadius: 12,
     padding: 3,
     gap: 3,
@@ -464,14 +436,14 @@ const s = StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
   },
-  segmentActive: { backgroundColor: 'rgba(255,255,255,0.16)' },
+  segmentActive: { backgroundColor: '#E3E3E6' },
   segmentText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12.5,
-    fontWeight: '600',
+    color: '#8a8a8e',
+    fontSize: 13,
+    fontWeight: '500',
     textTransform: 'capitalize',
   },
-  segmentTextActive: { color: '#fff' },
+  segmentTextActive: { color: '#1a1a1a', fontWeight: '700' },
 
   presetRow: {
     flexDirection: 'row',
@@ -482,10 +454,10 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#F2F2F4',
   },
   presetText: {
-    color: 'rgba(255,255,255,0.75)',
+    color: '#1a1a1a',
     fontSize: 12,
     fontWeight: '600',
   },

@@ -6,6 +6,9 @@
  * The value is a SharedValue: the pan gesture runs as a worklet on the UI
  * thread and writes into it directly — no React state during the drag. The
  * readout updates via the ReText pattern (animated TextInput `text` prop).
+ *
+ * Theming: `tint` switches between the dark glass palette (default, backward
+ * compatible) and the light DialKit-reference palette.
  */
 
 import { useCallback } from 'react';
@@ -31,6 +34,8 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 type ReTextProps = TextInputProps & { text: string };
 
+export type DialTint = 'light' | 'dark';
+
 export interface DialRowProps {
   label: string;
   /** Parameter storage — written by the pan worklet on the UI thread. */
@@ -45,6 +50,8 @@ export interface DialRowProps {
   format?: (v: number) => string;
   /** Called on the JS thread (via runOnJS) when the drag gesture ends. */
   onEnd?: () => void;
+  /** Palette: 'dark' glass (default, backward compatible) or 'light' DialKit reference. */
+  tint?: DialTint;
 }
 
 function defaultFormat(v: number): string {
@@ -60,6 +67,7 @@ export function DialRow({
   step,
   format,
   onEnd,
+  tint = 'dark',
 }: DialRowProps) {
   const rowWidth = useSharedValue(0);
   const startValue = useSharedValue(0);
@@ -98,24 +106,26 @@ export function DialRow({
     text: fmt(value.get()),
   }));
 
+  const t = tint === 'light' ? light : dark;
+
   return (
     <GestureDetector gesture={pan}>
-      <View style={s.row} onLayout={onLayout}>
-        <Animated.View pointerEvents="none" style={[s.fill, fillStyle]} />
-        <Text style={s.label}>{label}</Text>
+      <View style={t.row} onLayout={onLayout}>
+        <Animated.View pointerEvents="none" style={[t.fill, fillStyle]} />
+        <Text style={t.label}>{label}</Text>
         <AnimatedTextInput
           pointerEvents="none"
           editable={false}
           defaultValue={fmt(value.get())}
           animatedProps={animatedProps}
-          style={s.value}
+          style={t.value}
         />
       </View>
     </GestureDetector>
   );
 }
 
-const s = StyleSheet.create({
+const dark = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,5 +155,39 @@ const s = StyleSheet.create({
     textAlign: 'right',
     padding: 0,
     minWidth: 64,
+  },
+});
+
+const light = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#F2F2F4',
+    overflow: 'hidden',
+  },
+  fill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#DFDFE2',
+  },
+  label: {
+    color: '#1a1a1a',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  value: {
+    color: '#1a1a1a',
+    fontSize: 15,
+    fontFamily: 'monospace',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'right',
+    padding: 0,
+    minWidth: 72,
   },
 });
