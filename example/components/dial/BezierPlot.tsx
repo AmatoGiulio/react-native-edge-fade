@@ -4,7 +4,6 @@
  * Geometry (validated in curve-lab): the plot lives in bezier space with y
  * growing downward — the drawn curve is y_px = B(t) * height, which equals the
  * alpha ramp (alpha = 1 - B(t)) rendered from top-left to bottom-right.
- * Control-line anchors are (0,0) for P1 and (width,height) for P2.
  *
  * The polyline is 31 segments; each has its own useAnimatedStyle worklet that
  * samples bezierEval at its two endpoints. Segments have a fixed width of 1
@@ -16,7 +15,7 @@
  * Direct editing (`interactive`, default true): ONE pan worklet over the whole
  * plot — on touch-down it grabs whichever control point is closer and moves it
  * relatively, clamped to [0,1]. Small always-visible dots mark P1/P2 (the
- * grabbed one scales up), with faint control lines to the anchors.
+ * grabbed one scales up), floating free — no control lines.
  *
  * Theming: `tint` switches between the dark glass palette (default, backward
  * compatible) and the light DialKit-reference palette.
@@ -52,7 +51,6 @@ interface PlotTheme {
   curve: string;
   curveHeight: number;
   diagonal: string;
-  ctrl: string;
   dot: string;
   gridLine: string;
   gridMark: string;
@@ -66,7 +64,6 @@ const THEMES: Record<DialTint, PlotTheme> = {
     curve: '#ffffff',
     curveHeight: 2,
     diagonal: 'rgba(255,255,255,0.2)',
-    ctrl: 'rgba(255,255,255,0.18)',
     dot: '#ffffff',
     gridLine: 'rgba(255,255,255,0.05)',
     gridMark: 'rgba(255,255,255,0.22)',
@@ -82,7 +79,6 @@ const THEMES: Record<DialTint, PlotTheme> = {
     curve: '#4a4a4a',
     curveHeight: 3,
     diagonal: 'rgba(0,0,0,0.12)',
-    ctrl: 'rgba(0,0,0,0.12)',
     dot: '#7a7a7e',
     gridLine: 'rgba(0,0,0,0.045)',
     gridMark: 'rgba(0,0,0,0.18)',
@@ -105,7 +101,7 @@ export interface BezierPlotProps {
   showPresenceBands?: boolean;
   /**
    * Direct curve editing: a single pan worklet over the plot grabs the nearest
-   * control point on touch-down. Also shows the P1/P2 dots + control lines.
+   * control point on touch-down. Also shows the floating P1/P2 dots.
    */
   interactive?: boolean;
   /** Palette: 'dark' glass (default, backward compatible) or 'light' DialKit reference. */
@@ -151,13 +147,16 @@ export function BezierPlot({
   ];
 
   // Static after layout: graph-paper grid. Spacing is snapped so the grid
-  // covers the plot exactly (no truncated last column/row).
+  // covers the plot exactly (no truncated last column/row). Columns are a
+  // multiple of 3 so minor lines land exactly on the presence-band
+  // boundaries (w/3, 2w/3); "+" markers sit on those major columns.
   const grid = useMemo(() => {
     if (layoutWidth <= 0) return null;
-    const cols = Math.max(1, Math.round(layoutWidth / GRID_MINOR));
+    const cols = Math.max(3, Math.round(layoutWidth / GRID_MINOR / 3) * 3);
     const rows = Math.max(1, Math.round(height / GRID_MINOR));
     const sx = layoutWidth / cols;
     const sy = height / rows;
+    const majorC = cols / 3;
 
     const lines: ViewStyle[] = [];
     for (let c = 1; c < cols; c++) {
@@ -182,7 +181,7 @@ export function BezierPlot({
     }
 
     const marks: ViewStyle[] = [];
-    for (let c = GRID_MAJOR_EVERY; c < cols; c += GRID_MAJOR_EVERY) {
+    for (let c = majorC; c < cols; c += majorC) {
       for (let r = GRID_MAJOR_EVERY; r < rows; r += GRID_MAJOR_EVERY) {
         marks.push({
           position: 'absolute',
@@ -216,7 +215,6 @@ export function BezierPlot({
           transform: [{ rotate: `${Math.atan2(height, layoutWidth)}rad` }],
         }
       : null;
-  const ctrlColor: ViewStyle = { backgroundColor: theme.ctrl };
   const dotColor: ViewStyle = { backgroundColor: theme.dot };
 
   // Single pan over the whole plot: grab the nearest control point.
@@ -278,27 +276,6 @@ export function BezierPlot({
 
       {diagonalStyle && (
         <View pointerEvents="none" style={[s.diagonal, diagonalStyle]} />
-      )}
-
-      {interactive && (
-        <>
-          <CtrlLine
-            anchor="start"
-            hx={x1}
-            hy={y1}
-            width={width}
-            height={height}
-            colorStyle={ctrlColor}
-          />
-          <CtrlLine
-            anchor="end"
-            hx={x2}
-            hy={y2}
-            width={width}
-            height={height}
-            colorStyle={ctrlColor}
-          />
-        </>
       )}
 
       {SEG_INDICES.map((i) => (
@@ -405,52 +382,6 @@ function Segment({
   );
 }
 
-interface CtrlLineProps {
-  anchor: 'start' | 'end';
-  hx: SharedValue<number>;
-  hy: SharedValue<number>;
-  width: SharedValue<number>;
-  height: number;
-  colorStyle: ViewStyle;
-}
-
-function CtrlLine({
-  anchor,
-  hx,
-  hy,
-  width,
-  height,
-  colorStyle,
-}: CtrlLineProps) {
-  const style = useAnimatedStyle(() => {
-    const w = width.get();
-    if (w <= 0) return { opacity: 0 };
-    const ax = anchor === 'start' ? 0 : w;
-    const ay = anchor === 'start' ? 0 : height;
-    const px = hx.get() * w;
-    const py = hy.get() * height;
-    const dx = px - ax;
-    const dy = py - ay;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    return {
-      opacity: 1,
-      transform: [
-        { translateX: (ax + px) / 2 - 0.5 },
-        { translateY: (ay + py) / 2 },
-        { rotate: `${Math.atan2(dy, dx)}rad` },
-        { scaleX: len },
-      ],
-    };
-  });
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[s.ctrlLine, colorStyle, style]}
-    />
-  );
-}
-
 interface DotProps {
   which: 1 | 2;
   hx: SharedValue<number>;
@@ -491,13 +422,6 @@ const s = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderStyle: 'dashed' as const,
     transformOrigin: '0 0',
-  },
-  ctrlLine: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: 1,
-    height: StyleSheet.hairlineWidth,
   },
   segment: {
     position: 'absolute',

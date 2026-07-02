@@ -13,7 +13,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -49,8 +48,9 @@ const PRESETS: Array<{ label: string; value: Bezier }> = [
   { label: 'gentle', value: { x1: 0.25, y1: 0.46, x2: 0.45, y2: 0.94 } },
 ];
 
-const HERO = CATALOG[5]!;
-const ROW_IMAGES = CATALOG.slice(16, 22);
+// Underwater shot — rich color and detail for the top fade to chew on.
+const HERO = CATALOG[21]!;
+const ROW_IMAGES = CATALOG.slice(28, 34);
 
 function fmt2(v: number): string {
   'worklet';
@@ -82,7 +82,6 @@ export default function CurveLabScreen() {
   }, [blur]);
   const blurRadius = useThrottledMirror(readBlurWorklet, 28);
 
-  const handleBack = useCallback(() => router.back(), []);
   const toggleExpanded = useCallback(() => setExpanded((v) => !v), []);
 
   const applyPreset = useCallback(
@@ -121,10 +120,9 @@ export default function CurveLabScreen() {
         <ScrollView
           style={s.scroll}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingTop: insets.top + 56,
-            paddingBottom: insets.bottom + 480,
-          }}
+          // No top padding: the hero starts at y=0, flush under the status
+          // bar, so the top fade works on the image itself.
+          contentContainerStyle={{ paddingBottom: insets.bottom + 480 }}
         >
           <Image source={HERO.source} style={s.hero} contentFit="cover" />
           <View style={s.body}>
@@ -170,13 +168,6 @@ export default function CurveLabScreen() {
           </>
         )}
       </Animated.View>
-
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <View style={[s.topBar, { paddingTop: insets.top + 6 }]}>
-        <Pressable style={s.iconBtn} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={20} color="#0a0a0a" />
-        </Pressable>
-      </View>
 
       {/* ── DialKit-style floating panel (light) ─────────────── */}
       <View style={[s.panelWrap, { paddingBottom: insets.bottom + 18 }]}>
@@ -301,7 +292,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FFFFFF' },
   scroll: { flex: 1, backgroundColor: '#FFFFFF' },
 
-  hero: { width: '100%', height: 260, backgroundColor: '#ECECEE' },
+  hero: { width: '100%', height: 420, backgroundColor: '#ECECEE' },
   body: { paddingHorizontal: 22, paddingTop: 22 },
   kicker: {
     color: 'rgba(0,0,0,0.4)',
@@ -346,23 +337,6 @@ const s = StyleSheet.create({
   galleryMeta: { gap: 3 },
   galleryTitle: { color: '#0a0a0a', fontSize: 15, fontWeight: '600' },
   gallerySub: { color: 'rgba(0,0,0,0.45)', fontSize: 13 },
-
-  topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.06)',
-  },
 
   debugBand: {
     position: 'absolute',
