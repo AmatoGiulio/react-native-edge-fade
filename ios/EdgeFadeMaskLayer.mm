@@ -14,14 +14,15 @@ static CGGradientRef buildMaskGradient(NSString *curve)
   CGFloat *dynAlphas, *dynStops;
   EdgeFadeResolveCurve(curve, &alphas, &stops, &count, &dynAlphas, &dynStops);
 
-  // Components are { gray, alpha } pairs. We use `1 - alphas[count-1-i]` so the
-  // mask curve matches the overlay direction: content stays visible until near
-  // the outer edge, then fades quickly.
+  // Components are { gray, alpha } pairs. Gradient stops run inner (i=0) →
+  // outer (i=count-1), matching the draw direction below, so indexing directly
+  // by `i` makes mask alpha(t) = curve alpha(t): fully visible at the inner
+  // edge, fully faded at the outer edge.
   CGColorSpaceRef space = CGColorSpaceCreateDeviceGray();
   CGFloat *components   = (CGFloat *)malloc(count * 2 * sizeof(CGFloat));
   for (size_t i = 0; i < count; i++) {
     components[i * 2]     = 1.0;
-    components[i * 2 + 1] = 1.0 - alphas[count - 1 - i];
+    components[i * 2 + 1] = alphas[i];
   }
   CGGradientRef g = CGGradientCreateWithColorComponents(space, components, stops, count);
   free(components);

@@ -514,7 +514,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
   }
 
-  // Veil ramp: transparent (inner) → opaque `color` (outer), following the curve.
+  // Veil ramp: transparent (inner, i=0) → opaque `color` (outer), following the
+  // curve — opacity(t) = (1 - alpha(t)) * VEIL_MAX_ALPHA. Gradient coordinates
+  // run inner → outer at every call site, matching direct indexing here.
   private fun veilGradient(
     curve: String, x0: Float, y0: Float, x1: Float, y1: Float, color: Int,
   ): LinearGradient {
@@ -523,7 +525,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     val colors = IntArray(n) { i ->
       // Cap at VEIL_MAX_ALPHA so even the outer edge stays slightly translucent —
       // a hint of blurred content shows through, like iOS frosted material.
-      val al = a[n - 1 - i].toFloat() * VEIL_MAX_ALPHA
+      val al = (1f - a[i].toFloat()) * VEIL_MAX_ALPHA
       ColorUtils.setAlphaComponent(color, (al * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)

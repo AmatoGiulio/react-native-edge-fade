@@ -69,8 +69,8 @@ export interface EdgeFadeViewProps extends ViewProps {
    * Maximum blur radius (dp) reached at the outer edge in `mode="blur"`.
    * Ignored in other modes. Defaults to 28.
    *
-   * Requires Android 12 (API 31)+. On older Android and on web/iOS the blur mode
-   * degrades to a transparent `mask` fade.
+   * Fully supported on iOS 13+ and Android 12 (API 31)+. On older Android and
+   * on web, `mode="blur"` degrades to a transparent `mask` fade.
    */
   blurRadius?: number;
   /**

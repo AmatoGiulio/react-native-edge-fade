@@ -126,11 +126,12 @@ internal class EdgeShaderSlot {
     val stops = EdgeFadeCurves.stops(curve)
     val base = color ?: Color.BLACK
     val colors = if (color != null) {
-      // Overlay: opaque (outer) → transparent (inner)
-      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, (a[n - 1 - i] * 255).roundToInt()) }
+      // Overlay: transparent (inner, i=0) → opaque (outer) — opacity(t) = 1 - alpha(t)
+      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, ((1.0 - a[i]) * 255).roundToInt()) }
     } else {
-      // Mask: transparent (outer) → opaque black (inner) — DST_IN preserves content where alpha is high
-      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, ((1.0 - a[n - 1 - i]) * 255).roundToInt()) }
+      // Mask: opaque black (inner, i=0) → transparent (outer) — DST_IN preserves
+      // content where alpha is high, i.e. visibility(t) = alpha(t)
+      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, (a[i] * 255).roundToInt()) }
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
   }
@@ -185,12 +186,13 @@ internal class EdgeShaderSlot {
         if (useLUT > 0.5) {
           maskAlpha = lutSample(t);
         } else if (isSoft > 1.5) {
-          // smootherstep: 6t⁵−15t⁴+10t³ — eased at both ends
+          // smootherstep: point-symmetric about t=0.5, so 1 - smootherstep(t)
+          // already equals smootherstep(1-t) — direct and mirrored coincide.
           maskAlpha = 1.0 - (t * t * t * (t * (t * 6.0 - 15.0) + 10.0));
         } else if (isSoft > 0.5) {
-          maskAlpha = 1.0 - sin(t * 1.5707963);
+          maskAlpha = cos(t * 1.5707963);
         } else {
-          maskAlpha = 1.0 - pow(t, curveExp);
+          maskAlpha = pow(1.0 - t, curveExp);
         }
 
         float a = (isOverlay > 0.5) ? 1.0 - maskAlpha : maskAlpha;

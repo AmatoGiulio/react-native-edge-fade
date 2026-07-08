@@ -87,9 +87,11 @@ static inline CGFloat EdgeFadeLevelHi(NSInteger k) { return kEdgeFadeLevelFracti
 // ─── Overlay colors ───────────────────────────────────────────────────────────
 //
 // Builds the `CAGradientLayer.colors` array for the given curve and base color:
-// transparent (inner, reversed curve) → color (outer). Allocates `CGColorRef`
-// instances directly to skip the UIColor round-trip — roughly half the work of
-// going through `[UIColor colorWithRed:...].CGColor` for a 32-stop curve.
+// transparent (inner) → color (outer), opacity(t) = 1 − alpha(t). Allocates
+// `CGColorRef` instances directly to skip the UIColor round-trip — roughly half
+// the work of going through `[UIColor colorWithRed:...].CGColor` for a 32-stop
+// curve. Stops run inner (i=0) → outer (i=count-1), matching the gradient's
+// startPoint/endPoint set in _updateLayerFrames, so a forward loop suffices.
 
 static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 {
@@ -103,8 +105,8 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 
   CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
   NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
-  for (NSInteger i = (NSInteger)count - 1; i >= 0; i--) {
-    CGFloat components[4] = {r, g, b, a * alphas[i]};
+  for (NSInteger i = 0; i < (NSInteger)count; i++) {
+    CGFloat components[4] = {r, g, b, a * (1.0 - alphas[i])};
     CGColorRef c = CGColorCreate(space, components);
     [result addObject:(__bridge_transfer id)c];
   }
@@ -116,8 +118,10 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 // ─── Veil colors ─────────────────────────────────────────────────────────────
 //
 // Builds `CAGradientLayer.colors` for a frost veil strip: transparent (inner) →
-// `color` capped at VEIL_MAX_ALPHA (outer), following the curve profile. Matches
-// Android's veilGradient / VEIL_MAX_ALPHA = 0.8.
+// `color` capped at VEIL_MAX_ALPHA (outer), opacity(t) = (1 − alpha(t)) ·
+// VEIL_MAX_ALPHA. Matches Android's veilGradient / VEIL_MAX_ALPHA = 0.8. Stops
+// run inner (i=0) → outer (i=count-1), matching the gradient's startPoint/
+// endPoint set in _updateLayerFrames, so a forward loop suffices.
 
 static const CGFloat kVeilMaxAlpha = 0.8;
 
@@ -133,11 +137,11 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 
   CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
   NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
-  for (NSInteger i = (NSInteger)count - 1; i >= 0; i--) {
-    // Each stop's alpha = curve_alpha * base_alpha * VEIL_MAX_ALPHA.
+  for (NSInteger i = 0; i < (NSInteger)count; i++) {
+    // Each stop's alpha = (1 - curve_alpha) * base_alpha * VEIL_MAX_ALPHA.
     // Cap so even the outer edge stays slightly translucent — a hint of blurred
     // content shows through, like iOS frosted material.
-    CGFloat components[4] = {r, g, b, a * alphas[i] * kVeilMaxAlpha};
+    CGFloat components[4] = {r, g, b, a * (1.0 - alphas[i]) * kVeilMaxAlpha};
     CGColorRef c = CGColorCreate(space, components);
     [result addObject:(__bridge_transfer id)c];
   }
