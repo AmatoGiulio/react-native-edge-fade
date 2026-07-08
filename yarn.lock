@@ -2446,6 +2446,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@expo/ui@npm:~55.0.17":
+  version: 55.0.17
+  resolution: "@expo/ui@npm:55.0.17"
+  dependencies:
+    sf-symbols-typescript: "npm:^2.1.0"
+  peerDependencies:
+    expo: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/e47af51035215dd1a9b5d75f4fe9d8a1933824f8025ace2106d50e68e0a7f632e11ac401cb4e848a38f71fd9111947d29f2499e262fd872271049e18b8a2e7fb
+  languageName: node
+  linkType: hard
+
 "@expo/vector-icons@npm:^15.0.2":
   version: 15.1.1
   resolution: "@expo/vector-icons@npm:15.1.1"
@@ -3662,13 +3675,6 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 10c0/9f98fdaba008dfc58050de60a77670b885792df473cf82c1cef8daee919a5dd5a77d270209f5f0b0abfaac78cb1627396e3ff56c81b735be550409426fe8b040
-  languageName: node
-  linkType: hard
-
-"@react-native-community/slider@npm:^5.2.0":
-  version: 5.2.0
-  resolution: "@react-native-community/slider@npm:5.2.0"
-  checksum: 10c0/58ec6a47b5aafefd98a61c79aeae05f1ab8371782eb497d9af665bf2f62a1c372da8fed6dead30e1d6c9e01bfb12bfdbafcde7890736f4f5d55502dabf2e01ad
   languageName: node
   linkType: hard
 
@@ -7270,17 +7276,6 @@ __metadata:
   peerDependencies:
     expo: "*"
   checksum: 10c0/e876208cdec1890a34b45002d7d1f2d36f86b610207ef3c1b60fdd85c6d4d8358bde612711b306add34b62a7f2afac9c9553843ebb3a8cf097b59cbef4c87bc1
-  languageName: node
-  linkType: hard
-
-"expo-video@npm:~55.0.17":
-  version: 55.0.17
-  resolution: "expo-video@npm:55.0.17"
-  peerDependencies:
-    expo: "*"
-    react: "*"
-    react-native: "*"
-  checksum: 10c0/e5d0f2f29a62d10c1c8e0393d81d008efa4fcafccf6d384bbf6df1c78acbd18767b035bee9cd7c2871fa85ca083118f75db9cc95eb730359f2b553b01aebcd8f
   languageName: node
   linkType: hard
 
@@ -11433,7 +11428,7 @@ __metadata:
     "@babel/runtime": "npm:^7.29.2"
     "@expo/log-box": "npm:55.0.12"
     "@expo/metro-runtime": "npm:~55.0.11"
-    "@react-native-community/slider": "npm:^5.2.0"
+    "@expo/ui": "npm:~55.0.17"
     "@shopify/flash-list": "npm:2.0.2"
     expo: "npm:~55.0.25"
     expo-constants: "npm:~55.0.16"
@@ -11442,7 +11437,6 @@ __metadata:
     expo-linking: "npm:~55.0.15"
     expo-router: "npm:~55.0.16"
     expo-status-bar: "npm:~55.0.6"
-    expo-video: "npm:~55.0.17"
     react: "npm:19.2.0"
     react-dom: "npm:19.2.0"
     react-native: "npm:0.83.6"
@@ -11454,7 +11448,6 @@ __metadata:
     react-native-screens: "npm:~4.23.0"
     react-native-web: "npm:~0.21.0"
     react-native-worklets: "npm:0.7.4"
-    reanimated-color-picker: "npm:^5.1.2"
   languageName: unknown
   linkType: soft
 
@@ -11752,22 +11745,6 @@ __metadata:
   version: 5.0.0
   resolution: "readdirp@npm:5.0.0"
   checksum: 10c0/faf1ec57cff2020f473128da3f8d2a57813cc3a08a36c38cae1c9af32c1579906cc50ba75578043b35bade77e945c098233665797cf9730ba3613a62d6e79219
-  languageName: node
-  linkType: hard
-
-"reanimated-color-picker@npm:^5.1.2":
-  version: 5.1.2
-  resolution: "reanimated-color-picker@npm:5.1.2"
-  peerDependencies:
-    expo: ">=44.0.0"
-    react: "*"
-    react-native: "*"
-    react-native-gesture-handler: ">=2.0.0"
-    react-native-reanimated: ">=2.0.0"
-  peerDependenciesMeta:
-    expo:
-      optional: true
-  checksum: 10c0/f856716736d687be5ef0bea6a22062cf3671e39d41154aa94520f05979a308c24c637d1c0b20244113a0247f473db11c4f09460397dfb5065035fa416ba232d7
   languageName: node
   linkType: hard
 

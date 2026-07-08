@@ -3,12 +3,10 @@
  * right, a fill bar showing the position in the range behind, and a horizontal
  * pan over the whole row to adjust the value.
  *
- * The value is a SharedValue: the pan gesture runs as a worklet on the UI
- * thread and writes into it directly — no React state during the drag. The
- * readout updates via the ReText pattern (animated TextInput `text` prop).
- *
- * Theming: `tint` switches between the dark glass palette (default, backward
- * compatible) and the light DialKit-reference palette.
+ * The value is a SharedValue: the pan runs as a worklet on the UI thread and
+ * writes into it directly — no React state during the drag. The readout updates
+ * via the ReText pattern (animated TextInput `text` prop). The pan is
+ * horizontal-only so a vertical drag falls through to an enclosing ScrollView.
  */
 
 import { useCallback } from 'react';
@@ -30,11 +28,11 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import type { DialTint } from './BezierPlot';
+
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 type ReTextProps = TextInputProps & { text: string };
-
-export type DialTint = 'light' | 'dark';
 
 export interface DialRowProps {
   label: string;
@@ -50,7 +48,7 @@ export interface DialRowProps {
   format?: (v: number) => string;
   /** Called on the JS thread (via runOnJS) when the drag gesture ends. */
   onEnd?: () => void;
-  /** Palette: 'dark' glass (default, backward compatible) or 'light' DialKit reference. */
+  /** Palette: 'dark' glass (default) or 'light' DialKit reference. */
   tint?: DialTint;
 }
 
@@ -80,13 +78,16 @@ export function DialRow({
   );
 
   const pan = Gesture.Pan()
+    // Horizontal-only: activate on sideways movement, bail on vertical so a
+    // vertical drag scrolls the enclosing sheet instead of moving the value.
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-12, 12])
     .onStart(() => {
       startValue.set(value.get());
     })
     .onUpdate((e) => {
       const w = rowWidth.get();
       if (w <= 0) return;
-      // Relative adjustment from the value at gesture start.
       let v = startValue.get() + (e.translationX / w) * (max - min);
       if (step !== undefined && step > 0) v = Math.round(v / step) * step;
       value.set(Math.max(min, Math.min(max, v)));
@@ -130,9 +131,9 @@ const dark = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 38,
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     backgroundColor: 'rgba(255,255,255,0.05)',
     overflow: 'hidden',
   },
@@ -144,17 +145,18 @@ const dark = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.09)',
   },
   label: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 12,
-    fontFamily: 'monospace',
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 14,
+    fontFamily: 'Menlo',
   },
   value: {
     color: '#fff',
-    fontSize: 12.5,
-    fontFamily: 'monospace',
+    fontSize: 14,
+    fontFamily: 'Menlo',
+    fontVariant: ['tabular-nums'],
     textAlign: 'right',
     padding: 0,
-    minWidth: 64,
+    minWidth: 72,
   },
 });
 
@@ -176,15 +178,11 @@ const light = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#DFDFE2',
   },
-  label: {
-    color: '#1a1a1a',
-    fontSize: 15,
-    fontWeight: '500',
-  },
+  label: { color: '#1a1a1a', fontSize: 15, fontWeight: '500' },
   value: {
     color: '#1a1a1a',
     fontSize: 15,
-    fontFamily: 'monospace',
+    fontFamily: 'Menlo',
     fontVariant: ['tabular-nums'],
     textAlign: 'right',
     padding: 0,

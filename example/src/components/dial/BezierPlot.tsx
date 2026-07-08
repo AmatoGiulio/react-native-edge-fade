@@ -34,14 +34,19 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
 
 import { bezierEval, SAMPLE_N } from './bezier';
-import type { DialTint } from './DialRow';
+
+/** Palette for the dial components: 'light' or 'dark'. */
+export type DialTint = 'light' | 'dark';
 
 const SEG_INDICES = Array.from({ length: SAMPLE_N - 1 }, (_, i) => i);
 const DOT_R = 5;
+// Grab/release pop for the pad puck — snappy but soft.
+const SPRING = { damping: 15, stiffness: 220, mass: 0.5 } as const;
 const GRID_MINOR = 12;
 const GRID_MAJOR_EVERY = 4;
 
@@ -52,6 +57,8 @@ interface PlotTheme {
   curveHeight: number;
   diagonal: string;
   dot: string;
+  dotBorder: string;
+  dotRadius: number;
   gridLine: string;
   gridMark: string;
   bands: [string, string, string];
@@ -65,6 +72,8 @@ const THEMES: Record<DialTint, PlotTheme> = {
     curveHeight: 2,
     diagonal: 'rgba(255,255,255,0.2)',
     dot: '#ffffff',
+    dotBorder: 'transparent',
+    dotRadius: DOT_R,
     gridLine: 'rgba(255,255,255,0.05)',
     gridMark: 'rgba(255,255,255,0.22)',
     bands: [
@@ -80,11 +89,55 @@ const THEMES: Record<DialTint, PlotTheme> = {
     curveHeight: 3,
     diagonal: 'rgba(0,0,0,0.12)',
     dot: '#7a7a7e',
+    dotBorder: 'transparent',
+    dotRadius: DOT_R,
     gridLine: 'rgba(0,0,0,0.045)',
     gridMark: 'rgba(0,0,0,0.18)',
     bands: ['rgba(0,0,0,0.015)', 'rgba(0,0,0,0.03)', 'rgba(0,0,0,0.05)'],
   },
 };
+
+const PAD_DOT_R = 11;
+
+// Pad variant palettes — a DialKit-like rounded square with a dot-grid
+// background and blue control dots. `padDot` is the background dot color.
+const PAD_THEMES: Record<DialTint, PlotTheme & { padDot: string }> = {
+  light: {
+    bg: '#F2F2F4',
+    radius: 24,
+    curve: '#4a4a4a',
+    curveHeight: 3,
+    diagonal: 'transparent',
+    dot: '#4A90E2',
+    dotBorder: '#ffffff',
+    dotRadius: PAD_DOT_R,
+    gridLine: 'transparent',
+    gridMark: 'transparent',
+    bands: ['rgba(0,0,0,0.015)', 'rgba(0,0,0,0.03)', 'rgba(0,0,0,0.05)'],
+    padDot: 'rgba(0,0,0,0.08)',
+  },
+  dark: {
+    bg: '#2C2C2E',
+    radius: 24,
+    curve: '#E5E5EA',
+    curveHeight: 3,
+    diagonal: 'transparent',
+    dot: '#4A90E2',
+    dotBorder: '#ffffff',
+    dotRadius: PAD_DOT_R,
+    gridLine: 'transparent',
+    gridMark: 'transparent',
+    bands: [
+      'rgba(255,255,255,0.03)',
+      'rgba(255,255,255,0.06)',
+      'rgba(255,255,255,0.1)',
+    ],
+    padDot: 'rgba(255,255,255,0.14)',
+  },
+};
+
+const PAD_DOT_COLS = 8;
+const PAD_DOT_R_BG = 2;
 
 function clamp01(v: number): number {
   'worklet';
@@ -106,6 +159,13 @@ export interface BezierPlotProps {
   interactive?: boolean;
   /** Palette: 'dark' glass (default, backward compatible) or 'light' DialKit reference. */
   tint?: DialTint;
+  /**
+   * Visual style only — does not touch the worklet/gesture logic. 'graph'
+   * (default) keeps the existing graph-paper grid + dashed diagonal. 'pad'
+   * restyles as a DialKit-like pad: light rounded square, dot-grid background,
+   * no grid lines, no '+' marks, no diagonal, bigger blue control dots.
+   */
+  variant?: 'graph' | 'pad';
 }
 
 export function BezierPlot({
@@ -117,6 +177,7 @@ export function BezierPlot({
   showPresenceBands = false,
   interactive = true,
   tint = 'dark',
+  variant = 'graph',
 }: BezierPlotProps) {
   const width = useSharedValue(0);
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -134,7 +195,9 @@ export function BezierPlot({
     [width]
   );
 
-  const theme = THEMES[tint];
+  const isPad = variant === 'pad';
+  const theme = isPad ? PAD_THEMES[tint] : THEMES[tint];
+  const padDotColor = PAD_THEMES[tint].padDot;
   const plotStyle: ViewStyle = {
     height,
     backgroundColor: theme.bg,
@@ -151,7 +214,7 @@ export function BezierPlot({
   // multiple of 3 so minor lines land exactly on the presence-band
   // boundaries (w/3, 2w/3); "+" markers sit on those major columns.
   const grid = useMemo(() => {
-    if (layoutWidth <= 0) return null;
+    if (isPad || layoutWidth <= 0) return null;
     const cols = Math.max(3, Math.round(layoutWidth / GRID_MINOR / 3) * 3);
     const rows = Math.max(1, Math.round(height / GRID_MINOR));
     const sx = layoutWidth / cols;
@@ -203,19 +266,61 @@ export function BezierPlot({
     };
 
     return { lines, marks, markText };
-  }, [layoutWidth, height, theme]);
+  }, [isPad, layoutWidth, height, theme]);
+
+  // Pad variant only: static background of small round dots (a spacious ~8×8
+  // matrix), no animation per dot — purely decorative, generated after layout.
+  const dotGrid = useMemo(() => {
+    if (!isPad || layoutWidth <= 0) return null;
+    const cols = PAD_DOT_COLS;
+    const sx = layoutWidth / cols;
+    const rows = Math.max(1, Math.round(height / sx));
+    const sy = height / rows;
+    const dots: ViewStyle[] = [];
+    for (let r = 0; r <= rows; r++) {
+      for (let c = 0; c <= cols; c++) {
+        dots.push({
+          position: 'absolute',
+          left: c * sx - PAD_DOT_R_BG,
+          top: r * sy - PAD_DOT_R_BG,
+          width: PAD_DOT_R_BG * 2,
+          height: PAD_DOT_R_BG * 2,
+          borderRadius: PAD_DOT_R_BG,
+          backgroundColor: padDotColor,
+        });
+      }
+    }
+    return dots;
+  }, [isPad, layoutWidth, height, padDotColor]);
 
   // Static after layout: DialKit's dashed diagonal reference (top-left →
-  // bottom-right). Real width so the dash pattern renders undistorted.
+  // bottom-right). Real width so the dash pattern renders undistorted. Not
+  // used in the pad variant.
   const diagonalStyle: ViewStyle | null =
-    layoutWidth > 0
+    !isPad && layoutWidth > 0
       ? {
           width: Math.hypot(layoutWidth, height),
           borderTopColor: theme.diagonal,
           transform: [{ rotate: `${Math.atan2(height, layoutWidth)}rad` }],
         }
       : null;
-  const dotColor: ViewStyle = { backgroundColor: theme.dot };
+  const dotColor: ViewStyle = {
+    backgroundColor: theme.dot,
+    borderColor: theme.dotBorder,
+    borderWidth: isPad ? 2 : 0,
+  };
+
+  // Pad variant renders each control point as a raised "puck" — a shadowed white
+  // ring with a blue core — like the reference Emotional Pad. The graph variant
+  // keeps the flat dot. `activeScale` is the grabbed-state pop.
+  const dotExtras = isPad
+    ? {
+        puck: true,
+        ringColor: theme.dotBorder,
+        coreColor: theme.dot,
+        activeScale: 1.3,
+      }
+    : { activeScale: 1.6 };
 
   // Single pan over the whole plot: grab the nearest control point.
   const pan = Gesture.Pan()
@@ -251,8 +356,16 @@ export function BezierPlot({
       selected.set(0);
     });
 
-  const plot = (
+  const canvas = (
     <View style={[s.plot, plotStyle]} onLayout={onLayout}>
+      {dotGrid && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {dotGrid.map((st, i) => (
+            <View key={`d${i}`} style={st} />
+          ))}
+        </View>
+      )}
+
       {grid && (
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           {grid.lines.map((st, i) => (
@@ -303,6 +416,8 @@ export function BezierPlot({
             height={height}
             selected={selected}
             colorStyle={dotColor}
+            radius={theme.dotRadius}
+            {...dotExtras}
           />
           <Dot
             which={2}
@@ -312,11 +427,15 @@ export function BezierPlot({
             height={height}
             selected={selected}
             colorStyle={dotColor}
+            radius={theme.dotRadius}
+            {...dotExtras}
           />
         </>
       )}
     </View>
   );
+
+  const plot = canvas;
 
   return interactive ? (
     <GestureDetector gesture={pan}>{plot}</GestureDetector>
@@ -390,19 +509,65 @@ interface DotProps {
   height: number;
   selected: SharedValue<number>;
   colorStyle: ViewStyle;
+  radius?: number;
+  /** Scale applied while this point is grabbed. */
+  activeScale?: number;
+  /** Render as a raised ring+core puck (pad variant) instead of a flat dot. */
+  puck?: boolean;
+  ringColor?: string;
+  coreColor?: string;
 }
 
-function Dot({ which, hx, hy, width, height, selected, colorStyle }: DotProps) {
+function Dot({
+  which,
+  hx,
+  hy,
+  width,
+  height,
+  selected,
+  colorStyle,
+  radius = DOT_R,
+  activeScale = 1.6,
+  puck = false,
+  ringColor,
+  coreColor,
+}: DotProps) {
   const style = useAnimatedStyle(() => ({
     transform: [
-      { translateX: hx.get() * width.get() - DOT_R },
-      { translateY: hy.get() * height - DOT_R },
-      { scale: selected.get() === which ? 1.6 : 1 },
+      { translateX: hx.get() * width.get() - radius },
+      { translateY: hy.get() * height - radius },
+      { scale: withSpring(selected.get() === which ? activeScale : 1, SPRING) },
     ],
   }));
 
+  const sizeStyle: ViewStyle = {
+    width: radius * 2,
+    height: radius * 2,
+    borderRadius: radius,
+  };
+
+  if (puck) {
+    const coreStyle: ViewStyle = {
+      width: radius * 1.15,
+      height: radius * 1.15,
+      borderRadius: radius,
+      backgroundColor: coreColor,
+    };
+    return (
+      <Animated.View
+        pointerEvents="none"
+        style={[s.puck, sizeStyle, { backgroundColor: ringColor }, style]}
+      >
+        <View style={coreStyle} />
+      </Animated.View>
+    );
+  }
+
   return (
-    <Animated.View pointerEvents="none" style={[s.dot, colorStyle, style]} />
+    <Animated.View
+      pointerEvents="none"
+      style={[s.dot, sizeStyle, colorStyle, style]}
+    />
   );
 }
 
@@ -436,5 +601,19 @@ const s = StyleSheet.create({
     width: DOT_R * 2,
     height: DOT_R * 2,
     borderRadius: DOT_R,
+  },
+  // Pad puck — a raised white ring centering a blue core, with a soft drop
+  // shadow so it reads as a physical knob (like the reference Emotional Pad).
+  puck: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
 });
