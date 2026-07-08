@@ -8,7 +8,7 @@
  * stays visible but disabled when the frost tint is off.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -38,6 +38,7 @@ import {
 const MONO = 'Menlo';
 
 import { BezierPlot, DialRow } from '@/components/dial';
+import { SymbolIcon } from '@/components/SymbolIcon';
 import { useFadeStore } from '@/fade/FadeContext';
 import { BEZIER_PRESETS, type Bezier } from '@/fade/presets';
 import { useScheme, useTheme } from '@/theme';
@@ -135,6 +136,7 @@ export function FadePanel() {
   // the two layers; a translucent value would read slightly different on each.
   const rowBg = t.control;
   const dialSurface = { surface: t.control, fillColor: t.controlActive };
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const topHeight = useHeaderHeight();
   return (
     <View style={[s.root]} collapsable={false}>
@@ -231,52 +233,6 @@ export function FadePanel() {
           </Menu>
         </Host>
 
-        {/* Curve control points */}
-        <DialRow
-          label="x1"
-          value={x1}
-          min={0}
-          max={1}
-          step={0.01}
-          format={fmt2}
-          tint={rowTint}
-          {...dialSurface}
-          onEnd={markCustom}
-        />
-        <DialRow
-          label="y1"
-          value={y1}
-          min={0}
-          max={1}
-          step={0.01}
-          format={fmt2}
-          tint={rowTint}
-          {...dialSurface}
-          onEnd={markCustom}
-        />
-        <DialRow
-          label="x2"
-          value={x2}
-          min={0}
-          max={1}
-          step={0.01}
-          format={fmt2}
-          tint={rowTint}
-          {...dialSurface}
-          onEnd={markCustom}
-        />
-        <DialRow
-          label="y2"
-          value={y2}
-          min={0}
-          max={1}
-          step={0.01}
-          format={fmt2}
-          tint={rowTint}
-          {...dialSurface}
-          onEnd={markCustom}
-        />
-
         {/* Edge sizes */}
         <DialRow
           label="top"
@@ -318,82 +274,145 @@ export function FadePanel() {
           tint={rowTint}
           {...dialSurface}
         />
-        {mode === 'blur' && (
-          <DialRow
-            label="blur"
-            value={blur}
-            min={0}
-            max={100}
-            step={1}
-            format={fmtPx}
-            tint={rowTint}
-            {...dialSurface}
-          />
-        )}
         <DialRow
-          label="radius"
-          value={radius}
+          label="blur"
+          value={blur}
           min={0}
-          max={48}
+          max={100}
           step={1}
           format={fmtPx}
           tint={rowTint}
           {...dialSurface}
+          disabled={mode !== 'blur'}
         />
+        {/* Advanced — the curve's raw control points (also editable via the pad),
+            radius, frost tint and dev toggles. Collapsed by default to keep the
+            panel focused on the high-value controls. */}
+        <Pressable
+          style={[s.advanced, { backgroundColor: 'transparent' }]}
+          onPress={() => setShowAdvanced((v) => !v)}
+        >
+          <Text style={[s.advancedLabel, { color: t.text }]}>advanced</Text>
+          <SymbolIcon
+            name={showAdvanced ? 'chevron.up' : 'chevron.down'}
+            color={t.faintText}
+            size={12}
+          />
+        </Pressable>
 
-        {/* Frost tint / tint color / debug bands — native HStack rows: SwiftUI
-            centers the label and the control on one baseline (alignment center),
-            so there's no RN↔native vertical mismatch. */}
-        <Host matchContents={{ vertical: true }} style={[s.rowHost]}>
-          <HStack alignment="center" modifiers={rowMods(rowBg)}>
-            <UIText modifiers={labelMods(t.text)}>frost tint</UIText>
-            <Spacer />
-            <Toggle
-              isOn={frostOn}
-              onIsOnChange={onFrostToggle}
-              modifiers={[labelsHidden()]}
+        {showAdvanced && (
+          <>
+            {/* Curve control points */}
+            <DialRow
+              label="x1"
+              value={x1}
+              min={0}
+              max={1}
+              step={0.01}
+              format={fmt2}
+              tint={rowTint}
+              {...dialSurface}
+              onEnd={markCustom}
             />
-          </HStack>
-        </Host>
+            <DialRow
+              label="y1"
+              value={y1}
+              min={0}
+              max={1}
+              step={0.01}
+              format={fmt2}
+              tint={rowTint}
+              {...dialSurface}
+              onEnd={markCustom}
+            />
+            <DialRow
+              label="x2"
+              value={x2}
+              min={0}
+              max={1}
+              step={0.01}
+              format={fmt2}
+              tint={rowTint}
+              {...dialSurface}
+              onEnd={markCustom}
+            />
+            <DialRow
+              label="y2"
+              value={y2}
+              min={0}
+              max={1}
+              step={0.01}
+              format={fmt2}
+              tint={rowTint}
+              {...dialSurface}
+              onEnd={markCustom}
+            />
 
-        <Host matchContents={{ vertical: true }} style={s.rowHost}>
-          <HStack alignment="center" modifiers={rowMods(rowBg)}>
-            <UIText modifiers={labelMods(frostOn ? t.text : t.faintText)}>
-              tint color
-            </UIText>
-            <Spacer />
-            <ColorPicker
-              selection={tint ?? DEFAULT_TINT}
-              supportsOpacity={false}
-              onSelectionChange={setTint}
-              modifiers={[labelsHidden(), disabled(!frostOn)]}
+            <DialRow
+              label="radius"
+              value={radius}
+              min={0}
+              max={48}
+              step={1}
+              format={fmtPx}
+              tint={rowTint}
+              {...dialSurface}
             />
-          </HStack>
-        </Host>
 
-        <Host matchContents={{ vertical: true }} style={s.rowHost}>
-          <HStack alignment="center" modifiers={rowMods(rowBg)}>
-            <UIText modifiers={labelMods(t.text)}>auto demo</UIText>
-            <Spacer />
-            <Toggle
-              isOn={autoDemo}
-              onIsOnChange={setAutoDemo}
-              modifiers={[labelsHidden()]}
-            />
-          </HStack>
-        </Host>
+            {/* Frost tint / tint color / dev toggles — native HStack rows:
+                SwiftUI centers label and control on one baseline. */}
+            <Host matchContents={{ vertical: true }} style={s.rowHost}>
+              <HStack alignment="center" modifiers={rowMods(rowBg)}>
+                <UIText modifiers={labelMods(t.text)}>frost tint</UIText>
+                <Spacer />
+                <Toggle
+                  isOn={frostOn}
+                  onIsOnChange={onFrostToggle}
+                  modifiers={[labelsHidden()]}
+                />
+              </HStack>
+            </Host>
 
-        <Host matchContents={{ vertical: true }} style={s.rowHost}>
-          <HStack alignment="center" modifiers={rowMods(rowBg)}>
-            <UIText modifiers={labelMods(t.text)}>debug bands</UIText>
-            <Spacer />
-            <Toggle
-              isOn={showBands}
-              onIsOnChange={setShowBands}
-              modifiers={[labelsHidden()]}
-            />
-          </HStack>
-        </Host>
+            <Host matchContents={{ vertical: true }} style={s.rowHost}>
+              <HStack alignment="center" modifiers={rowMods(rowBg)}>
+                <UIText modifiers={labelMods(frostOn ? t.text : t.faintText)}>
+                  tint color
+                </UIText>
+                <Spacer />
+                <ColorPicker
+                  selection={tint ?? DEFAULT_TINT}
+                  supportsOpacity={false}
+                  onSelectionChange={setTint}
+                  modifiers={[labelsHidden(), disabled(!frostOn)]}
+                />
+              </HStack>
+            </Host>
+
+            <Host matchContents={{ vertical: true }} style={s.rowHost}>
+              <HStack alignment="center" modifiers={rowMods(rowBg)}>
+                <UIText modifiers={labelMods(t.text)}>auto demo</UIText>
+                <Spacer />
+                <Toggle
+                  isOn={autoDemo}
+                  onIsOnChange={setAutoDemo}
+                  modifiers={[labelsHidden()]}
+                />
+              </HStack>
+            </Host>
+
+            <Host matchContents={{ vertical: true }} style={s.rowHost}>
+              <HStack alignment="center" modifiers={rowMods(rowBg)}>
+                <UIText modifiers={labelMods(t.text)}>debug bands</UIText>
+                <Spacer />
+                <Toggle
+                  isOn={showBands}
+                  onIsOnChange={setShowBands}
+                  modifiers={[labelsHidden()]}
+                />
+              </HStack>
+            </Host>
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -404,6 +423,18 @@ const s = StyleSheet.create({
   scroll: { flex: 1, paddingHorizontal: 20 },
   body: { gap: 8, paddingTop: 12, paddingBottom: 28, flexGrow: 1 },
   padWrap: { marginBottom: 6 },
+
+  // Advanced disclosure row — same surface as the other rows.
+  advanced: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    marginTop: 8,
+  },
+  advancedLabel: { fontFamily: MONO, fontSize: 14, fontWeight: '600' },
 
   // Custom themed segmented control for Mode.
   seg: {

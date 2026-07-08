@@ -58,6 +58,8 @@ export interface DialRowProps {
   surface?: string;
   /** Opaque fill-bar color override (the value-progress bar). */
   fillColor?: string;
+  /** Dim the row and ignore drags (e.g. a param that doesn't apply to the mode). */
+  disabled?: boolean;
 }
 
 function defaultFormat(v: number): string {
@@ -76,6 +78,7 @@ export function DialRow({
   tint = 'dark',
   surface,
   fillColor,
+  disabled = false,
 }: DialRowProps) {
   const rowWidth = useSharedValue(0);
   const startValue = useSharedValue(0);
@@ -88,6 +91,7 @@ export function DialRow({
   );
 
   const pan = Gesture.Pan()
+    .enabled(!disabled)
     // Horizontal-only: activate on sideways movement, bail on vertical so a
     // vertical drag scrolls the enclosing sheet instead of moving the value.
     .activeOffsetX([-10, 10])
@@ -122,7 +126,11 @@ export function DialRow({
   return (
     <GestureDetector gesture={pan}>
       <View
-        style={[t.row, surface ? { backgroundColor: surface } : null]}
+        style={[
+          t.row,
+          surface ? { backgroundColor: surface } : null,
+          disabled ? s.disabled : null,
+        ]}
         onLayout={onLayout}
       >
         <Animated.View
@@ -147,6 +155,10 @@ export function DialRow({
     </GestureDetector>
   );
 }
+
+const s = StyleSheet.create({
+  disabled: { opacity: 0.4 },
+});
 
 const dark = StyleSheet.create({
   row: {
