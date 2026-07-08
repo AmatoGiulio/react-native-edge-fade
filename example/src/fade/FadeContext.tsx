@@ -17,11 +17,19 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
-import { useSharedValue } from 'react-native-reanimated';
+import {
+  Easing,
+  cancelAnimation,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import type { CubicBezierCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
@@ -45,6 +53,14 @@ export interface FadeStore {
   setTint: (tint: string | undefined) => void;
   showBands: boolean;
   setShowBands: (show: boolean) => void;
+
+  /**
+   * Auto-demo: when on, the top/bottom fade region gently breathes on a loop so
+   * the effect is self-evident without any interaction (used for the hero / video
+   * preview). Turning it off cancels the loop and eases the region back to 110.
+   */
+  autoDemo: boolean;
+  setAutoDemo: (on: boolean) => void;
 
   /** Name of the active curve preset, or 'custom' after a manual edit. */
   preset: string;
@@ -81,8 +97,34 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   // to any photo. Dark/Light/custom tints are opt-in via the panel.
   const [tint, setTint] = useState<string | undefined>(undefined);
   const [showBands, setShowBands] = useState(false);
+  const [autoDemo, setAutoDemo] = useState(false);
   // Starts on the named default curve; a manual edit flips it to 'custom'.
   const [preset, setPreset] = useState<string>('default');
+
+  // Drive the breathing loop on the UI thread while auto-demo is on; ease the
+  // fade region back to its default and cancel the loop when it's turned off.
+  useEffect(() => {
+    if (autoDemo) {
+      const cfg = { duration: 1600, easing: Easing.inOut(Easing.ease) };
+      const loop = () =>
+        withRepeat(
+          withSequence(withTiming(30, cfg), withTiming(170, cfg)),
+          -1,
+          true
+        );
+      top.set(loop());
+      bottom.set(loop());
+    } else {
+      cancelAnimation(top);
+      cancelAnimation(bottom);
+      top.set(withTiming(110));
+      bottom.set(withTiming(110));
+    }
+    return () => {
+      cancelAnimation(top);
+      cancelAnimation(bottom);
+    };
+  }, [autoDemo, top, bottom]);
 
   const reset = useCallback(() => {
     x1.set(0.78);
@@ -98,6 +140,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
+    setAutoDemo(false);
     setPreset('default');
   }, [x1, y1, x2, y2, top, bottom, left, right, blur, radius]);
 
@@ -119,6 +162,8 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       setTint,
       showBands,
       setShowBands,
+      autoDemo,
+      setAutoDemo,
       preset,
       setPreset,
       reset,
@@ -138,6 +183,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       mode,
       tint,
       showBands,
+      autoDemo,
       preset,
       reset,
     ]

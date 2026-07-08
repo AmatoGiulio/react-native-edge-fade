@@ -99,6 +99,8 @@ export function FadePanel() {
     setTint,
     showBands,
     setShowBands,
+    autoDemo,
+    setAutoDemo,
     preset,
     setPreset,
   } = useFadeStore();
@@ -128,9 +130,11 @@ export function FadePanel() {
   );
 
   const rowTint = scheme;
-  // Match the DialRow fill-row background exactly so slider / preset / toggle
-  // rows all read as the same surface.
-  const rowBg = scheme === 'dark' ? 'rgba(255,255,255,0.05)' : '#F2F2F4';
+  // Single opaque surface for every row — RN (segmented / dial) and native
+  // (@expo/ui menu / toggles) alike. Opaque tokens composite identically across
+  // the two layers; a translucent value would read slightly different on each.
+  const rowBg = t.control;
+  const dialSurface = { surface: t.control, fillColor: t.controlActive };
   const topHeight = useHeaderHeight();
   return (
     <View style={[s.root]} collapsable={false}>
@@ -236,6 +240,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          {...dialSurface}
           onEnd={markCustom}
         />
         <DialRow
@@ -246,6 +251,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          {...dialSurface}
           onEnd={markCustom}
         />
         <DialRow
@@ -256,6 +262,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          {...dialSurface}
           onEnd={markCustom}
         />
         <DialRow
@@ -266,6 +273,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          {...dialSurface}
           onEnd={markCustom}
         />
 
@@ -278,6 +286,7 @@ export function FadePanel() {
           step={2}
           format={fmtPx}
           tint={rowTint}
+          {...dialSurface}
         />
         <DialRow
           label="bottom"
@@ -287,6 +296,7 @@ export function FadePanel() {
           step={2}
           format={fmtPx}
           tint={rowTint}
+          {...dialSurface}
         />
         <DialRow
           label="left"
@@ -296,6 +306,7 @@ export function FadePanel() {
           step={2}
           format={fmtPx}
           tint={rowTint}
+          {...dialSurface}
         />
         <DialRow
           label="right"
@@ -305,6 +316,7 @@ export function FadePanel() {
           step={2}
           format={fmtPx}
           tint={rowTint}
+          {...dialSurface}
         />
         {mode === 'blur' && (
           <DialRow
@@ -315,6 +327,7 @@ export function FadePanel() {
             step={1}
             format={fmtPx}
             tint={rowTint}
+            {...dialSurface}
           />
         )}
         <DialRow
@@ -325,12 +338,12 @@ export function FadePanel() {
           step={1}
           format={fmtPx}
           tint={rowTint}
+          {...dialSurface}
         />
 
         {/* Frost tint / tint color / debug bands — native HStack rows: SwiftUI
             centers the label and the control on one baseline (alignment center),
             so there's no RN↔native vertical mismatch. */}
-        <View style={{ height: 8 }} />
         <Host matchContents={{ vertical: true }} style={[s.rowHost]}>
           <HStack alignment="center" modifiers={rowMods(rowBg)}>
             <UIText modifiers={labelMods(t.text)}>frost tint</UIText>
@@ -354,6 +367,18 @@ export function FadePanel() {
               supportsOpacity={false}
               onSelectionChange={setTint}
               modifiers={[labelsHidden(), disabled(!frostOn)]}
+            />
+          </HStack>
+        </Host>
+
+        <Host matchContents={{ vertical: true }} style={s.rowHost}>
+          <HStack alignment="center" modifiers={rowMods(rowBg)}>
+            <UIText modifiers={labelMods(t.text)}>auto demo</UIText>
+            <Spacer />
+            <Toggle
+              isOn={autoDemo}
+              onIsOnChange={setAutoDemo}
+              modifiers={[labelsHidden()]}
             />
           </HStack>
         </Host>

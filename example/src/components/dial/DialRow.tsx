@@ -50,6 +50,14 @@ export interface DialRowProps {
   onEnd?: () => void;
   /** Palette: 'dark' glass (default) or 'light' DialKit reference. */
   tint?: DialTint;
+  /**
+   * Opaque row surface override. Pass an opaque color so the row matches sibling
+   * native (@expo/ui) rows exactly — translucent fills composite differently
+   * across the RN and SwiftUI layers, which reads as a subtle color mismatch.
+   */
+  surface?: string;
+  /** Opaque fill-bar color override (the value-progress bar). */
+  fillColor?: string;
 }
 
 function defaultFormat(v: number): string {
@@ -66,6 +74,8 @@ export function DialRow({
   format,
   onEnd,
   tint = 'dark',
+  surface,
+  fillColor,
 }: DialRowProps) {
   const rowWidth = useSharedValue(0);
   const startValue = useSharedValue(0);
@@ -111,13 +121,25 @@ export function DialRow({
 
   return (
     <GestureDetector gesture={pan}>
-      <View style={t.row} onLayout={onLayout}>
-        <Animated.View pointerEvents="none" style={[t.fill, fillStyle]} />
+      <View
+        style={[t.row, surface ? { backgroundColor: surface } : null]}
+        onLayout={onLayout}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            t.fill,
+            fillStyle,
+            fillColor ? { backgroundColor: fillColor } : null,
+          ]}
+        />
         <Text style={t.label}>{label}</Text>
+        {/* Readout is driven entirely by `animatedProps.text` on the UI thread
+            (ReText pattern) — no `value.get()` at render time, which Reanimated's
+            strict mode warns about. animatedProps sets the text on mount. */}
         <AnimatedTextInput
           pointerEvents="none"
           editable={false}
-          defaultValue={fmt(value.get())}
           animatedProps={animatedProps}
           style={t.value}
         />

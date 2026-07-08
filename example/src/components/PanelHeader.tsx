@@ -30,7 +30,7 @@ export function PanelResetButton({ color }: { color: string }) {
   const { reset } = useFadeStore();
   return (
     <Pressable onPress={reset} hitSlop={12}>
-      <Ionicons name="refresh" size={22} color={color} />
+      <Ionicons name="arrow-undo" size={22} color={color} />
     </Pressable>
   );
 }

@@ -8,21 +8,14 @@
 
 import { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 import { getCatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
+import { BeforeAfterPhoto } from '@/components/BeforeAfterPhoto';
 import { useTheme } from '@/theme';
 
 export function PhotoScreen() {
@@ -30,7 +23,7 @@ export function PhotoScreen() {
   const item = getCatalogItem(id ?? '');
   const insets = useSafeAreaInsets();
   const t = useTheme();
-  const { top, bottom, left, right, radius, mode, tint, showBands } =
+  const { top, bottom, left, right, radius, mode, tint, showBands, preset } =
     useFadeStore();
   const { curve, blurRadius } = useFadeRender();
 
@@ -62,22 +55,21 @@ export function PhotoScreen() {
           { paddingTop: insets.top + 64, paddingBottom: insets.bottom + 32 },
         ]}
       >
-        {/* Photo — 70% width, 3:4 contained, rounded, live EdgeFadeView */}
+        {/* Photo — 70% width, 3:4, before/after split (raw vs live edge fade) */}
         <View style={s.photoWrap}>
-          <AnimatedEdgeFadeView
+          <BeforeAfterPhoto
+            source={item.source}
             top={top}
             bottom={bottom}
             left={left}
             right={right}
+            radius={radius}
             curve={curve}
             mode={mode}
             blurRadius={blurRadius}
             color={tint}
-            radius={radius}
-            style={s.edgeFade}
-          >
-            <Image source={item.source} style={s.photo} resizeMode="cover" />
-          </AnimatedEdgeFadeView>
+            background={t.bg}
+          />
           <Animated.View
             pointerEvents="none"
             style={[s.debugBand, s.debugTop, topBandStyle]}
@@ -92,7 +84,7 @@ export function PhotoScreen() {
         <View style={s.meta}>
           <Text style={[s.title, { color: t.text }]}>{item.category}</Text>
           <Text style={[s.subtitle, { color: t.subtext }]}>
-            Edge Fade · {id}
+            {mode.charAt(0).toUpperCase() + mode.slice(1)} fade · {preset} curve
           </Text>
         </View>
 
@@ -116,8 +108,6 @@ const s = StyleSheet.create({
   scroll: { alignItems: 'center', paddingHorizontal: 20 },
 
   photoWrap: { width: '70%', aspectRatio: 3 / 4 },
-  edgeFade: { flex: 1 },
-  photo: { width: '100%', height: '100%' },
   debugBand: {
     position: 'absolute',
     left: 0,
