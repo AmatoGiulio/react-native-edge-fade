@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { FadeProvider } from '@/fade/FadeContext';
 import { OptionsButton } from '@/components/OptionsButton';
+import { PanelTitle, PanelResetButton } from '@/components/PanelHeader';
 import { useScheme, PALETTES } from '@/theme';
 
 const flex1 = { flex: 1 };
@@ -23,6 +24,8 @@ export default function RootLayout() {
   // so the native header isn't re-committed (which flickers the back button) on
   // every screen re-render.
   const renderOptions = () => <OptionsButton color={t.headerTint} />;
+  const renderPanelTitle = () => <PanelTitle />;
+  const renderPanelReset = () => <PanelResetButton color={t.headerTint} />;
 
   return (
     <GestureHandlerRootView style={flex1}>
@@ -64,7 +67,8 @@ export default function RootLayout() {
                 options={{
                   presentation: 'formSheet',
                   animation: 'slide_from_bottom',
-                  title: 'Tune',
+                  headerTitle: renderPanelTitle,
+                  headerRight: renderPanelReset,
 
                   // Include the large detent so that when the native ColorPicker
                   // presents its system modal, iOS can expand this sheet instead
