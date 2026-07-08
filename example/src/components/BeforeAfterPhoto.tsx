@@ -14,6 +14,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ImageSourcePropType } from 'react-native';
@@ -21,6 +22,10 @@ import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 import type { CubicBezierCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 const HANDLE = 40;
+const KNOB_R = 14;
+const KNOB_CORE_R = 8;
+const KNOB_ACTIVE_SCALE = 1.3;
+const SPRING = { damping: 15, stiffness: 220, mass: 0.5 } as const;
 
 export interface BeforeAfterPhotoProps {
   source: ImageSourcePropType;
@@ -58,10 +63,14 @@ export function BeforeAfterPhoto({
   const split = useSharedValue(0.5);
   const frameW = useSharedValue(0);
   const start = useSharedValue(0.5);
+  const active = useSharedValue(0);
 
   const onLayout = useCallback((w: number) => frameW.set(w), [frameW]);
 
   const pan = Gesture.Pan()
+    .onTouchesDown(() => {
+      active.set(1);
+    })
     .onStart(() => {
       start.set(split.get());
     })
@@ -70,6 +79,9 @@ export function BeforeAfterPhoto({
       if (w <= 0) return;
       const next = start.get() + e.translationX / w;
       split.set(Math.max(0, Math.min(1, next)));
+    })
+    .onFinalize(() => {
+      active.set(0);
     });
 
   // Faded overlay is anchored right and revealed from the divider to the edge.
@@ -78,6 +90,13 @@ export function BeforeAfterPhoto({
   }));
   const handleStyle = useAnimatedStyle(() => ({
     left: `${split.get() * 100}%`,
+  }));
+  const knobStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        scale: withSpring(active.get() ? KNOB_ACTIVE_SCALE : 1, SPRING),
+      },
+    ],
   }));
   // Pins the faded layer to the frame's full width (right-anchored) so it lines
   // up with the base image even though its parent clipper is only a slice wide.
@@ -129,7 +148,9 @@ export function BeforeAfterPhoto({
       <GestureDetector gesture={pan}>
         <Animated.View style={[s.handleHit, handleStyle]}>
           <View style={s.line} />
-          <View style={s.knob} />
+          <Animated.View style={[s.knob, knobStyle]}>
+            <View style={s.knobCore} />
+          </Animated.View>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -165,14 +186,23 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.9)',
   },
   knob: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: KNOB_R * 2,
+    height: KNOB_R * 2,
+    borderRadius: KNOB_R,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#fff',
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.28,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
+  knobCore: {
+    width: KNOB_CORE_R * 2,
+    height: KNOB_CORE_R * 2,
+    borderRadius: KNOB_CORE_R,
+    backgroundColor: '#4A90E2',
   },
 
   labelLeft: {
