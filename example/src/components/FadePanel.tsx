@@ -8,9 +8,11 @@
  * stays visible but disabled when the frost tint is off.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
+import { useHeaderHeight } from '@react-navigation/elements';
+
 import {
   Host,
   HStack,
@@ -47,6 +49,7 @@ const DEFAULT_TINT = '#000000';
 // the Jetpack Compose equivalent; they'd apply to an Android @expo/ui panel,
 // which this iOS demo doesn't build.)
 const PRESET_SF: Record<string, SFSymbol> = {
+  default: 'sparkles',
   linear: 'line.diagonal',
   ease: 'wave.3.right',
   soft: 'drop',
@@ -96,12 +99,12 @@ export function FadePanel() {
     setTint,
     showBands,
     setShowBands,
+    preset,
+    setPreset,
   } = useFadeStore();
 
   const scheme = useScheme();
   const t = useTheme();
-
-  const [preset, setPreset] = useState<string>('custom');
 
   const applyPreset = useCallback(
     (label: string, b: Bezier) => {
@@ -111,8 +114,12 @@ export function FadePanel() {
       y2.set(b.y2);
       setPreset(label);
     },
-    [x1, y1, x2, y2]
+    [x1, y1, x2, y2, setPreset]
   );
+
+  // Called (on the JS thread) when the user edits the curve by hand — via the
+  // pad or an x/y dial row — so the preset label reverts to 'custom'.
+  const markCustom = useCallback(() => setPreset('custom'), [setPreset]);
 
   const frostOn = tint !== undefined;
   const onFrostToggle = useCallback(
@@ -124,12 +131,11 @@ export function FadePanel() {
   // Match the DialRow fill-row background exactly so slider / preset / toggle
   // rows all read as the same surface.
   const rowBg = scheme === 'dark' ? 'rgba(255,255,255,0.05)' : '#F2F2F4';
-
+  const topHeight = useHeaderHeight();
   return (
-    <View style={s.root} collapsable={false}>
-      <Text style={[s.title, { color: t.text }]}>Edge Fade</Text>
-
+    <View style={[s.root]} collapsable={false}>
       <ScrollView
+        style={[s.scroll, { paddingTop: topHeight }]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.body}
       >
@@ -167,6 +173,7 @@ export function FadePanel() {
             tint={scheme}
             variant="pad"
             showPresenceBands={mode === 'blur'}
+            onEdit={markCustom}
           />
         </View>
 
@@ -229,6 +236,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          onEnd={markCustom}
         />
         <DialRow
           label="y1"
@@ -238,6 +246,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          onEnd={markCustom}
         />
         <DialRow
           label="x2"
@@ -247,6 +256,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          onEnd={markCustom}
         />
         <DialRow
           label="y2"
@@ -256,6 +266,7 @@ export function FadePanel() {
           step={0.01}
           format={fmt2}
           tint={rowTint}
+          onEnd={markCustom}
         />
 
         {/* Edge sizes */}
@@ -319,10 +330,8 @@ export function FadePanel() {
         {/* Frost tint / tint color / debug bands — native HStack rows: SwiftUI
             centers the label and the control on one baseline (alignment center),
             so there's no RN↔native vertical mismatch. */}
-        <Host
-          matchContents={{ vertical: true }}
-          style={[s.rowHost, s.rowGroupTop]}
-        >
+        <View style={{ height: 8 }} />
+        <Host matchContents={{ vertical: true }} style={[s.rowHost]}>
           <HStack alignment="center" modifiers={rowMods(rowBg)}>
             <UIText modifiers={labelMods(t.text)}>frost tint</UIText>
             <Spacer />
@@ -366,15 +375,9 @@ export function FadePanel() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 20 },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-    paddingTop: 18,
-    paddingBottom: 12,
-  },
-  body: { gap: 8, paddingBottom: 28 },
+  root: { flex: 1 },
+  scroll: { flex: 1, paddingHorizontal: 20 },
+  body: { gap: 8, paddingTop: 12, paddingBottom: 28, flexGrow: 1 },
   padWrap: { marginBottom: 6 },
 
   // Custom themed segmented control for Mode.

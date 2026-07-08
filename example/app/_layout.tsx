@@ -64,14 +64,24 @@ export default function RootLayout() {
                 options={{
                   presentation: 'formSheet',
                   animation: 'slide_from_bottom',
+                  title: 'Tune',
+
                   // Include the large detent so that when the native ColorPicker
                   // presents its system modal, iOS can expand this sheet instead
                   // of abruptly dismissing it (a single non-large detent leaves
                   // UIKit no room and it animates the sheet away).
                   sheetAllowedDetents: [0.7, 1.0],
-                  sheetGrabberVisible: true,
+                  headerShown: true,
+                  //sheetGrabberVisible: true,
                   sheetExpandsWhenScrolledToEdge: true,
                   sheetCornerRadius: 28,
+                  headerTransparent: true,
+                  //headerRight: renderOptions,
+                  // formSheet gives the screen container an ambiguous width on the
+                  // New Architecture, which shifts the whole panel sideways. Pinning
+                  // width to 100% forces a deterministic frame. NOTE: do not pin
+                  // height to 100% — that makes the content taller than the sheet and
+                  // clips the top rows under the sheet's rounded top edge.
                   contentStyle: { backgroundColor: t.card },
                 }}
               />

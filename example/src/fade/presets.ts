@@ -8,6 +8,9 @@ export interface Bezier {
 }
 
 export const BEZIER_PRESETS: ReadonlyArray<{ label: string; value: Bezier }> = [
+  // The app's starting curve — the steep-shouldered S. Kept first and used as
+  // the initial selection so the menu always has a named entry that matches.
+  { label: 'default', value: { x1: 0.78, y1: 0.14, x2: 0.15, y2: 0.78 } },
   { label: 'linear', value: { x1: 0, y1: 0, x2: 1, y2: 1 } },
   { label: 'ease', value: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 } },
   { label: 'soft', value: { x1: 0.4, y1: 0, x2: 0.6, y2: 1 } },

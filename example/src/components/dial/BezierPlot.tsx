@@ -32,6 +32,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -166,6 +167,8 @@ export interface BezierPlotProps {
    * no grid lines, no '+' marks, no diagonal, bigger blue control dots.
    */
   variant?: 'graph' | 'pad';
+  /** Called on the JS thread when the user drags a control point (grabs P1/P2). */
+  onEdit?: () => void;
 }
 
 export function BezierPlot({
@@ -178,6 +181,7 @@ export function BezierPlot({
   interactive = true,
   tint = 'dark',
   variant = 'graph',
+  onEdit,
 }: BezierPlotProps) {
   const width = useSharedValue(0);
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -338,6 +342,7 @@ export function BezierPlot({
         selected.set(2);
         startPt.set({ x: x2.get(), y: y2.get() });
       }
+      if (onEdit) runOnJS(onEdit)();
     })
     .onUpdate((e) => {
       const w = width.get();

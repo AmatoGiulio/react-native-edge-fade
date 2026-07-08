@@ -45,6 +45,13 @@ export interface FadeStore {
   setTint: (tint: string | undefined) => void;
   showBands: boolean;
   setShowBands: (show: boolean) => void;
+
+  /** Name of the active curve preset, or 'custom' after a manual edit. */
+  preset: string;
+  setPreset: (preset: string) => void;
+
+  /** Restore every value to its default (used by the panel header's Reset). */
+  reset: () => void;
 }
 
 export interface FadeRender {
@@ -74,6 +81,25 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   // to any photo. Dark/Light/custom tints are opt-in via the panel.
   const [tint, setTint] = useState<string | undefined>(undefined);
   const [showBands, setShowBands] = useState(false);
+  // Starts on the named default curve; a manual edit flips it to 'custom'.
+  const [preset, setPreset] = useState<string>('default');
+
+  const reset = useCallback(() => {
+    x1.set(0.78);
+    y1.set(0.14);
+    x2.set(0.15);
+    y2.set(0.78);
+    top.set(110);
+    bottom.set(110);
+    left.set(0);
+    right.set(0);
+    blur.set(28);
+    radius.set(0);
+    setMode('blur');
+    setTint(undefined);
+    setShowBands(false);
+    setPreset('default');
+  }, [x1, y1, x2, y2, top, bottom, left, right, blur, radius]);
 
   const store = useMemo<FadeStore>(
     () => ({
@@ -93,6 +119,9 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       setTint,
       showBands,
       setShowBands,
+      preset,
+      setPreset,
+      reset,
     }),
     // SharedValues and setters are stable refs; only the discrete config flips.
     [
@@ -109,6 +138,8 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       mode,
       tint,
       showBands,
+      preset,
+      reset,
     ]
   );
 
