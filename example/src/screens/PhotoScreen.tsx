@@ -10,12 +10,12 @@ import { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { getCatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { BeforeAfterPhoto } from '@/components/BeforeAfterPhoto';
+import { SymbolIcon } from '@/components/SymbolIcon';
 import { useTheme } from '@/theme';
 
 export function PhotoScreen() {
@@ -92,7 +92,7 @@ export function PhotoScreen() {
           style={[s.tuneBtn, { backgroundColor: t.control }]}
           onPress={openPanel}
         >
-          <Ionicons name="options-outline" size={18} color={t.text} />
+          <SymbolIcon name="slider.horizontal.3" color={t.text} size={18} />
           <Text style={[s.tuneText, { color: t.text }]}>Tune edge fade</Text>
         </Pressable>
       </ScrollView>

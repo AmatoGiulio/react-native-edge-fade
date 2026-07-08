@@ -6,12 +6,13 @@
 
 import { Pressable } from 'react-native';
 import { router } from 'expo-router';
-import Ionicons from '@expo/vector-icons/Ionicons';
+
+import { SymbolIcon } from '@/components/SymbolIcon';
 
 export function OptionsButton({ color }: { color: string }) {
   return (
     <Pressable onPress={() => router.push('/panel')} hitSlop={12}>
-      <Ionicons name="options-outline" size={22} color={color} />
+      <SymbolIcon name="slider.horizontal.below.rectangle" color={color} />
     </Pressable>
   );
 }

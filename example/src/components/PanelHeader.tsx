@@ -8,9 +8,8 @@
  */
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-
 import { useFadeStore } from '@/fade/FadeContext';
+import { SymbolIcon } from '@/components/SymbolIcon';
 import { useTheme } from '@/theme';
 
 const MONO = 'Menlo';
@@ -30,7 +29,7 @@ export function PanelResetButton({ color }: { color: string }) {
   const { reset } = useFadeStore();
   return (
     <Pressable onPress={reset} hitSlop={12}>
-      <Ionicons name="arrow-undo" size={22} color={color} />
+      <SymbolIcon name="arrow.counterclockwise" color={color} />
     </Pressable>
   );
 }
