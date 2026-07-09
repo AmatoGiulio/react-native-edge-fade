@@ -4,12 +4,46 @@
 #import "EdgeFadeBlurMaskLayer.h"
 
 #import <React/RCTConversions.h>
+
+
+// ─── Lightweight os_log timing helpers ────────────────────────────────────
+// Usage:  EF_BENCH_START;  ...work...  EF_BENCH_LOG("my_tag");
+// Read from host: log stream --predicate 'subsystem == "com.edgefade.bench"'
+
+#define EF_BENCH_START() \
+  CFAbsoluteTime _ef_bench_t0 = CFAbsoluteTimeGetCurrent()
+
+#define EF_BENCH_LOG(tag) do { \
+  CFAbsoluteTime _now = CFAbsoluteTimeGetCurrent(); \
+  double _el_us = (_now - _ef_bench_t0) * 1000000.0; \
+  _ef_bench_t0 = _now; \
+  static NSString *_ef_path; \
+  static dispatch_once_t _ef_once; \
+  dispatch_once(&_ef_once, ^{ \
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) firstObject]; \
+    _ef_path = [[dir stringByAppendingPathComponent:@"edgefade_bench.csv"] copy]; \
+  }); \
+  if (_ef_path) { \
+    int _ef_fd = open(_ef_path.UTF8String, O_WRONLY | O_CREAT | O_APPEND, 0644); \
+    if (_ef_fd >= 0) { \
+      char _ef_buf[128]; \
+      int _ef_n = snprintf(_ef_buf, sizeof(_ef_buf), "%s,%.0f\n", (tag), _el_us); \
+      if (_ef_n > 0) write(_ef_fd, _ef_buf, MIN((size_t)_ef_n, sizeof(_ef_buf))); \
+      close(_ef_fd); \
+    } \
+  } \
+} while(0)
+// ───────────────────────────────────────────────────────────────────────────
 #import <react/renderer/components/EdgeFadeViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/EdgeFadeViewSpec/Props.h>
 #import <react/renderer/components/EdgeFadeViewSpec/RCTComponentViewHelpers.h>
 #import "RCTFabricComponentsPlugins.h"
 
+
+
 using namespace facebook::react;
+
+
 
 // ─── Render mode enum ────────────────────────────────────────────────────────
 
@@ -268,6 +302,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // ─── Props update ────────────────────────────────────────────────────────────
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps {
+  EF_BENCH_START();
   const auto &p  = *std::static_pointer_cast<EdgeFadeViewProps const>(props);
   // `oldProps` may be null on the first updateProps call. `_props` is always
   // valid (initialized to defaultProps in initWithFrame) and reflects the last
@@ -299,6 +334,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   _overlayColorLeft   = p.overlayColorLeft   ? RCTUIColorFromSharedColor(p.overlayColorLeft)   : nil;
   _overlayColorRight  = p.overlayColorRight  ? RCTUIColorFromSharedColor(p.overlayColorRight)  : nil;
   _blurRadius = (CGFloat)p.blurRadius;
+  EF_BENCH_LOG("up_diff");
 
   // Resolve the new render mode.
   NSString *modeStr = [NSString stringWithUTF8String:p.mode.c_str()];
@@ -317,43 +353,50 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     case EdgeFadeModeBlur:    layerMissing = (_blurViews[0][0] == nil); break;
     default:                  layerMissing = NO;                   break;
   }
+  EF_BENCH_LOG("up_switch");
 
   if ((modeChanged && newMode != _renderMode) || layerMissing) {
     _renderMode = newMode;
     [self _teardownFadeLayers];
+    EF_BENCH_LOG("up_teardown");
     [self _buildFadeLayers];
+    EF_BENCH_LOG("up_build");
   } else if (_renderMode == EdgeFadeModeMask) {
     if (sizeChanged || curveChanged) [self _syncMaskLayer];
+    EF_BENCH_LOG("up_mask");
   } else if (_renderMode == EdgeFadeModeOverlay) {
     if (colorChanged || curveChanged) [self _rebuildOverlayColors];
+    EF_BENCH_LOG("up_overlay_color");
     if (sizeChanged) [self _updateLayerFrames];
+    EF_BENCH_LOG("up_overlay_size");
   } else {
     // Blur mode — incremental updates.
     if (sizeChanged || curveChanged) [self _syncBlurMaskLayers];
+    EF_BENCH_LOG("up_blur_sync");
     if (sizeChanged) {
       [self _updateLayerFrames];
       [self _invalidateBlurMaskLayers];
     }
+    EF_BENCH_LOG("up_blur_size");
     if (curveChanged) {
       [self _invalidateBlurMaskLayers];
       if (_overlayColor) [self _rebuildVeilColors];
     }
+    EF_BENCH_LOG("up_blur_curve");
     if (colorChanged) {
       if (_overlayColor) {
-        // Ensure frost veil layers exist if color just turned on.
         if (!_frostTop) [self _buildFrostVeil];
         else            [self _rebuildVeilColors];
       } else {
-        // color turned off — tear down the veil.
         [self _teardownFrostVeil];
       }
     }
+    EF_BENCH_LOG("up_blur_color");
     if (blurRadiusChanged) {
-      // The inner padding p_k = _blurRadius·F[k] is baked into the strip frames,
-      // so a radius change resizes the strips as well as re-scaling intensity.
       [self _updateLayerFrames];
       [self _applyBlurFraction];
     }
+    EF_BENCH_LOG("up_blur_radius");
   }
 
   if (radiusChanged) {
@@ -361,8 +404,10 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     self.layer.cornerRadius  = _fadeRadius;
     self.layer.masksToBounds = (_fadeRadius > 0);
   }
+  EF_BENCH_LOG("up_radius");
 
   [super updateProps:props oldProps:oldProps];
+  EF_BENCH_LOG("updateProps");
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -433,8 +478,14 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       if (_blurAnimators[e][k]) {
-        _blurAnimators[e][k].fractionComplete = 0;
-        [_blurAnimators[e][k] stopAnimation:YES];
+        // finishAtPosition: before releasing — a paused animator that deallocs
+        // while in the .active state can crash UIKit (rdar:// FB11963912).
+        // An `.inactive` animator needs neither stop nor finish (the crash only
+        // affects active/paused animators), so skip to avoid spurious work.
+        if (_blurAnimators[e][k].state != UIViewAnimatingStateInactive) {
+          [_blurAnimators[e][k] stopAnimation:YES];
+          [_blurAnimators[e][k] finishAnimationAtPosition:UIViewAnimatingPositionEnd];
+        }
         _blurAnimators[e][k] = nil;
       }
       [_blurViews[e][k] removeFromSuperview];
@@ -445,6 +496,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 }
 
 - (void)_buildFadeLayers {
+  EF_BENCH_START();
   const CGFloat scale = [self _effectiveScale];
   if (_renderMode == EdgeFadeModeMask) {
     _maskLayer = [EdgeFadeMaskLayer layer];
@@ -461,9 +513,13 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   } else {
     // Blur mode — build blur view + mask, then optionally the frost veil.
     [self _buildBlurView];
+    EF_BENCH_LOG("bld_buildBlurView");
     if (_overlayColor) [self _buildFrostVeil];
+    EF_BENCH_LOG("bld_buildFrostVeil");
     [self _updateLayerFrames];
+    EF_BENCH_LOG("bld_updateLayerFrames");
     [self _applyBlurFraction];
+    EF_BENCH_LOG("bld_applyBlurFraction");
   }
 }
 
@@ -593,6 +649,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // the bottom, etc.), so setting fade<edge> = _fade<edge> produces the correct
 // ramp regardless of where the strip sits inside the view.
 - (void)_syncBlurMaskLayers {
+  EF_BENCH_START();
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       EdgeFadeBlurMaskLayer *m = _blurMaskLayers[e][k];
@@ -602,10 +659,11 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
         case EdgeFadeEdgeTop:    m.fadeTop    = _fadeTop;    m.curveTop    = _curveTop;    break;
         case EdgeFadeEdgeBottom: m.fadeBottom = _fadeBottom; m.curveBottom = _curveBottom; break;
         case EdgeFadeEdgeLeft:   m.fadeLeft   = _fadeLeft;   m.curveLeft   = _curveLeft;   break;
-        case EdgeFadeEdgeRight:  m.fadeRight  = _fadeRight;  m.curveRight  = _curveRight;  break;
+        case EdgeFadeEdgeRight:  m.fadeRight  = _fadeRight; m.curveRight  = _curveRight;  break;
       }
     }
   }
+  EF_BENCH_LOG("_syncBlurMaskLayers");
 }
 
 - (void)_invalidateBlurMaskLayers {
@@ -624,6 +682,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // first → lowest), so higher radii stack on top. All 12 views are created up
 // front; _updateLayerFrames later hides the edges whose fade is 0.
 - (void)_buildBlurView {
+  EF_BENCH_START();
   const CGFloat scale = [self _effectiveScale];
 
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
@@ -634,13 +693,17 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
       mask.levelLo = EdgeFadeLevelLo(k);
       mask.levelHi = EdgeFadeLevelHi(k);
       _blurMaskLayers[e][k] = mask;
+      EF_BENCH_LOG("bbv_mask");
 
       // Effect view with nil effect; the animator drives the effect below.
       UIVisualEffectView *view = [[UIVisualEffectView alloc] initWithEffect:nil];
       view.userInteractionEnabled = NO;
       view.layer.mask = mask;
       _blurViews[e][k] = view;
+      EF_BENCH_LOG("bbv_view");
+
       [self addSubview:view];
+      EF_BENCH_LOG("bbv_addSubview");
 
       // Paused UIViewPropertyAnimator trick: set fractionComplete to drive blur
       // intensity without animating. Must retain the animator — paused animators
@@ -662,21 +725,24 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
       }];
       animator.pausesOnCompletion = YES;
       _blurAnimators[e][k] = animator;
+      EF_BENCH_LOG("bbv_animator");
 
-      // A UIViewPropertyAnimator is `.inactive` after init; setting fractionComplete
-      // on an inactive animator is a no-op. Start then immediately pause to move it
-      // to the paused/active state so fractionComplete scrubbing takes effect.
-      [animator startAnimation];
-      [animator pauseAnimation];
+      // Deferred activation: the animator stays `.inactive` until the first
+      // `_applyBlurFraction` call with a non-zero fraction (see _applyBlurFraction).
+      // This avoids the ~180µs cost of startAnimation+pauseAnimation per animator
+      // when blurRadius is 0 (initial mount). The effect's tint subviews are not
+      // instantiated until activation, so _stripVisualEffectTintOn: is a no-op here.
+      EF_BENCH_LOG("bbv_animatorStartPause");
 
-      // The effect's tint/luminosity subviews are only instantiated once the effect
-      // has actually been applied, which just happened above.
       [self _stripVisualEffectTintOn:view];
+      EF_BENCH_LOG("bbv_stripTint");
     }
   }
 
   [self _syncBlurMaskLayers];
+  EF_BENCH_LOG("bbv_syncMasks");
   [self _applyBlurFraction];
+  EF_BENCH_LOG("bbv_applyFraction");
 }
 
 // UIVisualEffectView composes its blur effect out of several private subviews
@@ -698,18 +764,36 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // ramp across the stack. At blurRadius = 0 every level's fraction is 0, so the
 // whole stack is visually neutral.
 - (void)_applyBlurFraction {
+  EF_BENCH_START();
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       UIViewPropertyAnimator *animator = _blurAnimators[e][k];
       if (!animator) continue;
+
+      const float fraction = MIN(MAX(_blurRadius * kEdgeFadeLevelFractions[k] / 40.0, 0.0), 1.0);
+
+      // Lazy activation: a freshly-built animator is `.inactive`; fractionComplete
+      // is a no-op in that state (though iOS 26.1 silently activates the animator
+      // when fractionComplete is set, even at 0 — see benchmark note). Activate only
+      // when a non-zero fraction is actually needed; skip everything when fraction=0
+      // and the animator hasn't been activated yet, so the initial mount with
+      // blurRadius=0 stays completely free.
+      if (animator.state == UIViewAnimatingStateInactive) {
+        if (fraction == 0) continue;
+        [animator startAnimation];
+        [animator pauseAnimation];
+        [self _stripVisualEffectTintOn:_blurViews[e][k]];
+        EF_BENCH_LOG("lazy_activated");
+      }
+
       // UIKit can re-instantiate the effect's tint/luminosity subviews whenever it
       // re-applies the effect (e.g. after a fractionComplete scrub), so re-strip on
       // every call. The subview list is short (2-3 entries), so this is cheap.
       [self _stripVisualEffectTintOn:_blurViews[e][k]];
-      const CGFloat fraction = MIN(MAX(_blurRadius * kEdgeFadeLevelFractions[k] / 40.0, 0.0), 1.0);
       animator.fractionComplete = fraction;
     }
   }
+  EF_BENCH_LOG("_applyBlurFraction");
 }
 
 // ─── Frost veil (blur mode only) ─────────────────────────────────────────────
@@ -720,15 +804,22 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 
 - (void)_buildFrostVeil {
   if (_frostTop) return; // already built
+  EF_BENCH_START();
   const CGFloat scale = [self _effectiveScale];
 
   _frostTop    = [self _makeFrostLayerWithScale:scale];
+  EF_BENCH_LOG("fr_makeLayer");
   _frostBottom = [self _makeFrostLayerWithScale:scale];
+  EF_BENCH_LOG("fr_makeLayer");
   _frostLeft   = [self _makeFrostLayerWithScale:scale];
+  EF_BENCH_LOG("fr_makeLayer");
   _frostRight  = [self _makeFrostLayerWithScale:scale];
+  EF_BENCH_LOG("fr_makeLayer");
 
   [self _rebuildVeilColors];
+  EF_BENCH_LOG("fr_rebuildColors");
   [self _updateLayerFrames];
+  EF_BENCH_LOG("fr_updateFrames");
 }
 
 - (CAGradientLayer *)_makeFrostLayerWithScale:(CGFloat)scale {
@@ -777,6 +868,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // ─── Frame sync ──────────────────────────────────────────────────────────────
 
 - (void)_updateLayerFrames {
+  EF_BENCH_START();
   const CGFloat w = CGRectGetWidth(self.bounds);
   const CGFloat h = CGRectGetHeight(self.bounds);
 
@@ -785,11 +877,14 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     // automatically. No explicit setNeedsDisplay needed for origin-only frame
     // shifts (the rendered bitmap is in layer-local coordinates).
     _maskLayer.frame = self.bounds;
+    EF_BENCH_LOG("_updateLayerFrames_mask");
     return;
   }
 
   if (_renderMode == EdgeFadeModeBlur) {
-    if (!_blurViews[0][0]) return;
+    if (!_blurViews[0][0]) {
+      return;
+    }
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
 
@@ -858,6 +953,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     }
 
     [CATransaction commit];
+    EF_BENCH_LOG("_updateLayerFrames_blur");
     return;
   }
 
