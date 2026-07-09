@@ -157,6 +157,44 @@ Metriche target:
 | Modal switch (mask→blur) | Time to interactive | ❌ | ❌ | — | ❓ | Non misurato |
 | _teardownFadeLayers | Crash rate | Crash su dealloc | 0 crash | — | ✅ | Fix applicato |
 
+## Benchmark: Lazy Activation + fraction==0 guard
+
+### Data: 2026-07-09
+
+### Ambiente
+
+| Parametro | Valore |
+|---|---|
+| Device | Simulatore iPhone 17 Pro (iOS 26.1) |
+| Build | Xcode 26.3, Debug-iphonesimulator |
+| Condizione | blurRadius=0 al mount, transizione a 28 dopo 2s (setTimeout) |
+| Strumentazione | EF_BENCH macro in EdgeFadeView.mm (edgefade_bench.csv su Caches) |
+
+### Risultati
+
+| Metrica | Prima (w/o guard) | Dopo (con guard) | Delta | Esito |
+|---|---|---|---|---|
+| `_applyBlurFraction` @ mount (blurRadius=0) | 1827 µs | **0 µs** | −1827 µs (100%) | ✅ |
+| `_applyBlurFraction` 2nd call @ mount | 23 µs | **0 µs** | −23 µs | ✅ |
+| `lazy_activated` @ mount | 0 (silent activation) | 0 (no activation) | — | ✅ |
+| `lazy_activated` 0→28 transition | N/A (not implemented) | 12 entries (4×3) | +12 activationi | ✅ atteso |
+| `_applyBlurFraction` post-activazione | 23 µs | 60 µs | +37 µs | ⚠️ rumore |
+| `bld_buildBlurView` | 4387 µs | 2844 µs | −1543 µs | ✅ |
+| `up_build` | 4636 µs | 3070 µs | −1566 µs | ✅ |
+| Build warnings | 0 su EdgeFadeView.mm | 0 su EdgeFadeView.mm | — | ✅ |
+| Crash su teardown (dealloc .active) | 0 | 0 | — | ✅ |
+
+### Note
+
+- Il guard `if (fraction == 0) continue;` nel branch `UIViewAnimatingStateInactive` impedisce l'attivazione silenziosa documentata su iOS 26.1 (`fractionComplete = 0` su `.inactive` animator lo attiva comunque)
+- `_stripVisualEffectTintOn:` nel path di attivazione (line 786) garantisce che il tint venga rimosso subito dopo startAnimation+pauseAnimation, prima del primo `fractionComplete`
+- Il re-strip al di fuori del branch (line 792) gestisce i casi in cui UIKit reistanzia le subview tint/luminosity dopo uno scrub di fractionComplete
+
+### Rischio residuo
+
+- Galleryscreen.tsx contiene un override `useState(0)` + `setTimeout` a 28 dopo 2s — va **rimosso prima del merge** perché altera il comportamento visivo iniziale dell'example app
+- `EdgeFadeBlurMaskLayer.mm`: fixata una regressione di indentazione (`CGContextRestoreGState` de-indentato) — nessun impatto funzionale
+
 ## Limiti della baseline attuale
 
 1. **JS thread solo**: React Profiler non misura CA commit, GPU, o main-thread nativo.
