@@ -22,6 +22,46 @@ import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import java.io.File
+
+// ── NanoTime benchmark (iOS EF_BENCH equivalent) ────────────────────────────
+// CPU-side proxy only: measures display-list recording/composite time on the
+// UI thread. The gaussian blur itself runs on the RenderThread/GPU and is NOT
+// captured here — use `dumpsys gfxinfo` / Perfetto for frame timing and GPU.
+//
+// Marks are buffered in memory and appended to <cacheDir>/edgefade_bench.csv
+// every FLUSH_EVERY frames, so file I/O stays out of the measured path on the
+// other frames. Read from host:
+//   adb shell run-as <pkg> cat /data/data/<pkg>/cache/edgefade_bench.csv
+// CSV row: <tag>_<frameN>,<mark>,<microseconds>
+private class BenchMark(private val file: File) {
+  private val buffer = StringBuilder(16 * 1024)
+  private var last = 0L
+  private var frame = 0
+
+  fun begin() { last = System.nanoTime() }
+
+  fun mark(tag: String, frameTag: String) {
+    val now = System.nanoTime()
+    buffer.append(frameTag).append('_').append(frame)
+      .append(',').append(tag)
+      .append(',').append((now - last) / 1000).append('\n')
+    last = now
+  }
+
+  fun endFrame() {
+    frame++
+  }
+
+  fun flush() {
+    if (buffer.isEmpty()) return
+    try {
+      file.appendText(buffer.toString())
+    } catch (_: Exception) { /* best-effort */ }
+    buffer.setLength(0)
+  }
+
+}
 
 /**
  * Edge fade renderer.
@@ -158,9 +198,20 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Reused for the single-edge mask fast path so it doesn't allocate every frame.
   private val singleEdgeRect = RectF()
 
+  // ── Benchmark (BENCH flag in companion) ───────────────────────────────────
+
+  private val bench: BenchMark? =
+    if (BENCH) BenchMark(File(context.cacheDir, "edgefade_bench.csv")) else null
+
+  // Deferred CSV write: EdgeFadeView.dispatchDraw only runs on invalidation
+  // (props/layout), not every scroll frame, so draws are sparse. Flushing when
+  // draws pause for 500ms keeps file I/O out of the measured path entirely.
+  private val benchFlush = Runnable { bench?.flush() }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   override fun onDetachedFromWindow() {
+    bench?.flush()
     topSlot.release()
     bottomSlot.release()
     leftSlot.release()
@@ -342,6 +393,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // sized to just that edge's strip (see recordLevelNodesForEdge below), so
     // the blur RenderEffect on each level node only has to process the strip's
     // pixels — not the whole view.
+    bench?.begin()
     val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
     content.setPosition(0, 0, width, height)
     val rc = content.beginRecording()
@@ -356,6 +408,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     } finally {
       content.endRecording()
     }
+    bench?.mark("bl_contentRecord", BENCH_TAG)
 
     // Re-record + (re)blur only the level nodes for active edges, each clipped
     // to its own strip rect (band + inner padding) — see recordLevelNodesForEdge.
@@ -363,12 +416,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     if (fadeBottom > 0f) recordLevelNodesForEdge(EDGE_BOTTOM, content, 0f, h - fadeBottom, w, h)
     if (fadeLeft > 0f)   recordLevelNodesForEdge(EDGE_LEFT,   content, 0f, 0f, fadeLeft, h)
     if (fadeRight > 0f)  recordLevelNodesForEdge(EDGE_RIGHT,  content, w - fadeRight, 0f, w, h)
+    bench?.mark("bl_levelNodes", BENCH_TAG)
 
     lastBlurEffectRadius = blurRadius
 
     // Sharp base underneath the level stack. Content stays opaque (no
     // dissolve) — like iOS, it stays visible under the bar, just blurred.
     super.dispatchDraw(canvas)
+    bench?.mark("bl_sharpBase", BENCH_TAG)
 
     if (fadeTop > 0f) {
       drawEdgeLevels(canvas, EDGE_TOP, curveTop, levelTopCaches, fadeTop, 0f,
@@ -386,6 +441,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       drawEdgeLevels(canvas, EDGE_RIGHT, curveRight, levelRightCaches, fadeRight, w,
         w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
     }
+    bench?.mark("bl_compositeLevels", BENCH_TAG)
 
     // Frost material veil on top: translucent (inner) → opaque material color
     // (outer). Opt-in — painted only when `color` is set. Without it, blur mode
@@ -393,6 +449,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // reads light) instead of forcing a white haze that only suits light UI.
     // Pass a dark `color` when overlaying controls that need a legibility backdrop.
     overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
+    bench?.mark("bl_frostVeil", BENCH_TAG)
+    bench?.endFrame()
+    if (bench != null) { removeCallbacks(benchFlush); postDelayed(benchFlush, 500) }
   }
 
   // (Re)records the per-level RenderNodes for one active edge, each clipped to
@@ -594,6 +653,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     private const val EDGE_LEFT = 2
     private const val EDGE_RIGHT = 3
     private const val EDGE_COUNT = 4
+
+    // CPU-side nanoTime benchmark of drawBlurLayered (see BenchMark top of
+    // file). Compile-time flag — leave false for release; the `bench` field is
+    // null and all mark calls are no-ops. BENCH_TAG labels the CSV rows so
+    // baseline vs variant runs can share one file.
+    private const val BENCH = true
+    private const val BENCH_TAG = "bands3"
 
     // Fractions of blurRadius used by the 3 progressive blur levels, and the
     // [lo, hi] boundaries (cumulative) of the presence band each level owns.
