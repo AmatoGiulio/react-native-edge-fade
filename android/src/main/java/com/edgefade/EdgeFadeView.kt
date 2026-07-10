@@ -12,6 +12,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
+import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -419,8 +420,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
     bench?.mark("bl_contentRecord", BENCH_TAG)
 
-    if (SINGLE_PASS) {
+    if (BLUR_STRATEGY == STRATEGY_SINGLE_PASS) {
       drawBlurSinglePass(canvas, content, w, h)
+      drawBlurVeilAndFlush(canvas, w, h)
+      return
+    }
+    if (BLUR_STRATEGY == STRATEGY_PROGRESSIVE &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      drawBlurProgressive(canvas, content, w, h)
       drawBlurVeilAndFlush(canvas, w, h)
       return
     }
@@ -543,6 +550,90 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       presenceGradient(curve, gx0, gy0, gx1, gy1)
     }
     compositeLevel(canvas, node, left, top, right, bottom, mask)
+  }
+
+  // Progressive AGSL blur: one node per active edge whose RenderEffect is a
+  // chained H+V variable-radius gaussian (radius(t) = blurRadius·t along the
+  // band). The strip is drawn OPAQUE clipped to the band rect — at t=0 the
+  // shader returns the content untouched, so the inner seam is invisible by
+  // construction and no DST_IN mask or sharp/blur cross-fade is needed.
+  // Reuses the single-pass node/rect arrays (strategies are mutually
+  // exclusive per build).
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  private fun drawBlurProgressive(canvas: Canvas, content: RenderNode, w: Float, h: Float) {
+    super.dispatchDraw(canvas)
+    bench?.mark("bl_sharpBase", BENCH_TAG)
+
+    if (fadeTop > 0f)    progressiveEdge(canvas, content, EDGE_TOP,
+      0f, 0f, w, fadeTop, inner = fadeTop, outer = 0f, axisX = false)
+    if (fadeBottom > 0f) progressiveEdge(canvas, content, EDGE_BOTTOM,
+      0f, h - fadeBottom, w, h, inner = h - fadeBottom, outer = h, axisX = false)
+    if (fadeLeft > 0f)   progressiveEdge(canvas, content, EDGE_LEFT,
+      0f, 0f, fadeLeft, h, inner = fadeLeft, outer = 0f, axisX = true)
+    if (fadeRight > 0f)  progressiveEdge(canvas, content, EDGE_RIGHT,
+      w - fadeRight, 0f, w, h, inner = w - fadeRight, outer = w, axisX = true)
+
+    lastBlurEffectRadius = blurRadius
+    bench?.mark("bl_compositeLevels", BENCH_TAG)
+  }
+
+  // `inner`/`outer` are absolute view coords of the band's sharp/full-radius
+  // edges along the band axis; they are converted to node-local space (the
+  // shader's coordinate system) after the padded node rect is known.
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  private fun progressiveEdge(
+    canvas: Canvas, content: RenderNode, edge: Int,
+    left: Float, top: Float, right: Float, bottom: Float,
+    inner: Float, outer: Float, axisX: Boolean,
+  ) {
+    val pad = ceil(blurRadius)
+    val nLeft   = (left   - pad).coerceAtLeast(0f)
+    val nTop    = (top    - pad).coerceAtLeast(0f)
+    val nRight  = (right  + pad).coerceAtMost(width.toFloat())
+    val nBottom = (bottom + pad).coerceAtMost(height.toFloat())
+
+    val node = singlePassNodes[edge]
+      ?: RenderNode("EdgeFadeBlurPG_$edge").also { singlePassNodes[edge] = it }
+    node.setPosition(nLeft.roundToInt(), nTop.roundToInt(), nRight.roundToInt(), nBottom.roundToInt())
+
+    val prevRect = singlePassRects[edge]
+    val rectChanged = prevRect == null ||
+      prevRect.left != nLeft || prevRect.top != nTop ||
+      prevRect.right != nRight || prevRect.bottom != nBottom
+    if (rectChanged) {
+      val rc = node.beginRecording()
+      try {
+        rc.translate(-nLeft, -nTop)
+        rc.drawRenderNode(content)
+      } finally {
+        node.endRecording()
+      }
+    }
+    singlePassRects[edge] = (prevRect ?: RectF()).apply { set(nLeft, nTop, nRight, nBottom) }
+
+    if (blurRadius != lastBlurEffectRadius || rectChanged) {
+      val originAlongAxis = if (axisX) nLeft else nTop
+      val nw = nRight - nLeft; val nh = nBottom - nTop
+      fun pass(dx: Float, dy: Float) = RuntimeShader(PROGRESSIVE_BLUR_AGSL).apply {
+        setFloatUniform("uDir", dx, dy)
+        setFloatUniform("uInner", inner - originAlongAxis)
+        setFloatUniform("uOuter", outer - originAlongAxis)
+        setFloatUniform("uAxisX", if (axisX) 1f else 0f)
+        setFloatUniform("uMaxRadius", blurRadius)
+        setFloatUniform("uBounds", 0f, 0f, nw, nh)
+      }
+      node.setRenderEffect(
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(pass(0f, 1f), "content"),
+          RenderEffect.createRuntimeShaderEffect(pass(1f, 0f), "content"),
+        ),
+      )
+    }
+
+    val sc = canvas.save()
+    canvas.clipRect(left, top, right, bottom)
+    canvas.drawRenderNode(node)
+    canvas.restoreToCount(sc)
   }
 
   // Alpha ramp following the presence curve: alpha_i = 1 − alpha(t_i). Inner
@@ -765,15 +856,61 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // baseline vs variant runs can share one file.
     private const val BENCH = true
 
-    // Internal A/B flag (see .agent/TASK_BLUR_STRATEGY.md): false = default
-    // 3-band progressive stack; true = single uniform blur per edge gated by
-    // the presence curve. Not exposed in the public API.
-    private const val SINGLE_PASS = false
+    // Internal A/B strategies (see .agent/TASK_BLUR_STRATEGY.md). Compile-time
+    // only, not exposed in the public API. Default stays bands3.
+    //   BANDS3      — 3 gaussian levels per edge, radius ramp via mask slices.
+    //   SINGLE_PASS — 1 uniform blur per edge, presence curve gates opacity.
+    //   PROGRESSIVE — 1 AGSL pass per edge (API 33+): per-pixel radius(t) =
+    //                 blurRadius·t, separable H+V gaussian chained. True radius
+    //                 ramp with a single strip and no cross-fade ghosting.
+    private const val STRATEGY_BANDS3 = 0
+    private const val STRATEGY_SINGLE_PASS = 1
+    private const val STRATEGY_PROGRESSIVE = 2
+    private const val BLUR_STRATEGY = STRATEGY_BANDS3
+
     // Sentinel level index for the single-pass mask in the LevelGradKey cache,
     // outside LEVEL_FRACTIONS.indices so it can't collide.
     private const val SINGLE_PASS_LEVEL = -1
 
-    private val BENCH_TAG = if (SINGLE_PASS) "singlePass" else "bands3"
+    private val BENCH_TAG = when (BLUR_STRATEGY) {
+      STRATEGY_SINGLE_PASS -> "singlePass"
+      STRATEGY_PROGRESSIVE -> "progressive"
+      else -> "bands3"
+    }
+
+    // Separable gaussian with per-pixel radius growing along the band axis.
+    // t = 0 at the inner edge (sharp), 1 at the outer edge (full radius).
+    // 25 taps at σ/4 spacing (±3σ ≈ 99.7% of the kernel). Sample
+    // coords are clamped to the node rect — same edge behavior as
+    // TileMode.CLAMP in createBlurEffect, avoiding dark fringes at borders.
+    private val PROGRESSIVE_BLUR_AGSL = """
+      uniform shader content;
+      uniform float2 uDir;       // blur axis unit vector (1,0) or (0,1)
+      uniform float  uInner;     // node-local coord of the band's inner edge
+      uniform float  uOuter;     // node-local coord of the band's outer edge
+      uniform float  uAxisX;     // 1 = band runs along x, 0 = along y
+      uniform float  uMaxRadius;
+      uniform float4 uBounds;    // node-local clamp rect (l, t, r, b)
+      half4 main(float2 p) {
+        float c = mix(p.y, p.x, uAxisX);
+        float t = clamp((c - uInner) / (uOuter - uInner), 0.0, 1.0);
+        float r = uMaxRadius * t;
+        if (r < 0.5) { return content.eval(p); }
+        float sigma = r * 0.5;
+        float st = max(sigma * 0.25, 0.5);  // tap spacing ≤ σ/4: no visible striping
+        float o;
+        float w;
+        float wsum = 0.0;
+        half4 sum = half4(0.0);
+        for (int i = -12; i <= 12; i++) {
+          o = float(i) * st;
+          w = exp(-(o * o) / (2.0 * sigma * sigma));
+          sum += content.eval(clamp(p + uDir * o, uBounds.xy, uBounds.zw)) * half4(w);
+          wsum += w;
+        }
+        return sum / half4(wsum);
+      }
+    """
 
     // Fractions of blurRadius used by the 3 progressive blur levels, and the
     // [lo, hi] boundaries (cumulative) of the presence band each level owns.
