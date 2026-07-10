@@ -169,6 +169,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private val levelBottomCaches = levelCacheArray()
   private val levelLeftCaches   = levelCacheArray()
   private val levelRightCaches  = levelCacheArray()
+  // Single-pass blur (SINGLE_PASS = true): one node per edge at full radius,
+  // masked by the presence curve — no progressive radius ramp.
+  private val singlePassNodes  = arrayOfNulls<RenderNode>(EDGE_COUNT)
+  private val singlePassRects  = arrayOfNulls<RectF>(EDGE_COUNT)
+  private val singlePassCaches = Array(EDGE_COUNT) { GradientCache<LevelGradKey>() }
+
   private val veilTopCache     = GradientCache<VeilGradKey>()
   private val veilBottomCache  = GradientCache<VeilGradKey>()
   private val veilLeftCache    = GradientCache<VeilGradKey>()
@@ -219,10 +225,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       blurNode?.discardDisplayList()
       levelNodes.forEach { edge -> edge.forEach { it?.discardDisplayList() } }
+      singlePassNodes.forEach { it?.discardDisplayList() }
     }
     blurNode = null
     levelNodes = Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
     lastLevelRect.forEach { edge -> edge.fill(null) }
+    singlePassNodes.fill(null)
+    singlePassRects.fill(null)
     lastBlurEffectRadius = -1f
     super.onDetachedFromWindow()
   }
@@ -410,6 +419,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
     bench?.mark("bl_contentRecord", BENCH_TAG)
 
+    if (SINGLE_PASS) {
+      drawBlurSinglePass(canvas, content, w, h)
+      drawBlurVeilAndFlush(canvas, w, h)
+      return
+    }
+
     // Re-record + (re)blur only the level nodes for active edges, each clipped
     // to its own strip rect (band + inner padding) — see recordLevelNodesForEdge.
     if (fadeTop > 0f)    recordLevelNodesForEdge(EDGE_TOP,    content, 0f, 0f, w, fadeTop)
@@ -442,16 +457,106 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
         w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
     }
     bench?.mark("bl_compositeLevels", BENCH_TAG)
+    drawBlurVeilAndFlush(canvas, w, h)
+  }
 
-    // Frost material veil on top: translucent (inner) → opaque material color
-    // (outer). Opt-in — painted only when `color` is set. Without it, blur mode
-    // stays a pure content-derived Gaussian fade (dark content reads dark, light
-    // reads light) instead of forcing a white haze that only suits light UI.
-    // Pass a dark `color` when overlaying controls that need a legibility backdrop.
+  // Frost material veil on top: translucent (inner) → opaque material color
+  // (outer). Opt-in — painted only when `color` is set. Without it, blur mode
+  // stays a pure content-derived Gaussian fade (dark content reads dark, light
+  // reads light) instead of forcing a white haze that only suits light UI.
+  // Pass a dark `color` when overlaying controls that need a legibility backdrop.
+  // Shared tail of both blur strategies; also closes the benchmark frame.
+  private fun drawBlurVeilAndFlush(canvas: Canvas, w: Float, h: Float) {
     overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
     bench?.mark("bl_frostVeil", BENCH_TAG)
     bench?.endFrame()
     if (bench != null) { removeCallbacks(benchFlush); postDelayed(benchFlush, 500) }
+  }
+
+  // Single-pass blur: one node per active edge at FULL radius, composited
+  // through a presence-curve mask (opacity(t) = 1 − alpha(t)), so the curve
+  // gates how much of the uniform blur shows instead of the radius itself
+  // ramping. 1 gaussian pass per edge vs 3 in the band stack — cheaper on
+  // GPU, but the perceived blur does not grow along the band: it is a fixed
+  // radius dissolving in. Visual comparison vs bands3 is the point of the
+  // SINGLE_PASS flag.
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun drawBlurSinglePass(canvas: Canvas, content: RenderNode, w: Float, h: Float) {
+    // Sharp base underneath, same as the band stack.
+    super.dispatchDraw(canvas)
+    bench?.mark("bl_sharpBase", BENCH_TAG)
+
+    if (fadeTop > 0f)    singlePassEdge(canvas, content, EDGE_TOP,    curveTop,    fadeTop,    0f,
+      0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
+    if (fadeBottom > 0f) singlePassEdge(canvas, content, EDGE_BOTTOM, curveBottom, fadeBottom, h,
+      0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
+    if (fadeLeft > 0f)   singlePassEdge(canvas, content, EDGE_LEFT,   curveLeft,   fadeLeft,   0f,
+      0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
+    if (fadeRight > 0f)  singlePassEdge(canvas, content, EDGE_RIGHT,  curveRight,  fadeRight,  w,
+      w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
+
+    lastBlurEffectRadius = blurRadius
+    bench?.mark("bl_compositeLevels", BENCH_TAG)
+  }
+
+  // One edge of the single-pass strategy. Same node-rect/padding discipline as
+  // recordLevelNodesForEdge (band expanded by ceil(blurRadius), clamped to the
+  // view) and the same re-record / re-effect invalidation rules; mask cache is
+  // keyed like the level caches with a sentinel level index.
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun singlePassEdge(
+    canvas: Canvas, content: RenderNode, edge: Int, curve: String,
+    size: Float, dim: Float,
+    left: Float, top: Float, right: Float, bottom: Float,
+    gx0: Float, gy0: Float, gx1: Float, gy1: Float,
+  ) {
+    val pad = ceil(blurRadius)
+    val nLeft   = (left   - pad).coerceAtLeast(0f)
+    val nTop    = (top    - pad).coerceAtLeast(0f)
+    val nRight  = (right  + pad).coerceAtMost(width.toFloat())
+    val nBottom = (bottom + pad).coerceAtMost(height.toFloat())
+
+    val node = singlePassNodes[edge]
+      ?: RenderNode("EdgeFadeBlurSP_$edge").also { singlePassNodes[edge] = it }
+    node.setPosition(nLeft.roundToInt(), nTop.roundToInt(), nRight.roundToInt(), nBottom.roundToInt())
+
+    val prevRect = singlePassRects[edge]
+    val rectChanged = prevRect == null ||
+      prevRect.left != nLeft || prevRect.top != nTop ||
+      prevRect.right != nRight || prevRect.bottom != nBottom
+    if (rectChanged) {
+      val rc = node.beginRecording()
+      try {
+        rc.translate(-nLeft, -nTop)
+        rc.drawRenderNode(content)
+      } finally {
+        node.endRecording()
+      }
+    }
+    singlePassRects[edge] = (prevRect ?: RectF()).apply { set(nLeft, nTop, nRight, nBottom) }
+
+    if (blurRadius != lastBlurEffectRadius || rectChanged) {
+      node.setRenderEffect(RenderEffect.createBlurEffect(blurRadius, blurRadius, Shader.TileMode.CLAMP))
+    }
+
+    val mask = singlePassCaches[edge].acquire(LevelGradKey(curve, size, dim, SINGLE_PASS_LEVEL)) {
+      presenceGradient(curve, gx0, gy0, gx1, gy1)
+    }
+    compositeLevel(canvas, node, left, top, right, bottom, mask)
+  }
+
+  // Alpha ramp following the presence curve: alpha_i = 1 − alpha(t_i). Inner
+  // edge (t=0) is fully transparent (sharp content shows), outer edge follows
+  // the curve toward opaque blur. RGB is irrelevant under DST_IN.
+  private fun presenceGradient(
+    curve: String, x0: Float, y0: Float, x1: Float, y1: Float,
+  ): LinearGradient {
+    val a = EdgeFadeCurves.alphas(curve); val n = a.size
+    val stops = EdgeFadeCurves.stops(curve)
+    val colors = IntArray(n) { i ->
+      ColorUtils.setAlphaComponent(Color.BLACK, ((1f - a[i].toFloat()) * 255f).roundToInt())
+    }
+    return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
   }
 
   // (Re)records the per-level RenderNodes for one active edge, each clipped to
@@ -659,7 +764,16 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // null and all mark calls are no-ops. BENCH_TAG labels the CSV rows so
     // baseline vs variant runs can share one file.
     private const val BENCH = true
-    private const val BENCH_TAG = "bands3"
+
+    // Internal A/B flag (see .agent/TASK_BLUR_STRATEGY.md): false = default
+    // 3-band progressive stack; true = single uniform blur per edge gated by
+    // the presence curve. Not exposed in the public API.
+    private const val SINGLE_PASS = false
+    // Sentinel level index for the single-pass mask in the LevelGradKey cache,
+    // outside LEVEL_FRACTIONS.indices so it can't collide.
+    private const val SINGLE_PASS_LEVEL = -1
+
+    private val BENCH_TAG = if (SINGLE_PASS) "singlePass" else "bands3"
 
     // Fractions of blurRadius used by the 3 progressive blur levels, and the
     // [lo, hi] boundaries (cumulative) of the presence band each level owns.
