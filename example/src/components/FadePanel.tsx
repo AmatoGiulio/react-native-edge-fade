@@ -1,64 +1,41 @@
-/**
- * Edge-fade tuning panel for the `/panel` form-sheet route.
- *
- * Layout (top → bottom): a themed segmented Mode control, the custom BezierPlot
- * pad, a native Menu preset trigger, the DialKit-style parameter rows (monospace,
- * drag to change), and the Frost tint / Debug bands rows (mono label + native
- * Toggle / ColorPicker). All surfaces share one row background; the color well
- * stays visible but disabled when the frost tint is off.
- */
-
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState, type ReactNode } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ColorValue, ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 
-import {
-  Host,
-  HStack,
-  Spacer,
-  Image,
-  Text as UIText,
-  Menu,
-  Button,
-  Toggle,
-  ColorPicker,
-} from '@expo/ui/swift-ui';
-import {
-  font,
-  foregroundStyle,
-  background,
-  cornerRadius,
-  padding,
-  frame,
-  labelsHidden,
-  disabled,
-} from '@expo/ui/swift-ui/modifiers';
+import { Host, Switch } from '@expo/ui';
+import { Icon as UniIcon, type IconName } from '@expo/ui';
+import { MenuView } from '@expo/ui/community/menu';
+import type { MenuAction } from '@expo/ui/community/menu';
 
-const MONO = 'Menlo';
+import Flare from '@expo/material-symbols/flare.xml';
+import NorthEast from '@expo/material-symbols/north_east.xml';
+import Waves from '@expo/material-symbols/waves.xml';
+import WaterDrop from '@expo/material-symbols/water_drop.xml';
+import Bolt from '@expo/material-symbols/bolt.xml';
+import Eco from '@expo/material-symbols/eco.xml';
+import UnfoldMore from '@expo/material-symbols/unfold_more.xml';
 
 import { BezierPlot, DialRow } from '@/components/dial';
 import { SymbolIcon } from '@/components/SymbolIcon';
 import { useFadeStore } from '@/fade/FadeContext';
 import { BEZIER_PRESETS, type Bezier } from '@/fade/presets';
-import { useScheme, useTheme } from '@/theme';
+import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
+const MODES_ANDROID = ['mask', 'blur', 'overlay', 'lens'] as const;
 const DEFAULT_TINT = '#000000';
 
-// SF Symbol per preset, shown on the native menu items. (Material Symbols are
-// the Jetpack Compose equivalent; they'd apply to an Android @expo/ui panel,
-// which this iOS demo doesn't build.)
-const PRESET_SF: Record<string, SFSymbol> = {
-  default: 'sparkles',
-  linear: 'line.diagonal',
-  ease: 'wave.3.right',
-  soft: 'drop',
-  sharp: 'bolt',
-  gentle: 'leaf',
-};
-
-const FILL = 10000; // ≈ .infinity for frame(maxWidth:) so a control fills its row
+const TINT_PRESETS = [
+  { label: 'black', value: '#000000' },
+  { label: 'graphite', value: '#242424' },
+  { label: 'white', value: '#FFFFFF' },
+  { label: 'blue', value: '#1A4687' },
+  { label: 'violet', value: '#6750A4' },
+  { label: 'red', value: '#B3261E' },
+] as const;
 
 function fmt2(v: number): string {
   'worklet';
@@ -70,58 +47,185 @@ function fmtPx(v: number): string {
   return `${Math.round(v)}px`;
 }
 
-// Shared SwiftUI modifier sets so the native rows match the DialRow surface.
-const rowMods = (bg: string) => [
-  padding({ horizontal: 14 }),
-  frame({ maxWidth: FILL, height: 44 }),
-  background(bg),
-  cornerRadius(12),
-];
-const labelMods = (color: string) => [
-  font({ family: MONO, size: 14 }),
-  foregroundStyle(color),
-];
+function NativeIcon({ name, size = 22, color }: { name: IconName; size?: number; color?: ColorValue }) {
+  return (
+    <Host matchContents style={{ width: size, height: size }}>
+      <UniIcon name={name} size={size} color={color} />
+    </Host>
+  );
+}
+
+/**
+ * Theme-matched native toggle.
+ *
+ * The universal `Switch` has no color API — it inherits the Compose/SwiftUI
+ * MaterialTheme. To pin exact colors we drop to the platform Compose `Switch`
+ * on Android, which exposes a `colors` prop, and paint every state from the app
+ * palette. On iOS the universal `Switch` follows the `Host` `seedColor` (tint).
+ */
+function NativeSwitch({
+  value,
+  onValueChange,
+  palette,
+  scheme,
+}: {
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  palette: AppPalette;
+  scheme: Scheme;
+}) {
+  if (Platform.OS === 'android') {
+    // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
+    const { Switch: ComposeSwitch } = require('@expo/ui/jetpack-compose');
+    return (
+      <Host matchContents colorScheme={scheme}>
+        <ComposeSwitch
+          value={value}
+          onCheckedChange={onValueChange}
+          colors={{
+            checkedTrackColor: palette.accent,
+            checkedThumbColor: '#FFFFFF',
+            checkedBorderColor: palette.accent,
+            uncheckedTrackColor: palette.controlActive,
+            uncheckedThumbColor: '#FFFFFF',
+            uncheckedBorderColor: palette.controlActive,
+          }}
+        />
+      </Host>
+    );
+  }
+  return (
+    <Host matchContents colorScheme={scheme} seedColor={palette.accent}>
+      <Switch value={value} onValueChange={onValueChange} />
+    </Host>
+  );
+}
+
+interface ThemedMenuProps {
+  actions: MenuAction[];
+  onSelect: (id: string) => void;
+  palette: AppPalette;
+  scheme: Scheme;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+}
+
+/**
+ * A menu whose popup surface and items follow the app palette.
+ *
+ * The community `MenuView` wraps its own internal `Host` and never forwards a
+ * theme, so its Android popup can't be recolored. On Android we therefore build
+ * the menu directly from the Compose `DropdownMenu` — which exposes a `color`
+ * (surface) prop and per-item `elementColors` — inside a `Host` we own and seed.
+ * iOS keeps `MenuView` (SwiftUI menus already honor the system appearance).
+ */
+function ThemedMenu(props: ThemedMenuProps) {
+  if (Platform.OS === 'android') return <AndroidThemedMenu {...props} />;
+  return (
+    <MenuView
+      actions={props.actions}
+      onPressAction={(e) => props.onSelect(e.nativeEvent.event)}
+      style={props.style}
+    >
+      {props.children}
+    </MenuView>
+  );
+}
+
+function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children }: ThemedMenuProps) {
+  // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
+  const {
+    DropdownMenu,
+    DropdownMenuItem,
+    Icon: ComposeIcon,
+    Text: ComposeText,
+    RNHostView,
+  } = require('@expo/ui/jetpack-compose');
+  const [expanded, setExpanded] = useState(false);
+  const itemColors = { textColor: palette.text, leadingIconColor: palette.text };
+
+  return (
+    <View style={style}>
+      <Host matchContents colorScheme={scheme} seedColor={palette.accent}>
+        <DropdownMenu
+          expanded={expanded}
+          onDismissRequest={() => setExpanded(false)}
+          color={palette.control}
+        >
+          <DropdownMenu.Trigger>
+            <RNHostView matchContents>
+              <Pressable
+                onPress={() => setExpanded(true)}
+                android_disableSound
+                focusable={false}
+                accessible={false}
+              >
+                {children}
+              </Pressable>
+            </RNHostView>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Items>
+            {actions.map((a) => {
+              // On Android `image` is an ImageSourcePropType (xml require); the
+              // string form is an iOS SF Symbol and has no leading icon here.
+              const icon = typeof a.image === 'string' || a.image == null ? null : a.image;
+              return (
+                <DropdownMenuItem
+                  key={a.id ?? a.title}
+                  elementColors={itemColors}
+                  onClick={() => {
+                    setExpanded(false);
+                    onSelect(a.id ?? a.title);
+                  }}
+                >
+                  <DropdownMenuItem.Text>
+                    <ComposeText color={palette.text}>{a.title}</ComposeText>
+                  </DropdownMenuItem.Text>
+                  {icon && (
+                    <DropdownMenuItem.LeadingIcon>
+                      <ComposeIcon source={icon} size={24} tint={palette.text} />
+                    </DropdownMenuItem.LeadingIcon>
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenu.Items>
+        </DropdownMenu>
+      </Host>
+    </View>
+  );
+}
 
 export function FadePanel() {
   const {
-    x1,
-    y1,
-    x2,
-    y2,
-    top,
-    bottom,
-    left,
-    right,
-    blur,
-    radius,
-    mode,
-    setMode,
-    tint,
-    setTint,
-    showBands,
-    setShowBands,
-    autoDemo,
-    setAutoDemo,
-    preset,
-    setPreset,
+    x1, y1, x2, y2,
+    top, bottom, left, right, blur, radius,
+    frostSat, frostLift, frostProg,
+    mode, setMode,
+    tint, setTint,
+    showBands, setShowBands,
+    autoDemo, setAutoDemo,
+    preset, setPreset,
   } = useFadeStore();
 
   const scheme = useScheme();
   const t = useTheme();
+  const topHeight = useHeaderHeight();
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const rowBg = t.control;
+  const dialSurface = { surface: t.control, fillColor: t.controlActive };
+  const modes = Platform.OS === 'android' ? MODES_ANDROID : MODES;
 
   const applyPreset = useCallback(
     (label: string, b: Bezier) => {
-      x1.set(b.x1);
-      y1.set(b.y1);
-      x2.set(b.x2);
-      y2.set(b.y2);
+      x1.set(b.x1); y1.set(b.y1);
+      x2.set(b.x2); y2.set(b.y2);
       setPreset(label);
     },
     [x1, y1, x2, y2, setPreset]
   );
 
-  // Called (on the JS thread) when the user edits the curve by hand — via the
-  // pad or an x/y dial row — so the preset label reverts to 'custom'.
   const markCustom = useCallback(() => setPreset('custom'), [setPreset]);
 
   const frostOn = tint !== undefined;
@@ -130,52 +234,143 @@ export function FadePanel() {
     [setTint]
   );
 
-  const rowTint = scheme;
-  // Single opaque surface for every row — RN (segmented / dial) and native
-  // (@expo/ui menu / toggles) alike. Opaque tokens composite identically across
-  // the two layers; a translucent value would read slightly different on each.
-  const rowBg = t.control;
-  const dialSurface = { surface: t.control, fillColor: t.controlActive };
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const topHeight = useHeaderHeight();
+  const currentTintLabel =
+    TINT_PRESETS.find(
+      (item) => item.value.toLowerCase() === tint?.toLowerCase()
+    )?.label ?? 'custom';
+
+  const presetMenuActions: MenuAction[] = BEZIER_PRESETS.map((p) => ({
+    id: p.label,
+    title: p.label,
+    titleColor: t.text,
+    image: Platform.OS === 'ios'
+      ? PRESET_SF[p.label]
+      : PRESET_MATERIAL[p.label],
+    imageColor: t.text,
+  }));
+
+  const tintMenuActions: MenuAction[] = TINT_PRESETS.map((tp) => ({
+    id: tp.value,
+    title: tp.label,
+    titleColor: t.text,
+  }));
+
+  const rowStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 44,
+    backgroundColor: rowBg,
+  } as const;
+
+  const advancedContent = (
+    <>
+      <DialRow label="x1" value={x1} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
+      <DialRow label="y1" value={y1} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
+      <DialRow label="x2" value={x2} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
+      <DialRow label="y2" value={y2} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
+
+      <DialRow label="radius" value={radius} min={0} max={48} step={1} format={fmtPx} tint={scheme} {...dialSurface} />
+
+      <DialRow label="saturation" value={frostSat} min={0.5} max={1.6} step={0.05} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
+      <DialRow label="lift" value={frostLift} min={0.7} max={1.2} step={0.02} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
+      <DialRow label="transition" value={frostProg} min={0.05} max={0.9} step={0.05} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
+
+      <View style={rowStyle}>
+        <Text style={[s.monoLabel, { color: t.text }]}>frost tint</Text>
+        <View style={s.flex} />
+        <NativeSwitch value={frostOn} onValueChange={onFrostToggle} palette={t} scheme={scheme} />
+      </View>
+
+      {Platform.OS === 'ios' ? (
+        <TintColorPickerIOS
+          tint={tint}
+          setTint={setTint}
+          disabled={!frostOn}
+          rowBg={rowBg}
+          textColor={t.text}
+          faintTextColor={t.faintText}
+        />
+      ) : (
+        <View style={rowStyle}>
+          <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
+            tint color
+          </Text>
+          <View style={s.flex} />
+          <ThemedMenu
+            actions={tintMenuActions}
+            onSelect={(id) => {
+              if (frostOn) setTint(id);
+            }}
+            palette={t}
+            scheme={scheme}
+          >
+            <View style={s.rowInline}>
+              <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
+                {currentTintLabel}
+              </Text>
+              <Text style={[s.tintDot, { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText }]}>
+                {'\u25CF'}
+              </Text>
+              <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
+            </View>
+          </ThemedMenu>
+        </View>
+      )}
+
+      <View style={rowStyle}>
+        <Text style={[s.monoLabel, { color: t.text }]}>auto demo</Text>
+        <View style={s.flex} />
+        <NativeSwitch value={autoDemo} onValueChange={setAutoDemo} palette={t} scheme={scheme} />
+      </View>
+
+      <View style={rowStyle}>
+        <Text style={[s.monoLabel, { color: t.text }]}>debug bands</Text>
+        <View style={s.flex} />
+        <NativeSwitch value={showBands} onValueChange={setShowBands} palette={t} scheme={scheme} />
+      </View>
+    </>
+  );
+
   return (
-    <View style={[s.root]} collapsable={false}>
+    <View style={{ flex: 1, backgroundColor: t.card }}>
       <ScrollView
-        style={[s.scroll, { paddingTop: topHeight }]}
+        {...(Platform.OS === 'android' ? { nestedScrollEnabled: true } : null)}
+        style={[s.scroll, { paddingTop: Platform.OS === 'android' ? 0 : topHeight }]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.body}
       >
-        {/* Mode — custom segmented so it uses the panel's own theme colors
-            (the native control only exposes a selected-tint, not the track). */}
         <View style={[s.seg, { backgroundColor: rowBg }]}>
-          {MODES.map((m) => (
-            <Pressable
-              key={m}
-              style={[
-                s.segItem,
-                mode === m && { backgroundColor: t.controlActive },
-              ]}
-              onPress={() => setMode(m)}
-            >
-              <Text
+          {modes.map((m) => {
+            const selected = mode === m;
+            return (
+              <Pressable
+                key={m}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
                 style={[
-                  s.segText,
-                  { color: mode === m ? t.text : t.faintText },
+                  s.segItem,
+                  selected && { backgroundColor: t.controlActive },
                 ]}
+                onPress={() => setMode(m)}
               >
-                {m}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={[
+                    s.segText,
+                    { color: selected ? t.text : t.faintText },
+                  ]}
+                >
+                  {m}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Curve pad */}
         <View style={s.padWrap}>
           <BezierPlot
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
+            x1={x1} y1={y1} x2={x2} y2={y2}
             tint={scheme}
             variant="pad"
             showPresenceBands={mode === 'blur'}
@@ -183,234 +378,55 @@ export function FadePanel() {
           />
         </View>
 
-        {/* Preset — native Menu; the trigger is a monospace row showing the
-            current preset, each item carries its SF Symbol */}
-        <Host style={s.menuHost}>
-          <Menu
-            label={
-              <HStack
-                spacing={6}
-                modifiers={[
-                  padding({ horizontal: 14 }),
-                  frame({ maxWidth: FILL, height: 44 }),
-                  background(rowBg),
-                  cornerRadius(12),
-                ]}
-              >
-                <UIText
-                  modifiers={[
-                    font({ family: MONO, size: 14 }),
-                    foregroundStyle(t.faintText),
-                  ]}
-                >
-                  preset
-                </UIText>
-                <Spacer />
-                <UIText
-                  modifiers={[
-                    font({ family: MONO, size: 14 }),
-                    foregroundStyle(t.text),
-                  ]}
-                >
-                  {preset}
-                </UIText>
-                <Image
-                  systemName="chevron.up.chevron.down"
-                  size={12}
-                  color={t.faintText}
-                />
-              </HStack>
-            }
-          >
-            {BEZIER_PRESETS.map((p) => (
-              <Button
-                key={p.label}
-                label={p.label}
-                systemImage={PRESET_SF[p.label]}
-                onPress={() => applyPreset(p.label, p.value)}
-              />
-            ))}
-          </Menu>
-        </Host>
-
-        {/* Edge sizes */}
-        <DialRow
-          label="top"
-          value={top}
-          min={0}
-          max={320}
-          step={2}
-          format={fmtPx}
-          tint={rowTint}
-          {...dialSurface}
-        />
-        <DialRow
-          label="bottom"
-          value={bottom}
-          min={0}
-          max={320}
-          step={2}
-          format={fmtPx}
-          tint={rowTint}
-          {...dialSurface}
-        />
-        <DialRow
-          label="left"
-          value={left}
-          min={0}
-          max={320}
-          step={2}
-          format={fmtPx}
-          tint={rowTint}
-          {...dialSurface}
-        />
-        <DialRow
-          label="right"
-          value={right}
-          min={0}
-          max={320}
-          step={2}
-          format={fmtPx}
-          tint={rowTint}
-          {...dialSurface}
-        />
-        <DialRow
-          label="blur"
-          value={blur}
-          min={0}
-          max={100}
-          step={1}
-          format={fmtPx}
-          tint={rowTint}
-          {...dialSurface}
-          disabled={mode !== 'blur'}
-        />
-        {/* Advanced — the curve's raw control points (also editable via the pad),
-            radius, frost tint and dev toggles. Collapsed by default to keep the
-            panel focused on the high-value controls. */}
-        <Pressable
-          style={[s.advanced, { backgroundColor: 'transparent' }]}
-          onPress={() => setShowAdvanced((v) => !v)}
+        <ThemedMenu
+          actions={presetMenuActions}
+          onSelect={(id) => {
+            const p = BEZIER_PRESETS.find((pr) => pr.label === id);
+            if (p) applyPreset(p.label, p.value);
+          }}
+          palette={t}
+          scheme={scheme}
+          style={s.menuHeight}
         >
-          <Text style={[s.advancedLabel, { color: t.text }]}>advanced</Text>
-          <SymbolIcon
-            name={showAdvanced ? 'chevron.up' : 'chevron.down'}
-            color={t.faintText}
-            size={12}
-          />
-        </Pressable>
+          <View style={rowStyle}>
+            <Text style={[s.monoLabel, { color: t.faintText }]}>preset</Text>
+            <View style={s.flex} />
+            <View style={s.rowInline}>
+              <Text style={[s.monoLabel, { color: t.text }]}>{preset}</Text>
+              <NativeIcon
+                name={Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore}
+                size={Platform.OS === 'ios' ? 12 : 16}
+                color={t.faintText}
+              />
+            </View>
+          </View>
+        </ThemedMenu>
+          {/*
+        <DialRow label="top" value={top} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="bottom" value={bottom} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="left" value={left} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="right" value={right} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        */}<DialRow label="blur" value={blur} min={0} max={100} step={1} format={fmtPx} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
 
-        {showAdvanced && (
+        {Platform.OS === 'android' ? (
+          advancedContent
+        ) : (
           <>
-            {/* Curve control points */}
-            <DialRow
-              label="x1"
-              value={x1}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-              tint={rowTint}
-              {...dialSurface}
-              onEnd={markCustom}
-            />
-            <DialRow
-              label="y1"
-              value={y1}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-              tint={rowTint}
-              {...dialSurface}
-              onEnd={markCustom}
-            />
-            <DialRow
-              label="x2"
-              value={x2}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-              tint={rowTint}
-              {...dialSurface}
-              onEnd={markCustom}
-            />
-            <DialRow
-              label="y2"
-              value={y2}
-              min={0}
-              max={1}
-              step={0.01}
-              format={fmt2}
-              tint={rowTint}
-              {...dialSurface}
-              onEnd={markCustom}
-            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAdvanced }}
+              style={s.advanced}
+              onPress={() => setShowAdvanced((v) => !v)}
+            >
+              <Text style={[s.advancedLabel, { color: t.text }]}>advanced</Text>
+              <SymbolIcon
+                name={showAdvanced ? 'chevron.up' : 'chevron.down'}
+                color={t.faintText}
+                size={12}
+              />
+            </Pressable>
 
-            <DialRow
-              label="radius"
-              value={radius}
-              min={0}
-              max={48}
-              step={1}
-              format={fmtPx}
-              tint={rowTint}
-              {...dialSurface}
-            />
-
-            {/* Frost tint / tint color / dev toggles — native HStack rows:
-                SwiftUI centers label and control on one baseline. */}
-            <Host matchContents={{ vertical: true }} style={s.rowHost}>
-              <HStack alignment="center" modifiers={rowMods(rowBg)}>
-                <UIText modifiers={labelMods(t.text)}>frost tint</UIText>
-                <Spacer />
-                <Toggle
-                  isOn={frostOn}
-                  onIsOnChange={onFrostToggle}
-                  modifiers={[labelsHidden()]}
-                />
-              </HStack>
-            </Host>
-
-            <Host matchContents={{ vertical: true }} style={s.rowHost}>
-              <HStack alignment="center" modifiers={rowMods(rowBg)}>
-                <UIText modifiers={labelMods(frostOn ? t.text : t.faintText)}>
-                  tint color
-                </UIText>
-                <Spacer />
-                <ColorPicker
-                  selection={tint ?? DEFAULT_TINT}
-                  supportsOpacity={false}
-                  onSelectionChange={setTint}
-                  modifiers={[labelsHidden(), disabled(!frostOn)]}
-                />
-              </HStack>
-            </Host>
-
-            <Host matchContents={{ vertical: true }} style={s.rowHost}>
-              <HStack alignment="center" modifiers={rowMods(rowBg)}>
-                <UIText modifiers={labelMods(t.text)}>auto demo</UIText>
-                <Spacer />
-                <Toggle
-                  isOn={autoDemo}
-                  onIsOnChange={setAutoDemo}
-                  modifiers={[labelsHidden()]}
-                />
-              </HStack>
-            </Host>
-
-            <Host matchContents={{ vertical: true }} style={s.rowHost}>
-              <HStack alignment="center" modifiers={rowMods(rowBg)}>
-                <UIText modifiers={labelMods(t.text)}>debug bands</UIText>
-                <Spacer />
-                <Toggle
-                  isOn={showBands}
-                  onIsOnChange={setShowBands}
-                  modifiers={[labelsHidden()]}
-                />
-              </HStack>
-            </Host>
+            {showAdvanced && advancedContent}
           </>
         )}
       </ScrollView>
@@ -418,13 +434,73 @@ export function FadePanel() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1 },
-  scroll: { flex: 1, paddingHorizontal: 20 },
-  body: { gap: 8, paddingTop: 12, paddingBottom: 28, flexGrow: 1 },
-  padWrap: { marginBottom: 6 },
+function TintColorPickerIOS({
+  tint,
+  setTint,
+  disabled,
+  rowBg,
+  textColor,
+  faintTextColor,
+}: {
+  tint: string | undefined;
+  setTint: (t: string | undefined) => void;
+  disabled: boolean;
+  rowBg: string;
+  textColor: string;
+  faintTextColor: string;
+}) {
+  const { ColorPicker } = require('@expo/ui/swift-ui');
+  const { labelsHidden, disabled: disabledMod } = require('@expo/ui/swift-ui/modifiers');
 
-  // Advanced disclosure row — same surface as the other rows.
+  return (
+    <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, height: 44, backgroundColor: rowBg }}>
+        <Text style={[s.monoLabel, { color: disabled ? faintTextColor : textColor }]}>
+          tint color
+        </Text>
+        <View style={{ flex: 1 }} />
+        <ColorPicker
+          selection={tint ?? DEFAULT_TINT}
+          supportsOpacity={false}
+          onSelectionChange={setTint}
+          modifiers={[labelsHidden(), disabledMod(disabled)]}
+        />
+      </View>
+    </Host>
+  );
+}
+
+const PRESET_SF: Record<string, SFSymbol> = {
+  default: 'sparkles' as SFSymbol,
+  linear: 'line.diagonal' as SFSymbol,
+  ease: 'wave.3.right' as SFSymbol,
+  soft: 'drop' as SFSymbol,
+  sharp: 'bolt' as SFSymbol,
+  gentle: 'leaf' as SFSymbol,
+};
+
+const PRESET_MATERIAL: Record<string, ImageSourcePropType> = {
+  default: Flare,
+  linear: NorthEast,
+  ease: Waves,
+  soft: WaterDrop,
+  sharp: Bolt,
+  gentle: Eco,
+};
+
+const s = StyleSheet.create({
+  scroll: { flex: 1, paddingHorizontal: 20 },
+  body: {
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'android' ? 64 : 28,
+    flexGrow: 1,
+  },
+  padWrap: { marginBottom: 6 },
+  menuHeight: { height: 44 },
+  flex: { flex: 1 },
+  rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
   advanced: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -434,9 +510,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     marginTop: 8,
   },
-  advancedLabel: { fontFamily: MONO, fontSize: 14, fontWeight: '600' },
+  advancedLabel: {
+    fontFamily: MONO,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 
-  // Custom themed segmented control for Mode.
   seg: {
     flexDirection: 'row',
     borderRadius: 12,
@@ -458,9 +537,12 @@ const s = StyleSheet.create({
     textTransform: 'capitalize',
   },
 
-  // Native SwiftUI blocks fill the row width; the HStack inside handles height.
-  menuHost: { width: '100%', height: 44 },
-  rowHost: { width: '100%' },
-  // Extra gap above the toggle group to set it apart from the sliders.
-  rowGroupTop: { marginTop: 24 },
+  monoLabel: {
+    fontFamily: MONO,
+    fontSize: 14,
+  },
+
+  tintDot: {
+    fontSize: 18,
+  },
 });

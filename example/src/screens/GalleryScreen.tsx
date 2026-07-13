@@ -1,26 +1,17 @@
-/**
- * Gallery (home) — full-bleed 4-column photo grid that frosts under the status
- * bar and the native header via `mode="blur"`. The frost config comes from the
- * shared fade store; the header options button opens the `/panel` sheet.
- * Tapping a photo pushes `/photo/{id}`.
- */
-
 import { memo, useCallback } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
-import { CATALOG, type CatalogItem } from '@/data/catalog';
+import { useCatalog, type CatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
 
 const GAP = 2;
 
-// Memoized so the 60 cells don't reconcile when the screen re-renders on a
-// throttled curve/blur mirror update (expo-image caches the bitmap anyway).
 const PhotoCell = memo(function PhotoCell({ item }: { item: CatalogItem }) {
   const onPress = useCallback(
     () => router.push('/photo/' + item.id),
@@ -28,7 +19,17 @@ const PhotoCell = memo(function PhotoCell({ item }: { item: CatalogItem }) {
   );
   return (
     <Pressable style={s.cell} onPress={onPress}>
-      <Image source={item.source} style={s.img} contentFit="cover" />
+      <Image
+        source={item.source}
+        style={[s.img, { backgroundColor: item.color + '33' }]}
+        contentFit="cover"
+        placeholder={
+          item.blur_hash && item.blur_hash.length >= 6
+            ? { blurhash: item.blur_hash }
+            : undefined
+        }
+        transition={300}
+      />
     </Pressable>
   );
 });
@@ -41,8 +42,20 @@ function keyExtractor(item: CatalogItem) {
   return item.id;
 }
 
+function SkeletonGrid() {
+  const t = useTheme();
+  return (
+    <ScrollView style={s.gridScroll} contentContainerStyle={s.grid}>
+      {Array.from({ length: 24 }, (_, i) => (
+        <View key={i} style={[s.skeletonCell, { backgroundColor: t.card }]} />
+      ))}
+    </ScrollView>
+  );
+}
+
 export function GalleryScreen() {
   const t = useTheme();
+  const { catalog, isLoading, isError } = useCatalog();
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
   const { curve, blurRadius, frostSaturation, frostLift, frostProgression } =
@@ -74,20 +87,21 @@ export function GalleryScreen() {
         color={tint}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
-        <FlashList
-          data={CATALOG}
-          numColumns={4}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
-          // Full-bleed: cells scroll edge-to-edge, under the status bar and the
-          // transparent header. The fade region must sit over real image
-          // content, so the grid starts at the very top rather than inset.
-          contentContainerStyle={s.listContent}
-        />
+        {isLoading || isError || catalog.length === 0 ? (
+          <SkeletonGrid />
+        ) : (
+          <FlashList
+            data={catalog}
+            numColumns={4}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.listContent}
+
+          />
+        )}
       </AnimatedEdgeFadeView>
 
-      {/* Debug band outlines (top/bottom) */}
       <Animated.View
         pointerEvents="none"
         style={[s.debugBand, s.debugTop, topBandStyle]}
@@ -103,9 +117,16 @@ export function GalleryScreen() {
 const s = StyleSheet.create({
   root: { flex: 1, paddingTop: 16 },
 
-  // flex:1 + aspectRatio:1 gives square cells inside FlashList numColumns.
+  gridScroll: { flex: 1 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingTop: 116,
+  },
+
   cell: { flex: 1, aspectRatio: 1, padding: GAP / 2 },
-  img: { flex: 1, backgroundColor: '#141414' },
+  img: { flex: 1, borderRadius: 2 },
+  skeletonCell: { width: '25%', aspectRatio: 1, padding: GAP / 2, borderRadius: 2 },
 
   listContent: { paddingTop: 116, paddingBottom: 0 },
 

@@ -1,18 +1,10 @@
-/**
- * Photo detail — opens from the grid via `/photo/${id}`. Shows the selected
- * photo (70% width, 3:4 contained, rounded) wrapped in an AnimatedEdgeFadeView
- * driven by the SHARED fade store, so tuning reflects back on the grid. The
- * tuning panel lives in the `/panel` form sheet, opened from the header or the
- * "Tune edge fade" button.
- */
-
 import { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
-import { getCatalogItem } from '@/data/catalog';
+import { useCatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { BeforeAfterPhoto } from '@/components/BeforeAfterPhoto';
 import { SymbolIcon } from '@/components/SymbolIcon';
@@ -20,10 +12,10 @@ import { useTheme } from '@/theme';
 
 export function PhotoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const item = getCatalogItem(id ?? '');
+  const { item, isLoading } = useCatalogItem(id ?? '');
   const insets = useSafeAreaInsets();
   const t = useTheme();
-  const { top, bottom, left, right, radius, mode, tint, showBands, preset } =
+  const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
   const { curve, blurRadius } = useFadeRender();
 
@@ -40,6 +32,14 @@ export function PhotoScreen() {
   const handleDebug = useCallback(() => {
     router.push('/debug');
   }, []);
+
+  if (isLoading) {
+    return (
+      <View style={[s.notFound, { backgroundColor: t.bg }]}>
+        <Text style={[s.notFoundText, { color: t.subtext }]}>Loading…</Text>
+      </View>
+    );
+  }
   if (!item) {
     return (
       <View style={[s.notFound, { backgroundColor: t.bg }]}>
@@ -60,7 +60,7 @@ export function PhotoScreen() {
         <Pressable onPress={handleDebug}>
           <Text>Debug</Text>
         </Pressable>
-        {/* Photo — 70% width, 3:4, before/after split (raw vs live edge fade) */}
+
         <View style={s.photoWrap}>
           <BeforeAfterPhoto
             source={item.source}
@@ -85,12 +85,16 @@ export function PhotoScreen() {
           />
         </View>
 
-        {/* Title / subtitle */}
         <View style={s.meta}>
-          <Text style={[s.title, { color: t.text }]}>{item.category}</Text>
-          <Text style={[s.subtitle, { color: t.subtext }]}>
-            {mode.charAt(0).toUpperCase() + mode.slice(1)} fade · {preset} curve
-          </Text>
+          <Text style={[s.title, { color: t.text }]}>{item.title}</Text>
+          <View style={s.authorRow}>
+            <View
+              style={[s.accentDot, { backgroundColor: item.accent }]}
+            />
+            <Text style={[s.subtitle, { color: t.subtext }]}>
+              {item.author} · {item.width}×{item.height}
+            </Text>
+          </View>
         </View>
 
         <Pressable
@@ -124,7 +128,9 @@ const s = StyleSheet.create({
   debugBottom: { bottom: 0, borderColor: '#ff3030' },
 
   meta: { marginTop: 20, alignItems: 'center', gap: 6 },
-  title: { fontSize: 22, fontWeight: '700' },
+  title: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
+  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  accentDot: { width: 8, height: 8, borderRadius: 4 },
   subtitle: { fontSize: 14 },
 
   tuneBtn: {

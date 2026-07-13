@@ -8,13 +8,14 @@
  * (DEBUG_BAND_BOUNDARIES in EdgeFadeView.kt, build debug).
  */
 
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { EdgeFadeView } from 'react-native-edge-fade';
 
-import { CATALOG } from '@/data/catalog';
+import { useCatalog, type CatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 
 /** Altezza di una riga = altezza di una singola fascia del blur. */
 const ROW_H = 110;
@@ -23,16 +24,10 @@ const N_BANDS = 3;
 const COLS = 4;
 const N_ROWS = 12;
 
-/** true = righe di testo (worst case per il blur), false = righe di immagini. */
-const TEXT_MODE = true;
-
-// Stessa riga ripetuta: 4 immagini fisse dal catalogo.
-const ROW_ITEMS = CATALOG.slice(0, COLS);
-
-function ImageRow() {
+function ImageRow({ items }: { items: CatalogItem[] }) {
   return (
     <View style={s.row}>
-      {ROW_ITEMS.map((item) => (
+      {items.map((item) => (
         <Image
           key={item.id}
           source={item.source}
@@ -60,12 +55,14 @@ function TextRow() {
   );
 }
 
-const Row = TEXT_MODE ? TextRow : ImageRow;
-
 export function DebugBandsScreen() {
+  const { catalog, isLoading } = useCatalog();
   const { mode, tint } = useFadeStore();
   const { curve, blurRadius } = useFadeRender();
   const topHeight = useHeaderHeight();
+
+  const rowItems = useMemo(() => catalog.slice(0, COLS), [catalog]);
+  const showTextRow = isLoading || rowItems.length < COLS;
 
   return (
     <View style={s.root} collapsable={false}>
@@ -81,9 +78,13 @@ export function DebugBandsScreen() {
           showsVerticalScrollIndicator={false}
           style={{ flex: 1, paddingTop: topHeight }}
         >
-          {Array.from({ length: N_ROWS }, (_, i) => (
-            <Row key={i} />
-          ))}
+          {Array.from({ length: N_ROWS }, (_, i) =>
+            showTextRow ? (
+              <TextRow key={i} />
+            ) : (
+              <ImageRow key={i} items={rowItems} />
+            )
+          )}
         </ScrollView>
       </EdgeFadeView>
     </View>

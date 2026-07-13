@@ -581,7 +581,7 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   bands: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
   },
   diagonal: {

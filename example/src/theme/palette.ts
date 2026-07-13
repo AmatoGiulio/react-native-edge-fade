@@ -30,6 +30,8 @@ export interface AppPalette {
   controlActive: string;
   /** Inactive segment / section label text. */
   faintText: string;
+  /** Accent for interactive native controls (e.g. Switch "on" track). */
+  accent: string;
 }
 
 const LIGHT: AppPalette = {
@@ -43,6 +45,7 @@ const LIGHT: AppPalette = {
   control: '#F2F2F4',
   controlActive: '#E3E3E6',
   faintText: '#8a8a8e',
+  accent: '#007AFF',
 };
 
 const DARK: AppPalette = {
@@ -56,6 +59,7 @@ const DARK: AppPalette = {
   control: '#2C2C2E',
   controlActive: '#3A3A3C',
   faintText: '#8E8E93',
+  accent: '#0A84FF',
 };
 
 export const PALETTES: Record<Scheme, AppPalette> = {
