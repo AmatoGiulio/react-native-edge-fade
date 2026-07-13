@@ -45,7 +45,8 @@ export function GalleryScreen() {
   const t = useTheme();
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
-  const { curve, blurRadius } = useFadeRender();
+  const { curve, blurRadius, frostSaturation, frostLift, frostProgression } =
+    useFadeRender();
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
@@ -67,8 +68,11 @@ export function GalleryScreen() {
         curve={curve}
         mode={mode}
         blurRadius={blurRadius}
+        frostSaturation={frostSaturation}
+        frostLift={frostLift}
+        frostProgression={frostProgression}
         color={tint}
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
         <FlashList
           data={CATALOG}

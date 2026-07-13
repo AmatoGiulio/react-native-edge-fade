@@ -37,7 +37,9 @@ export function PhotoScreen() {
     height: bottom.get(),
     opacity: showBands && bottom.get() > 0 ? 1 : 0,
   }));
-
+  const handleDebug = useCallback(() => {
+    router.push('/debug');
+  }, []);
   if (!item) {
     return (
       <View style={[s.notFound, { backgroundColor: t.bg }]}>
@@ -55,6 +57,9 @@ export function PhotoScreen() {
           { paddingTop: insets.top + 64, paddingBottom: insets.bottom + 32 },
         ]}
       >
+        <Pressable onPress={handleDebug}>
+          <Text>Debug</Text>
+        </Pressable>
         {/* Photo — 70% width, 3:4, before/after split (raw vs live edge fade) */}
         <View style={s.photoWrap}>
           <BeforeAfterPhoto

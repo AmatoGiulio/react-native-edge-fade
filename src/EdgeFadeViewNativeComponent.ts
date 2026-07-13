@@ -22,6 +22,12 @@ interface NativeProps extends ViewProps {
   mode?: string;
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: Float;
+  /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
+  frostSaturation?: Float;
+  /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
+  frostLift?: Float;
+  /** Fraction of the band over which the blur radius ramps (blur mode). */
+  frostProgression?: Float;
   overlayColor?: ColorValue;
   overlayColorTop?: ColorValue;
   overlayColorBottom?: ColorValue;

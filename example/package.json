@@ -15,13 +15,14 @@
   "dependencies": {
     "@babel/runtime": "^7.29.2",
     "@expo/log-box": "55.0.12",
+    "@expo/material-symbols": "^0.1.1",
     "@expo/metro-runtime": "~55.0.11",
     "@expo/ui": "~55.0.17",
     "@shopify/flash-list": "2.0.2",
-    "expo": "~55.0.25",
+    "expo": "~55.0.27",
     "expo-constants": "~55.0.16",
     "expo-image": "~55.0.11",
-    "expo-linking": "~55.0.15",
+    "expo-linking": "~55.0.16",
     "expo-router": "~55.0.16",
     "expo-status-bar": "~55.0.6",
     "react": "19.2.0",
@@ -36,7 +37,7 @@
   },
   "private": true,
   "devDependencies": {
-    "expo-dev-client": "~55.0.35",
+    "expo-dev-client": "~55.0.36",
     "react-native-builder-bob": "^0.41.0",
     "react-native-monorepo-config": "^0.3.3"
   }

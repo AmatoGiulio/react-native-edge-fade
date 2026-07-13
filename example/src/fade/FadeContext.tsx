@@ -46,6 +46,9 @@ export interface FadeStore {
   right: SharedValue<number>;
   blur: SharedValue<number>;
   radius: SharedValue<number>;
+  frostSat: SharedValue<number>;
+  frostLift: SharedValue<number>;
+  frostProg: SharedValue<number>;
 
   mode: EdgeFadeMode;
   setMode: (mode: EdgeFadeMode) => void;
@@ -73,6 +76,9 @@ export interface FadeStore {
 export interface FadeRender {
   curve: CubicBezierCurve;
   blurRadius: number;
+  frostSaturation: number;
+  frostLift: number;
+  frostProgression: number;
 }
 
 const FadeStoreContext = createContext<FadeStore | null>(null);
@@ -89,8 +95,11 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   const bottom = useSharedValue(110);
   const left = useSharedValue(0);
   const right = useSharedValue(0);
-  const blur = useSharedValue(28);
+  const blur = useSharedValue(40);
   const radius = useSharedValue(0);
+  const frostSat = useSharedValue(0.9);
+  const frostLift = useSharedValue(1.03);
+  const frostProg = useSharedValue(0.35);
 
   const [mode, setMode] = useState<EdgeFadeMode>('blur');
   // No frost tint by default: a pure content-derived Gaussian blur that adapts
@@ -135,14 +144,31 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     bottom.set(110);
     left.set(0);
     right.set(0);
-    blur.set(28);
+    blur.set(40);
     radius.set(0);
+    frostSat.set(0.9);
+    frostLift.set(1.03);
+    frostProg.set(0.35);
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
     setAutoDemo(false);
     setPreset('default');
-  }, [x1, y1, x2, y2, top, bottom, left, right, blur, radius]);
+  }, [
+    x1,
+    y1,
+    x2,
+    y2,
+    top,
+    bottom,
+    left,
+    right,
+    blur,
+    radius,
+    frostSat,
+    frostLift,
+    frostProg,
+  ]);
 
   const store = useMemo<FadeStore>(
     () => ({
@@ -156,6 +182,9 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       right,
       blur,
       radius,
+      frostSat,
+      frostLift,
+      frostProg,
       mode,
       setMode,
       tint,
@@ -180,6 +209,9 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       right,
       blur,
       radius,
+      frostSat,
+      frostLift,
+      frostProg,
       mode,
       tint,
       showBands,
@@ -196,9 +228,33 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   }, [blur]);
   const blurRadius = useThrottledMirror(readBlur, 28);
 
+  const readFrostSat = useCallback((): number => {
+    'worklet';
+    return frostSat.get();
+  }, [frostSat]);
+  const frostSaturation = useThrottledMirror(readFrostSat, 0.9);
+
+  const readFrostLift = useCallback((): number => {
+    'worklet';
+    return frostLift.get();
+  }, [frostLift]);
+  const frostLiftValue = useThrottledMirror(readFrostLift, 1.03);
+
+  const readFrostProg = useCallback((): number => {
+    'worklet';
+    return frostProg.get();
+  }, [frostProg]);
+  const frostProgression = useThrottledMirror(readFrostProg, 0.35);
+
   const render = useMemo<FadeRender>(
-    () => ({ curve, blurRadius }),
-    [curve, blurRadius]
+    () => ({
+      curve,
+      blurRadius,
+      frostSaturation,
+      frostLift: frostLiftValue,
+      frostProgression,
+    }),
+    [curve, blurRadius, frostSaturation, frostLiftValue, frostProgression]
   );
 
   return (

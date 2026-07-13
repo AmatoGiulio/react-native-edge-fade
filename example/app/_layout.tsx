@@ -46,7 +46,8 @@ export default function RootLayout() {
                   headerShown: true,
                   headerTransparent: true,
                   headerTitle: 'Photos',
-                  headerTintColor: t.headerTint,
+                  //headerTintColor: t.headerTint,
+                  headerTitleAlign: 'center',
                   headerRight: renderOptions,
                 }}
               />
@@ -63,9 +64,25 @@ export default function RootLayout() {
                 }}
               />
               <Stack.Screen
+                name="debug"
+                options={{
+                  headerShown: true,
+                  headerTransparent: true,
+                  headerTitle: 'Debug',
+                  headerBackButtonDisplayMode: 'minimal',
+                  headerTintColor: t.headerTint,
+                  headerRight: renderOptions,
+                  animation: 'slide_from_right',
+                }}
+              />
+              <Stack.Screen
                 name="panel"
                 options={{
-                  presentation: 'formSheet',
+                  // formSheet crashes on Android (react-native-screens NPE in
+                  // the bottom-sheet insets listener) — fall back to a plain
+                  // modal there; iOS keeps the detent sheet.
+                  presentation: 'pageSheet',
+
                   animation: 'slide_from_bottom',
                   headerTitle: renderPanelTitle,
                   headerRight: renderPanelReset,
