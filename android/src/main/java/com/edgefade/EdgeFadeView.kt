@@ -1227,27 +1227,42 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
           float len2 = dot(rampDir, rampDir);
           float m = len2 > 0.0 ? clamp(dot(coord - rampP0, rampDir) / len2, 0.0, 1.0) : 1.0;
 
-          half4 sum = half4(0);
+          // Alpha-correct premultiplied blur. RenderEffect inputs are
+          // PREMULTIPLIED: unpremultiply each sample to its straight color,
+          // average in linear light weighted by kernel weight * alpha, and
+          // propagate the blurred alpha honestly (never force 1) — so the
+          // recording's transparent regions stay transparent and the sharp
+          // base drawn underneath wins there, while near-transparent pixels
+          // can't smear spurious straight colors over dark content at full
+          // weight (the whitish-fog artifact at low radius).
+          half3 sumRGB = half3(0);
+          half sumA = half(0);
           float wsum = 0.0;
+          float2 span = bounds.zw - bounds.xy;
           for (int i = 0; i < 50; i++) {
               if (i >= sampleCount) { break; }
               float2 uv = coord + direction * (samples[i].x * m);
-              float valid = (uv.x >= bounds.x && uv.y >= bounds.y && uv.x <= bounds.z && uv.y <= bounds.w) ? 1.0 : 0.0;
-              half4 c = content.eval(clamp(uv, bounds.xy, bounds.zw));
-              // RenderEffect inputs are PREMULTIPLIED: unpremultiply before the
-              // gamma decode (squaring premultiplied rgb compounds the alpha
-              // factor, and the opaque alpha-1 output then bakes it in as a
-              // dark veil over the whole band — verified on device).
-              half3 u = c.rgb / max(c.a, 0.0001);
-              sum += half4(u * u, 1.0) * half(samples[i].y * valid);
-              wsum += samples[i].y * valid;
+              // Mirror out-of-bounds taps back inside (triangular reflection,
+              // negative-safe) instead of skipping + renormalizing: at an
+              // exposed border the reflection reads soft natural content, so
+              // the average stays symmetric — no asymmetric ghosting of the
+              // inner rows and no darkening at the outer edge. Same rationale
+              // as TileMode.MIRROR on the createBlurEffect paths.
+              float2 t = uv - bounds.xy;
+              t = t - 2.0 * span * floor(t / (2.0 * span));
+              t = min(t, 2.0 * span - t);
+              uv = bounds.xy + t;
+              half4 c = content.eval(uv);
+              float w = samples[i].y;
+              half3 u = c.a > 1e-3 ? c.rgb / c.a : half3(0);
+              sumRGB += u * u * half(w) * c.a;
+              sumA   += c.a * half(w);
+              wsum   += w;
           }
 
-          if (wsum > 1e-4) {
-              half3 rgb = sqrt(sum.rgb / half(wsum));
-              return half4(rgb, 1.0);
-          }
-          return content.eval(coord);
+          half a = sumA / half(wsum);
+          half3 rgb = sqrt(sumRGB / max(sumA, half(1e-4)));
+          return half4(rgb * a, a);
       }
     """
 
