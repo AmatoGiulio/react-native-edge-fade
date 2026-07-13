@@ -127,6 +127,21 @@ Livelli consentiti:
 Non implementare.
 
 Costruisci l'esperimento.
+
+
+L'emulatore è una risorsa persistente.
+
+Non avviarlo.
+
+Non chiuderlo.
+
+Non fare wipe-data.
+
+Usa quello disponibile.
+
+Se non esiste, fermati e chiedi istruzioni.
+
+È vietato terminare emulatori o modificare il loro stato senza richiesta esplicita.
 ---
 
 ### 1. Comprendi

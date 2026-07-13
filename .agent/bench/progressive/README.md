@@ -54,3 +54,25 @@ full-pipeline). p50 dentro il budget 60Hz; p90-95 leggermente sopra.
 - `r(t)` lineare in t geometrico; si può agganciare alla presence curve per
   coerenza percettiva con la mask/overlay semantics.
 - Richiede API 33 (RuntimeShader); sotto, fallback automatico a bands3.
+
+## v4 / v4.1 — variable blur Apple-style (2026-07-10 pomeriggio)
+
+Pipeline (vedi ../../APPLE_SCROLL_EDGE_EFFECT.md): raggio per-pixel =
+blurRadius × alpha della presence-curve mask (LinearGradient legato come
+input shader — semantica identica a inputMaskImage di iOS), gaussiana
+separabile H+V (σ=r/3) su strip DOWNSAMPLED 0.5× e upscale bilineare al
+composite. v4.1 aggiunge jitter per-pixel sull'asse del blur (rompe il
+retino da undersampling visto in v4) e tap ±10 a σ·0.35.
+
+Frame stats scroll (batch standard, 433 frame, gallery 2 edge attivi):
+
+| Metrica | bands3 lineare | singlePass | v4.1 |
+|---|---|---|---|
+| Frame p50 / p95 | 24 / 32ms | 16 / 18ms | **16 / 21ms** |
+| Jank legacy | 55% | 1.6% | **6.9%** |
+| GPU p50 / p90 | 19 / 21ms | 14 / 15ms | **14 / 16ms** |
+
+Visivo (crop_text_v41.png): progressione continua guidata dalla curva,
+attacco senza ghosting, niente bande, niente retino. Artefatto residuo:
+leggera texture di rumore ad alti raggi (dal jitter), percettivamente
+organica.

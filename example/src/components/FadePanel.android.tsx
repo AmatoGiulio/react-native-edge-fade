@@ -52,7 +52,7 @@ import { useScheme, useTheme } from '@/theme';
 
 const MONO = 'monospace';
 
-const MODES = ['mask', 'blur', 'overlay'] as const;
+const MODES = ['mask', 'blur', 'overlay', 'lens'] as const;
 const DEFAULT_TINT = '#000000';
 
 // Material Symbol per preset — parity with PRESET_SF on the iOS panel.

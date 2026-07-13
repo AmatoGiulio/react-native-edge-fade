@@ -38,6 +38,7 @@ Il task riguarda il lato nativo Android/iOS:
 - uso CPU;
 - uso GPU;
 - confronto tra approccio a 3 bande e approccio single-pass.
+- render;
 
 ## Assunzione da non fare
 
