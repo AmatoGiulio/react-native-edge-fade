@@ -91,7 +91,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   var lensDispersion: Float = 0f
   var lensSaturation: Float = 1f
   var lensContrast:   Float = 1f
-  var lensSpecular:   Float = 0.7f
+  var lensSpecular:   Float = 0.0f
 
   /** Global overlay color. `null` in mask mode or when only per-edge colors are used. */
   var overlayColor:       Int? = null
@@ -929,14 +929,15 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
               return content.eval(xy);
           }
 
-          float2 normal = lensNormalDirection(p, halfDim, r);
-
           float2 sampleXY = xy;
           if (refraction > 0.0 && curve > 0.0) {
               float minDim = min(halfDim.x, halfDim.y);
               float depth = clamp(-sdf / (minDim * refraction), 0.0, 1.0);
               float curvature = 1.0 - depth;
               float bend = 1.0 - sqrt(1.0 - curvature * curvature);
+              // Seam-blended normal (blend width ~ the lens half-extent) so the
+              // refraction rotates smoothly across the diagonals — no triangles.
+              float2 normal = lensNormalBlended(p, halfDim, r, minDim * 0.75);
               sampleXY = xy - bend * curve * minDim * normal;
           }
 

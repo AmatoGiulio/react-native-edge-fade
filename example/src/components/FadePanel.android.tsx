@@ -115,7 +115,7 @@ function NativeSwitchRow({
           padding(14, 0, 14, 0),
         ]}
       >
-        <UIText color={textColor} style={{ fontFamily: MONO, fontSize: 14 }}>
+        <UIText color={textColor} style={s.monoLabel}>
           {label}
         </UIText>
 
@@ -280,22 +280,16 @@ export function FadePanel() {
                   padding(14, 0, 14, 0),
                 ]}
               >
-                <UIText
-                  color={t.faintText}
-                  style={{ fontFamily: MONO, fontSize: 14 }}
-                >
+                <UIText color={t.faintText} style={s.monoLabel}>
                   preset
                 </UIText>
 
                 <Row verticalAlignment="center">
-                  <UIText
-                    color={t.text}
-                    style={{ fontFamily: MONO, fontSize: 14 }}
-                  >
+                  <UIText color={t.text} style={s.monoLabel}>
                     {preset}
                   </UIText>
 
-                  <UIText color={t.faintText} style={{ fontSize: 14 }}>
+                  <UIText color={t.faintText} style={s.label}>
                     {'  '}
                   </UIText>
 
@@ -399,6 +393,7 @@ export function FadePanel() {
 
         {showAdvanced && (
           <>
+            {/*
             <DialRow
               label="x1"
               value={x1}
@@ -446,7 +441,7 @@ export function FadePanel() {
               {...dialSurface}
               onEnd={markCustom}
             />
-
+            */}
             <DialRow
               label="radius"
               value={radius}
@@ -523,7 +518,7 @@ export function FadePanel() {
                   >
                     <UIText
                       color={frostOn ? t.text : t.faintText}
-                      style={{ fontFamily: MONO, fontSize: 14 }}
+                      style={s.monoLabel}
                     >
                       tint color
                     </UIText>
@@ -531,14 +526,14 @@ export function FadePanel() {
                     <Row verticalAlignment="center">
                       <UIText
                         color={frostOn ? t.text : t.faintText}
-                        style={{ fontFamily: MONO, fontSize: 14 }}
+                        style={s.monoLabel}
                       >
                         {currentTintLabel}
                       </UIText>
 
                       <UIText
                         color={frostOn ? (tint ?? DEFAULT_TINT) : t.faintText}
-                        style={{ fontSize: 18 }}
+                        style={s.tintDot}
                       >
                         {'  '}●{'  '}
                       </UIText>
@@ -601,7 +596,7 @@ const s = StyleSheet.create({
     flexGrow: 1,
     gap: 8,
     paddingTop: 12,
-    paddingBottom: 28,
+    paddingBottom: 64,
   },
 
   padWrap: {
@@ -650,5 +645,18 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'capitalize',
+  },
+
+  monoLabel: {
+    fontFamily: MONO,
+    fontSize: 14,
+  },
+
+  label: {
+    fontSize: 14,
+  },
+
+  tintDot: {
+    fontSize: 18,
   },
 });
