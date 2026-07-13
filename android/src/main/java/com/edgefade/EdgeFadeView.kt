@@ -24,6 +24,8 @@ import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
 import kotlin.math.ceil
+import kotlin.math.log2
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -144,6 +146,25 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Last-applied frost grade, to rebuild the blur's colour filter on a change.
   private var lastFrostSaturation = -1f
   private var lastFrostLift = -1f
+
+  // ── Progressive (imla-style) blur mode state (API 33+ only) ──────────────
+  // One node per edge (single level — the AGSL shader modulates its own sigma
+  // per pixel along the inner→outer ramp, replacing the createBlurEffect
+  // stack). Same lastBlurEffectRadius/frost guard as the level pipeline.
+  @Suppress("NewApi")
+  private var progressiveNodes: Array<RenderNode?> = arrayOfNulls(EDGE_COUNT)
+  private val lastProgressiveRect: Array<RectF?> = arrayOfNulls(EDGE_COUNT)
+
+  // Compiled once, uniforms rewritten per draw. Two instances of the same
+  // source (H/V direction only differs via the `direction` uniform).
+  @Suppress("NewApi")
+  private var progressiveHShader: RuntimeShader? = null
+  @Suppress("NewApi")
+  private var progressiveVShader: RuntimeShader? = null
+
+  // Reused packed sample buffer (50 vec4 = offsetPx, weight, 0, 0) so the
+  // per-draw uniform upload doesn't allocate.
+  private val progressiveSamples = FloatArray(GaussianKernel.MAX_KERNEL_SAMPLES * 4)
 
   // Per-edge/level gradient caches — rebuild a native LinearGradient only when
   // its curve or size changes, not every frame. `level` disambiguates the three
@@ -266,12 +287,15 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       blurNode?.discardDisplayList()
       lensNode?.discardDisplayList()
       levelNodes.forEach { edge -> edge.forEach { it?.discardDisplayList() } }
+      progressiveNodes.forEach { it?.discardDisplayList() }
     }
     blurNode = null
     lensNode = null
     levelNodes = Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
     lastLevelRect.forEach { edge -> edge.fill(null) }
     lastBlurEffectRadius = -1f
+    progressiveNodes = arrayOfNulls(EDGE_COUNT)
+    lastProgressiveRect.fill(null)
     super.onDetachedFromWindow()
   }
 
@@ -541,19 +565,19 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     super.dispatchDraw(canvas)
 
     if (fadeTop > 0f) {
-      drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
+      drawEdge(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
         0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
     }
     if (fadeBottom > 0f) {
-      drawEdgeLevels(canvas, EDGE_BOTTOM, content, curveBottom, levelBottomCaches, fadeBottom, h,
+      drawEdge(canvas, EDGE_BOTTOM, content, curveBottom, levelBottomCaches, fadeBottom, h,
         0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
     }
     if (fadeLeft > 0f) {
-      drawEdgeLevels(canvas, EDGE_LEFT, content, curveLeft, levelLeftCaches, fadeLeft, 0f,
+      drawEdge(canvas, EDGE_LEFT, content, curveLeft, levelLeftCaches, fadeLeft, 0f,
         0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
     }
     if (fadeRight > 0f) {
-      drawEdgeLevels(canvas, EDGE_RIGHT, content, curveRight, levelRightCaches, fadeRight, w,
+      drawEdge(canvas, EDGE_RIGHT, content, curveRight, levelRightCaches, fadeRight, w,
         w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
     }
     lastBlurEffectRadius = blurRadius
@@ -562,6 +586,153 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
     // Optional frost material veil on top (opt-in via overlayColor).
     overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
+  }
+
+  // Routes one edge to the active blur pipeline. PROGRESSIVE_IMLA needs AGSL
+  // (API 33); below that — or on any other BLUR_STYLE — it falls back to the
+  // level stack (BLUR_STYLE_UNIFORM's geometry, since PROGRESSIVE_IMLA shares
+  // its LEVEL_* constants via the `else` branches below).
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun drawEdge(
+    canvas: Canvas, edge: Int, content: RenderNode, curve: String,
+    caches: Array<GradientCache<LevelGradKey>>,
+    size: Float, dim: Float,
+    bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
+    gx0: Float, gy0: Float, gx1: Float, gy1: Float,
+  ) {
+    if (BLUR_STYLE == BLUR_STYLE_PROGRESSIVE_IMLA && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      drawEdgeProgressive(canvas, edge, content, curve, caches, size, dim,
+        bandLeft, bandTop, bandRight, bandBottom, gx0, gy0, gx1, gy1)
+    } else {
+      drawEdgeLevels(canvas, edge, content, curve, caches, size, dim,
+        bandLeft, bandTop, bandRight, bandBottom, gx0, gy0, gx1, gy1)
+    }
+  }
+
+  // Progressive (imla-style) single-level blur: one separable 2-pass AGSL
+  // Gaussian per edge, with sigma modulated per-pixel along the inner→outer
+  // ramp instead of stacking multiple createBlurEffect levels. Recording,
+  // padding and compositing mirror drawEdgeLevels level-for-level; only the
+  // blur itself (RuntimeShader chain vs. createBlurEffect) differs.
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  private fun drawEdgeProgressive(
+    canvas: Canvas, edge: Int, content: RenderNode, curve: String,
+    caches: Array<GradientCache<LevelGradKey>>,
+    size: Float, dim: Float,
+    bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
+    gx0: Float, gy0: Float, gx1: Float, gy1: Float,
+  ) {
+    val vw = width.toFloat(); val vh = height.toFloat()
+
+    val sigma = blurRadius * SIGMA_FROM_RADIUS
+    val ds = progressiveDownscale(sigma)
+    val sigmaTexels = sigma * ds
+    val kernel = GaussianKernel.getKernel(sigmaTexels)
+
+    val pad = ceil(3f * sigmaTexels) / ds
+    val nLeft   = (bandLeft   - pad).coerceAtLeast(0f)
+    val nTop    = (bandTop    - pad).coerceAtLeast(0f)
+    val nRight  = (bandRight  + pad).coerceAtMost(vw)
+    val nBottom = (bandBottom + pad).coerceAtMost(vh)
+
+    val node = progressiveNodes[edge]
+      ?: RenderNode("EdgeFadeBlurProgressive_$edge").also { progressiveNodes[edge] = it }
+    node.setPosition(0, 0,
+      ceil((nRight - nLeft) * ds).roundToInt(), ceil((nBottom - nTop) * ds).roundToInt())
+    val rc = node.beginRecording()
+    try {
+      rc.scale(ds, ds)
+      rc.translate(-nLeft, -nTop)
+      rc.drawRenderNode(content)
+    } finally {
+      node.endRecording()
+    }
+
+    val prevRect = lastProgressiveRect[edge]
+    val rectChanged = prevRect == null ||
+      prevRect.left != nLeft || prevRect.top != nTop ||
+      prevRect.right != nRight || prevRect.bottom != nBottom
+    val frostChanged = frostSaturation != lastFrostSaturation || frostLift != lastFrostLift
+    if (blurRadius != lastBlurEffectRadius || rectChanged || frostChanged) {
+      val hShader = progressiveHShader
+        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveHShader = it }
+      val vShader = progressiveVShader
+        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveVShader = it }
+
+      for (i in 0 until kernel.sampleCount) {
+        val base = i * 4
+        progressiveSamples[base] = kernel.offsets[i]
+        progressiveSamples[base + 1] = kernel.weights[i]
+        progressiveSamples[base + 2] = 0f
+        progressiveSamples[base + 3] = 0f
+      }
+      for (i in kernel.sampleCount until GaussianKernel.MAX_KERNEL_SAMPLES) {
+        val base = i * 4
+        progressiveSamples[base] = 0f
+        progressiveSamples[base + 1] = 0f
+        progressiveSamples[base + 2] = 0f
+        progressiveSamples[base + 3] = 0f
+      }
+
+      val boundsR = (nRight - nLeft) * ds
+      val boundsB = (nBottom - nTop) * ds
+      val p0x = (gx0 - nLeft) * ds; val p0y = (gy0 - nTop) * ds
+      val p1x = (gx1 - nLeft) * ds; val p1y = (gy1 - nTop) * ds
+
+      for ((shader, dx, dy) in listOf(
+        Triple(hShader, 1f, 0f),
+        Triple(vShader, 0f, 1f),
+      )) {
+        shader.setFloatUniform("direction", dx, dy)
+        shader.setFloatUniform("samples", progressiveSamples)
+        shader.setIntUniform("sampleCount", kernel.sampleCount)
+        shader.setFloatUniform("bounds", 0f, 0f, boundsR, boundsB)
+        shader.setFloatUniform("rampP0", p0x, p0y)
+        shader.setFloatUniform("rampP1", p1x, p1y)
+      }
+
+      // Chain: inner = H (executed first), outer = V + vibrancy grade.
+      node.setRenderEffect(
+        RenderEffect.createChainEffect(
+          RenderEffect.createColorFilterEffect(
+            vibrancyFilter(),
+            RenderEffect.createRuntimeShaderEffect(vShader, "content"),
+          ),
+          RenderEffect.createRuntimeShaderEffect(hShader, "content"),
+        ),
+      )
+    }
+    lastProgressiveRect[edge] = (prevRect ?: RectF()).apply { set(nLeft, nTop, nRight, nBottom) }
+
+    // Composite: same crisp-recomposite pattern as drawEdgeLevels — the sharp
+    // base is already drawn underneath by drawBlurLayered, so at mask alpha 0
+    // (inner edge) the sharp content wins outright.
+    val sc = canvas.saveLayer(bandLeft, bandTop, bandRight, bandBottom, null)
+    canvas.translate(nLeft, nTop)
+    canvas.scale(1f / ds, 1f / ds)
+    canvas.drawRenderNode(node)
+    canvas.scale(ds, ds)
+    canvas.translate(-nLeft, -nTop)
+    maskPaint.shader = caches[0].acquire(LevelGradKey(curve, size, dim, 0)) {
+      levelGradient(curve, 0f, 1f, gx0, gy0, gx1, gy1)
+    }
+    canvas.drawRect(bandLeft, bandTop, bandRight, bandBottom, maskPaint)
+    canvas.restoreToCount(sc)
+  }
+
+  // Render-strip downscale for the progressive shader: full-res for a light
+  // blur, halving as sigma grows so the tap count / bandwidth stay bounded,
+  // with a nudge back up a step when it would still fit the 41-tap budget —
+  // mirrors imla's own downsample heuristic.
+  private fun progressiveDownscale(sigma: Float): Float {
+    if (sigma <= 4f) return 1f
+    val exponent = log2(4f / sigma).roundToInt().coerceAtLeast(-4)
+    var ds = 2.0.pow(exponent).toFloat()
+    if (ds < 0.125f) {
+      val dsPlus = ds * 2f
+      if ((ceil(3f * sigma * dsPlus).toInt() * 2 + 1) <= 41) ds = dsPlus
+    }
+    return ds
   }
 
   // Blur + composite one edge's level stack. For each level: record the content
@@ -797,9 +968,21 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     //     each masked to its own slice of the FADE CURVE, so the progression
     //     follows the curve rather than a fixed geometric ramp. Finer stack
     //     (five Gaussians, two at half-res).
+    //   PROGRESSIVE_IMLA — one level per edge: a separable 2-pass AGSL Gaussian
+    //     (RuntimeShader, API 33+) whose sigma is modulated per-pixel by a
+    //     linear inner→outer ramp, replacing the createBlurEffect stack
+    //     entirely. Shares UNIFORM's LEVEL_* geometry as its API < 33 fallback
+    //     (see drawEdge). Kernel taps come from GaussianKernel (imla-style
+    //     separable sampling, MIT-licensed, see that file's header).
     private const val BLUR_STYLE_UNIFORM = 0
     private const val BLUR_STYLE_LAYERED = 1
-    private const val BLUR_STYLE = BLUR_STYLE_UNIFORM
+    private const val BLUR_STYLE_PROGRESSIVE_IMLA = 2
+    private const val BLUR_STYLE = BLUR_STYLE_PROGRESSIVE_IMLA
+
+    // PROGRESSIVE_IMLA only: sigma = blurRadius * SIGMA_FROM_RADIUS. A/B
+    // calibration knob against UNIFORM's createBlurEffect radius — 1.0 keeps
+    // the two visually comparable at the same `blurRadius` prop value.
+    private const val SIGMA_FROM_RADIUS = 1.0f
 
     private val LEVEL_FRACTIONS =
       if (BLUR_STYLE == BLUR_STYLE_LAYERED) floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)
@@ -1019,6 +1202,45 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
           float alpha = 1.0 - smoothstep(-SMOOTH_EDGE_PX * 0.5, SMOOTH_EDGE_PX * 0.5, sdf);
           half4 bg = content.eval(xy);
           return mix(bg, pixel, alpha);
+      }
+    """
+
+    // PROGRESSIVE_IMLA's separable Gaussian pass (imla-style, see
+    // GaussianKernel.kt header). Same source compiled into two RuntimeShader
+    // instances (H/V), distinguished only by the `direction` uniform. `m`
+    // (0 at the inner edge, 1 at the outer) scales every tap's offset, so a
+    // single pass sweeps sigma from ~0 to full radius across the band instead
+    // of stacking multiple fixed-radius blurs.
+    private val PROGRESSIVE_IMLA_AGSL = """
+      uniform shader content;
+      uniform float2 direction;
+      uniform float4 samples[50];
+      uniform int sampleCount;
+      uniform float4 bounds;
+      uniform float2 rampP0;
+      uniform float2 rampP1;
+
+      half4 main(float2 coord) {
+          float2 rampDir = rampP1 - rampP0;
+          float len2 = dot(rampDir, rampDir);
+          float m = len2 > 0.0 ? clamp(dot(coord - rampP0, rampDir) / len2, 0.0, 1.0) : 1.0;
+
+          half4 sum = half4(0);
+          float wsum = 0.0;
+          for (int i = 0; i < 50; i++) {
+              if (i >= sampleCount) { break; }
+              float2 uv = coord + direction * (samples[i].x * m);
+              float valid = (uv.x >= bounds.x && uv.y >= bounds.y && uv.x <= bounds.z && uv.y <= bounds.w) ? 1.0 : 0.0;
+              half4 c = content.eval(clamp(uv, bounds.xy, bounds.zw));
+              sum += half4(c.rgb * c.rgb, c.a) * half(samples[i].y * valid);
+              wsum += samples[i].y * valid;
+          }
+
+          if (wsum > 1e-4) {
+              half3 rgb = sqrt(sum.rgb / half(wsum));
+              return half4(rgb, 1.0);
+          }
+          return content.eval(coord);
       }
     """
 
