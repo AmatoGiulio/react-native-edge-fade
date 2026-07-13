@@ -155,12 +155,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private var progressiveNodes: Array<RenderNode?> = arrayOfNulls(EDGE_COUNT)
   private val lastProgressiveRect: Array<RectF?> = arrayOfNulls(EDGE_COUNT)
 
-  // Compiled once, uniforms rewritten per draw. Two instances of the same
-  // source (H/V direction only differs via the `direction` uniform).
+  // Compiled lazily, uniforms rewritten on effect recreation. Per-edge H/V
+  // pairs of the same source (direction differs via the `direction` uniform):
+  // createRuntimeShaderEffect does not snapshot uniforms, so a shared instance
+  // would leak the last edge's ramp/bounds into every other edge's effect.
   @Suppress("NewApi")
-  private var progressiveHShader: RuntimeShader? = null
+  private var progressiveHShaders: Array<RuntimeShader?> = arrayOfNulls(EDGE_COUNT)
   @Suppress("NewApi")
-  private var progressiveVShader: RuntimeShader? = null
+  private var progressiveVShaders: Array<RuntimeShader?> = arrayOfNulls(EDGE_COUNT)
 
   // Reused packed sample buffer (50 vec4 = offsetPx, weight, 0, 0) so the
   // per-draw uniform upload doesn't allocate.
@@ -654,10 +656,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       prevRect.right != nRight || prevRect.bottom != nBottom
     val frostChanged = frostSaturation != lastFrostSaturation || frostLift != lastFrostLift
     if (blurRadius != lastBlurEffectRadius || rectChanged || frostChanged) {
-      val hShader = progressiveHShader
-        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveHShader = it }
-      val vShader = progressiveVShader
-        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveVShader = it }
+      val hShader = progressiveHShaders[edge]
+        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveHShaders[edge] = it }
+      val vShader = progressiveVShaders[edge]
+        ?: RuntimeShader(PROGRESSIVE_IMLA_AGSL).also { progressiveVShaders[edge] = it }
 
       for (i in 0 until kernel.sampleCount) {
         val base = i * 4
@@ -1232,7 +1234,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
               float2 uv = coord + direction * (samples[i].x * m);
               float valid = (uv.x >= bounds.x && uv.y >= bounds.y && uv.x <= bounds.z && uv.y <= bounds.w) ? 1.0 : 0.0;
               half4 c = content.eval(clamp(uv, bounds.xy, bounds.zw));
-              sum += half4(c.rgb * c.rgb, c.a) * half(samples[i].y * valid);
+              // RenderEffect inputs are PREMULTIPLIED: unpremultiply before the
+              // gamma decode (squaring premultiplied rgb compounds the alpha
+              // factor, and the opaque alpha-1 output then bakes it in as a
+              // dark veil over the whole band — verified on device).
+              half3 u = c.rgb / max(c.a, 0.0001);
+              sum += half4(u * u, 1.0) * half(samples[i].y * valid);
               wsum += samples[i].y * valid;
           }
 
