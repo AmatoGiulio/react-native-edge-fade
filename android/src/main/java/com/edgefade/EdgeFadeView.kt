@@ -642,7 +642,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       val width = if (k == 0) transition else UNIFORM_RAMP_WIDTH
       val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k, start * 10f + width)) {
         if (BLUR_STYLE == BLUR_STYLE_LAYERED) levelGradient(curve, lo, hi, gx0, gy0, gx1, gy1)
-        else frostGradient(gx0, gy0, gx1, gy1, start, width)
+        else frostGradient(curve, gx0, gy0, gx1, gy1, start, width)
       }
       val sc = canvas.saveLayer(bandLeft, bandTop, bandRight, bandBottom, null)
       canvas.translate(nLeft, nTop)
@@ -750,13 +750,17 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // is the most blurred) — a visible progression, while the sharp↔blur cross-fade
   // stays on the light first level only. RGB is irrelevant under DST_IN.
   private fun frostGradient(
-    x0: Float, y0: Float, x1: Float, y1: Float, start: Float, width: Float,
+    curve: String, x0: Float, y0: Float, x1: Float, y1: Float, start: Float, width: Float,
   ): LinearGradient {
-    val n = 16
+    // 32 stops (vs the old 16) so the sampled curve shape is resolved smoothly.
+    val n = 32
     val stops = FloatArray(n) { it / (n - 1f) }
     val colors = IntArray(n) { i ->
+      // Position within this level's [start, start+width] ramp window, then shape
+      // the fade-in by the curve's presence profile instead of a fixed smoothstep
+      // so editing the Bézier curve reshapes the blur ramp.
       val w = ((stops[i] - start) / width).coerceIn(0f, 1f)
-      val weight = w * w * (3f - 2f * w)
+      val weight = EdgeFadeCurves.presenceAt(curve, w)
       ColorUtils.setAlphaComponent(Color.BLACK, (weight * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)

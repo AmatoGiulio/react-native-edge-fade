@@ -18,6 +18,7 @@ import Eco from '@expo/material-symbols/eco.xml';
 import UnfoldMore from '@expo/material-symbols/unfold_more.xml';
 
 import { BezierPlot, DialRow } from '@/components/dial';
+import { PanelTitle, PanelResetButton } from '@/components/PanelHeader';
 import { SymbolIcon } from '@/components/SymbolIcon';
 import { useFadeStore } from '@/fade/FadeContext';
 import { BEZIER_PRESETS, type Bezier } from '@/fade/presets';
@@ -335,6 +336,20 @@ export function FadePanel() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.card }}>
+      {/* Android form sheets don't host the Stack header (react-native-screens
+          doesn't support nested stack rendering for Android sheets yet), so the
+          native headerTitle/headerRight never render. Surface the title + reset
+          as a fixed header OUTSIDE the ScrollView so it stays pinned instead of
+          scrolling with the content. iOS keeps the real native header. */}
+      {Platform.OS === 'android' && (
+        <View style={s.sheetHeader}>
+          <PanelTitle />
+          <View style={s.sheetReset}>
+            <PanelResetButton color={t.headerTint} />
+          </View>
+        </View>
+      )}
+
       <ScrollView
         {...(Platform.OS === 'android' ? { nestedScrollEnabled: true } : null)}
         style={[s.scroll, { paddingTop: Platform.OS === 'android' ? 0 : topHeight }]}
@@ -498,6 +513,19 @@ const s = StyleSheet.create({
   },
   padWrap: { marginBottom: 6 },
   menuHeight: { height: 44 },
+  sheetHeader: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  sheetReset: {
+    position: 'absolute',
+    right: 20,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   flex: { flex: 1 },
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
