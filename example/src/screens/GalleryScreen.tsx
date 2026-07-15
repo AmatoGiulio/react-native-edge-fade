@@ -97,7 +97,6 @@ export function GalleryScreen() {
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.listContent}
-
           />
         )}
       </AnimatedEdgeFadeView>
@@ -126,7 +125,12 @@ const s = StyleSheet.create({
 
   cell: { flex: 1, aspectRatio: 1, padding: GAP / 2 },
   img: { flex: 1, borderRadius: 2 },
-  skeletonCell: { width: '25%', aspectRatio: 1, padding: GAP / 2, borderRadius: 2 },
+  skeletonCell: {
+    width: '25%',
+    aspectRatio: 1,
+    padding: GAP / 2,
+    borderRadius: 2,
+  },
 
   listContent: { paddingTop: 116, paddingBottom: 0 },
 

@@ -51,7 +51,11 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -70,7 +74,11 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -89,7 +97,11 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -101,14 +113,20 @@ export default function RootLayout() {
                     presentation: 'formSheet',
 
                     headerTitle: () => <PanelTitle />,
-                    headerRight: () => <PanelResetButton color={t.headerTint} />,
+                    headerRight: () => (
+                      <PanelResetButton color={t.headerTint} />
+                    ),
 
                     headerTransparent: Platform.OS === 'ios',
-                    sheetAllowedDetents: Platform.OS === 'ios' ? [0.7, 1.0] : [0.7],
+                    sheetAllowedDetents:
+                      Platform.OS === 'ios' ? [0.7, 1.0] : [0.7],
                     sheetCornerRadius: Platform.OS === 'ios' ? 28 : 32,
                     headerShown: true,
                     headerTitleAlign: 'center',
-                    contentStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : t.card },
+                    contentStyle: {
+                      backgroundColor:
+                        Platform.OS === 'ios' ? 'transparent' : t.card,
+                    },
                   }}
                 />
               </Stack>
