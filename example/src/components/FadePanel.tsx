@@ -1,6 +1,18 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { ColorValue, ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type {
+  ColorValue,
+  ImageSourcePropType,
+  StyleProp,
+  ViewStyle,
+} from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 
@@ -26,7 +38,7 @@ import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
-const MODES_ANDROID = ['mask', 'blur', 'overlay', 'lens'] as const;
+const MODES_ANDROID = ['mask', 'blur', 'overlay'] as const;
 const DEFAULT_TINT = '#000000';
 
 const TINT_PRESETS = [
@@ -48,7 +60,15 @@ function fmtPx(v: number): string {
   return `${Math.round(v)}px`;
 }
 
-function NativeIcon({ name, size = 22, color }: { name: IconName; size?: number; color?: ColorValue }) {
+function NativeIcon({
+  name,
+  size = 22,
+  color,
+}: {
+  name: IconName;
+  size?: number;
+  color?: ColorValue;
+}) {
   return (
     <Host matchContents style={{ width: size, height: size }}>
       <UniIcon name={name} size={size} color={color} />
@@ -133,7 +153,14 @@ function ThemedMenu(props: ThemedMenuProps) {
   );
 }
 
-function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children }: ThemedMenuProps) {
+function AndroidThemedMenu({
+  actions,
+  onSelect,
+  palette,
+  scheme,
+  style,
+  children,
+}: ThemedMenuProps) {
   // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
   const {
     DropdownMenu,
@@ -143,7 +170,10 @@ function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children
     RNHostView,
   } = require('@expo/ui/jetpack-compose');
   const [expanded, setExpanded] = useState(false);
-  const itemColors = { textColor: palette.text, leadingIconColor: palette.text };
+  const itemColors = {
+    textColor: palette.text,
+    leadingIconColor: palette.text,
+  };
 
   return (
     <View style={style}>
@@ -169,7 +199,8 @@ function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children
             {actions.map((a) => {
               // On Android `image` is an ImageSourcePropType (xml require); the
               // string form is an iOS SF Symbol and has no leading icon here.
-              const icon = typeof a.image === 'string' || a.image == null ? null : a.image;
+              const icon =
+                typeof a.image === 'string' || a.image == null ? null : a.image;
               return (
                 <DropdownMenuItem
                   key={a.id ?? a.title}
@@ -184,7 +215,11 @@ function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children
                   </DropdownMenuItem.Text>
                   {icon && (
                     <DropdownMenuItem.LeadingIcon>
-                      <ComposeIcon source={icon} size={24} tint={palette.text} />
+                      <ComposeIcon
+                        source={icon}
+                        size={24}
+                        tint={palette.text}
+                      />
                     </DropdownMenuItem.LeadingIcon>
                   )}
                 </DropdownMenuItem>
@@ -199,14 +234,25 @@ function AndroidThemedMenu({ actions, onSelect, palette, scheme, style, children
 
 export function FadePanel() {
   const {
-    x1, y1, x2, y2,
-    top, bottom, left, right, blur, radius,
-    frostSat, frostLift, frostProg,
-    mode, setMode,
-    tint, setTint,
-    showBands, setShowBands,
-    autoDemo, setAutoDemo,
-    preset, setPreset,
+    x1,
+    y1,
+    x2,
+    y2,
+    blur,
+    radius,
+    frostSat,
+    frostLift,
+    frostProg,
+    mode,
+    setMode,
+    tint,
+    setTint,
+    showBands,
+    setShowBands,
+    autoDemo,
+    setAutoDemo,
+    preset,
+    setPreset,
   } = useFadeStore();
 
   const scheme = useScheme();
@@ -220,8 +266,10 @@ export function FadePanel() {
 
   const applyPreset = useCallback(
     (label: string, b: Bezier) => {
-      x1.set(b.x1); y1.set(b.y1);
-      x2.set(b.x2); y2.set(b.y2);
+      x1.set(b.x1);
+      y1.set(b.y1);
+      x2.set(b.x2);
+      y2.set(b.y2);
       setPreset(label);
     },
     [x1, y1, x2, y2, setPreset]
@@ -244,9 +292,8 @@ export function FadePanel() {
     id: p.label,
     title: p.label,
     titleColor: t.text,
-    image: Platform.OS === 'ios'
-      ? PRESET_SF[p.label]
-      : PRESET_MATERIAL[p.label],
+    image:
+      Platform.OS === 'ios' ? PRESET_SF[p.label] : PRESET_MATERIAL[p.label],
     imageColor: t.text,
   }));
 
@@ -267,21 +314,105 @@ export function FadePanel() {
 
   const advancedContent = (
     <>
-      <DialRow label="x1" value={x1} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
-      <DialRow label="y1" value={y1} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
-      <DialRow label="x2" value={x2} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
-      <DialRow label="y2" value={y2} min={0} max={1} step={0.01} format={fmt2} tint={scheme} {...dialSurface} onEnd={markCustom} />
+      <DialRow
+        label="x1"
+        value={x1}
+        min={0}
+        max={1}
+        step={0.01}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        onEnd={markCustom}
+      />
+      <DialRow
+        label="y1"
+        value={y1}
+        min={0}
+        max={1}
+        step={0.01}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        onEnd={markCustom}
+      />
+      <DialRow
+        label="x2"
+        value={x2}
+        min={0}
+        max={1}
+        step={0.01}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        onEnd={markCustom}
+      />
+      <DialRow
+        label="y2"
+        value={y2}
+        min={0}
+        max={1}
+        step={0.01}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        onEnd={markCustom}
+      />
 
-      <DialRow label="radius" value={radius} min={0} max={48} step={1} format={fmtPx} tint={scheme} {...dialSurface} />
+      <DialRow
+        label="radius"
+        value={radius}
+        min={0}
+        max={48}
+        step={1}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+      />
 
-      <DialRow label="saturation" value={frostSat} min={0.5} max={1.6} step={0.05} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
-      <DialRow label="lift" value={frostLift} min={0.7} max={1.2} step={0.02} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
-      <DialRow label="transition" value={frostProg} min={0.05} max={0.9} step={0.05} format={fmt2} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
+      <DialRow
+        label="saturation"
+        value={frostSat}
+        min={0.5}
+        max={1.6}
+        step={0.05}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        disabled={mode !== 'blur'}
+      />
+      <DialRow
+        label="lift"
+        value={frostLift}
+        min={0.7}
+        max={1.2}
+        step={0.02}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        disabled={mode !== 'blur'}
+      />
+      <DialRow
+        label="transition"
+        value={frostProg}
+        min={0.05}
+        max={0.9}
+        step={0.05}
+        format={fmt2}
+        tint={scheme}
+        {...dialSurface}
+        disabled={mode !== 'blur'}
+      />
 
       <View style={rowStyle}>
         <Text style={[s.monoLabel, { color: t.text }]}>frost tint</Text>
         <View style={s.flex} />
-        <NativeSwitch value={frostOn} onValueChange={onFrostToggle} palette={t} scheme={scheme} />
+        <NativeSwitch
+          value={frostOn}
+          onValueChange={onFrostToggle}
+          palette={t}
+          scheme={scheme}
+        />
       </View>
 
       {Platform.OS === 'ios' ? (
@@ -295,7 +426,9 @@ export function FadePanel() {
         />
       ) : (
         <View style={rowStyle}>
-          <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
+          <Text
+            style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
+          >
             tint color
           </Text>
           <View style={s.flex} />
@@ -308,10 +441,17 @@ export function FadePanel() {
             scheme={scheme}
           >
             <View style={s.rowInline}>
-              <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
+              <Text
+                style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
+              >
                 {currentTintLabel}
               </Text>
-              <Text style={[s.tintDot, { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText }]}>
+              <Text
+                style={[
+                  s.tintDot,
+                  { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
+                ]}
+              >
                 {'\u25CF'}
               </Text>
               <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
@@ -323,13 +463,23 @@ export function FadePanel() {
       <View style={rowStyle}>
         <Text style={[s.monoLabel, { color: t.text }]}>auto demo</Text>
         <View style={s.flex} />
-        <NativeSwitch value={autoDemo} onValueChange={setAutoDemo} palette={t} scheme={scheme} />
+        <NativeSwitch
+          value={autoDemo}
+          onValueChange={setAutoDemo}
+          palette={t}
+          scheme={scheme}
+        />
       </View>
 
       <View style={rowStyle}>
         <Text style={[s.monoLabel, { color: t.text }]}>debug bands</Text>
         <View style={s.flex} />
-        <NativeSwitch value={showBands} onValueChange={setShowBands} palette={t} scheme={scheme} />
+        <NativeSwitch
+          value={showBands}
+          onValueChange={setShowBands}
+          palette={t}
+          scheme={scheme}
+        />
       </View>
     </>
   );
@@ -352,7 +502,10 @@ export function FadePanel() {
 
       <ScrollView
         {...(Platform.OS === 'android' ? { nestedScrollEnabled: true } : null)}
-        style={[s.scroll, { paddingTop: Platform.OS === 'android' ? 0 : topHeight }]}
+        style={[
+          s.scroll,
+          { paddingTop: Platform.OS === 'android' ? 0 : topHeight },
+        ]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.body}
       >
@@ -385,7 +538,10 @@ export function FadePanel() {
 
         <View style={s.padWrap}>
           <BezierPlot
-            x1={x1} y1={y1} x2={x2} y2={y2}
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
             tint={scheme}
             variant="pad"
             showPresenceBands={mode === 'blur'}
@@ -409,19 +565,32 @@ export function FadePanel() {
             <View style={s.rowInline}>
               <Text style={[s.monoLabel, { color: t.text }]}>{preset}</Text>
               <NativeIcon
-                name={Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore}
+                name={
+                  Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore
+                }
                 size={Platform.OS === 'ios' ? 12 : 16}
                 color={t.faintText}
               />
             </View>
           </View>
         </ThemedMenu>
-          {/*
+        {/*
         <DialRow label="top" value={top} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
         <DialRow label="bottom" value={bottom} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
         <DialRow label="left" value={left} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
         <DialRow label="right" value={right} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        */}<DialRow label="blur" value={blur} min={0} max={100} step={1} format={fmtPx} tint={scheme} {...dialSurface} disabled={mode !== 'blur'} />
+        */}
+        <DialRow
+          label="blur"
+          value={blur}
+          min={0}
+          max={100}
+          step={1}
+          format={fmtPx}
+          tint={scheme}
+          {...dialSurface}
+          disabled={mode !== 'blur'}
+        />
 
         {Platform.OS === 'android' ? (
           advancedContent
@@ -465,12 +634,29 @@ function TintColorPickerIOS({
   faintTextColor: string;
 }) {
   const { ColorPicker } = require('@expo/ui/swift-ui');
-  const { labelsHidden, disabled: disabledMod } = require('@expo/ui/swift-ui/modifiers');
+  const {
+    labelsHidden,
+    disabled: disabledMod,
+  } = require('@expo/ui/swift-ui/modifiers');
 
   return (
     <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14, height: 44, backgroundColor: rowBg }}>
-        <Text style={[s.monoLabel, { color: disabled ? faintTextColor : textColor }]}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderRadius: 12,
+          paddingHorizontal: 14,
+          height: 44,
+          backgroundColor: rowBg,
+        }}
+      >
+        <Text
+          style={[
+            s.monoLabel,
+            { color: disabled ? faintTextColor : textColor },
+          ]}
+        >
           tint color
         </Text>
         <View style={{ flex: 1 }} />

@@ -24,7 +24,7 @@ export interface StopsCurve {
 
 export type EdgeFadeCurve = CurvePreset | CubicBezierCurve | StopsCurve;
 
-export type EdgeFadeMode = 'mask' | 'overlay' | 'blur' | 'lens';
+export type EdgeFadeMode = 'mask' | 'overlay' | 'blur';
 
 export interface EdgeConfig {
   /** Fade depth in dp. Overrides the component-level `size`. */
