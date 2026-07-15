@@ -74,9 +74,7 @@ export async function fetchPopularPhotos(
   return res.json() as Promise<UnsplashPhoto[]>;
 }
 
-export async function fetchPhotoById(
-  id: string
-): Promise<UnsplashPhoto> {
+export async function fetchPhotoById(id: string): Promise<UnsplashPhoto> {
   const res = await fetch(`${BASE_URL}/photos/${id}`, {
     headers: { Authorization: `Client-ID ${ACCESS_KEY}` },
   });
