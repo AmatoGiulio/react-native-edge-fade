@@ -18,6 +18,7 @@ export type {
   EdgeFadeViewProps,
   EdgeFadeCurve,
   EdgeFadeMode,
+  EdgeFadeLensConfig,
   EdgeConfig,
   CurvePreset,
   CubicBezierCurve,

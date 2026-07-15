@@ -49,6 +49,12 @@ export interface FadeStore {
   frostSat: SharedValue<number>;
   frostLift: SharedValue<number>;
   frostProg: SharedValue<number>;
+  lensRefract: SharedValue<number>;
+  lensDisp: SharedValue<number>;
+  lensSat: SharedValue<number>;
+  lensCon: SharedValue<number>;
+  lensSpec: SharedValue<number>;
+  lensAng: SharedValue<number>;
 
   mode: EdgeFadeMode;
   setMode: (mode: EdgeFadeMode) => void;
@@ -79,6 +85,12 @@ export interface FadeRender {
   frostSaturation: number;
   frostLift: number;
   frostProgression: number;
+  lensRefraction: number;
+  lensDispersion: number;
+  lensSaturation: number;
+  lensContrast: number;
+  lensSpecular: number;
+  lensAngle: number;
 }
 
 const FadeStoreContext = createContext<FadeStore | null>(null);
@@ -100,6 +112,13 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   const frostSat = useSharedValue(0.9);
   const frostLift = useSharedValue(1.03);
   const frostProg = useSharedValue(0.35);
+  // Lens (liquid glass) params — defaults mirror the native EdgeFadeView vars.
+  const lensRefract = useSharedValue(0.25);
+  const lensDisp = useSharedValue(0);
+  const lensSat = useSharedValue(1);
+  const lensCon = useSharedValue(1);
+  const lensSpec = useSharedValue(0);
+  const lensAng = useSharedValue(225);
 
   const [mode, setMode] = useState<EdgeFadeMode>('blur');
   // No frost tint by default: a pure content-derived Gaussian blur that adapts
@@ -149,6 +168,12 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     frostSat.set(0.9);
     frostLift.set(1.03);
     frostProg.set(0.35);
+    lensRefract.set(0.25);
+    lensDisp.set(0);
+    lensSat.set(1);
+    lensCon.set(1);
+    lensSpec.set(0);
+    lensAng.set(225);
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
@@ -168,6 +193,12 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     frostSat,
     frostLift,
     frostProg,
+    lensRefract,
+    lensDisp,
+    lensSat,
+    lensCon,
+    lensSpec,
+    lensAng,
   ]);
 
   const store = useMemo<FadeStore>(
@@ -185,6 +216,12 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       frostSat,
       frostLift,
       frostProg,
+      lensRefract,
+      lensDisp,
+      lensSat,
+      lensCon,
+      lensSpec,
+      lensAng,
       mode,
       setMode,
       tint,
@@ -212,6 +249,12 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       frostSat,
       frostLift,
       frostProg,
+      lensRefract,
+      lensDisp,
+      lensSat,
+      lensCon,
+      lensSpec,
+      lensAng,
       mode,
       tint,
       showBands,
@@ -246,6 +289,42 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   }, [frostProg]);
   const frostProgression = useThrottledMirror(readFrostProg, 0.35);
 
+  const readLensRefract = useCallback((): number => {
+    'worklet';
+    return lensRefract.get();
+  }, [lensRefract]);
+  const lensRefraction = useThrottledMirror(readLensRefract, 0.25);
+
+  const readLensDisp = useCallback((): number => {
+    'worklet';
+    return lensDisp.get();
+  }, [lensDisp]);
+  const lensDispersion = useThrottledMirror(readLensDisp, 0);
+
+  const readLensSat = useCallback((): number => {
+    'worklet';
+    return lensSat.get();
+  }, [lensSat]);
+  const lensSaturation = useThrottledMirror(readLensSat, 1);
+
+  const readLensCon = useCallback((): number => {
+    'worklet';
+    return lensCon.get();
+  }, [lensCon]);
+  const lensContrast = useThrottledMirror(readLensCon, 1);
+
+  const readLensSpec = useCallback((): number => {
+    'worklet';
+    return lensSpec.get();
+  }, [lensSpec]);
+  const lensSpecular = useThrottledMirror(readLensSpec, 0);
+
+  const readLensAng = useCallback((): number => {
+    'worklet';
+    return lensAng.get();
+  }, [lensAng]);
+  const lensAngle = useThrottledMirror(readLensAng, 225);
+
   const render = useMemo<FadeRender>(
     () => ({
       curve,
@@ -253,8 +332,26 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       frostSaturation,
       frostLift: frostLiftValue,
       frostProgression,
+      lensRefraction,
+      lensDispersion,
+      lensSaturation,
+      lensContrast,
+      lensSpecular,
+      lensAngle,
     }),
-    [curve, blurRadius, frostSaturation, frostLiftValue, frostProgression]
+    [
+      curve,
+      blurRadius,
+      frostSaturation,
+      frostLiftValue,
+      frostProgression,
+      lensRefraction,
+      lensDispersion,
+      lensSaturation,
+      lensContrast,
+      lensSpecular,
+      lensAngle,
+    ]
   );
 
   return (

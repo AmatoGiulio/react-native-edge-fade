@@ -2,7 +2,11 @@ import { memo } from 'react';
 import { View } from 'react-native';
 
 import type { EdgeFadeViewProps } from './types';
-import { resolveNativeProps, resolveRadius } from './normalize';
+import {
+  resolveNativeProps,
+  resolveRadius,
+  warnLensPlatformOnce,
+} from './normalize';
 
 // ── Curve sampling ─────────────────────────────────────────────────────────────
 // Returns N alpha values going outer→inner (0 → 1).
@@ -133,6 +137,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    lens: _lens,
     radius,
     style,
     children,
@@ -144,6 +149,15 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     resolvedRadius !== undefined
       ? { borderRadius: resolvedRadius, overflow: 'hidden' as const }
       : null;
+
+  if (n.mode === 'lens') {
+    if (__DEV__) warnLensPlatformOnce();
+    return (
+      <View style={[style, radiusStyle]} {...viewProps}>
+        {children}
+      </View>
+    );
+  }
 
   if (n.mode === 'overlay') {
     const edgeColor = (specific: typeof n.overlayColorTop) =>

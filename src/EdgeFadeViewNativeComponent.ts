@@ -28,6 +28,18 @@ interface NativeProps extends ViewProps {
   frostLift?: Float;
   /** Fraction of the band over which the blur radius ramps (blur mode). */
   frostProgression?: Float;
+  /** Lens mode (liquid glass): refraction strength at the rim. */
+  lensRefraction?: Float;
+  /** Lens mode: chromatic dispersion amount. */
+  lensDispersion?: Float;
+  /** Lens mode: saturation multiplier of the refracted content. */
+  lensSaturation?: Float;
+  /** Lens mode: contrast multiplier of the refracted content. */
+  lensContrast?: Float;
+  /** Lens mode: specular / reflection highlight strength. */
+  lensSpecular?: Float;
+  /** Lens mode: specular light direction, in degrees. */
+  lensAngle?: Float;
   overlayColor?: ColorValue;
   overlayColorTop?: ColorValue;
   overlayColorBottom?: ColorValue;

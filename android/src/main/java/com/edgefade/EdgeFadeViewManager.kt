@@ -97,6 +97,28 @@ class EdgeFadeViewManager :
   @ReactProp(name = "frostProgression", defaultFloat = 0.35f)
   override fun setFrostProgression(view: EdgeFadeView, value: Float) { view.frostProgression = value }
 
+  // ── Lens (liquid glass) ──────────────────────────────────────────────────
+
+  // Clamped defensively — mirrors the JS-layer clamp for power users who talk
+  // to NativeEdgeFadeView directly and bypass it.
+  @ReactProp(name = "lensRefraction", defaultFloat = 0.25f)
+  override fun setLensRefraction(view: EdgeFadeView, value: Float) { view.lensRefraction = value.coerceIn(0f, 1f) }
+
+  @ReactProp(name = "lensDispersion", defaultFloat = 0f)
+  override fun setLensDispersion(view: EdgeFadeView, value: Float) { view.lensDispersion = value.coerceIn(0f, 1f) }
+
+  @ReactProp(name = "lensSaturation", defaultFloat = 1f)
+  override fun setLensSaturation(view: EdgeFadeView, value: Float) { view.lensSaturation = value.coerceIn(0f, 2f) }
+
+  @ReactProp(name = "lensContrast", defaultFloat = 1f)
+  override fun setLensContrast(view: EdgeFadeView, value: Float) { view.lensContrast = value.coerceIn(0f, 2f) }
+
+  @ReactProp(name = "lensSpecular", defaultFloat = 0f)
+  override fun setLensSpecular(view: EdgeFadeView, value: Float) { view.lensSpecular = value.coerceIn(0f, 1f) }
+
+  @ReactProp(name = "lensAngle", defaultFloat = 225f)
+  override fun setLensAngle(view: EdgeFadeView, value: Float) { view.lensAngle = ((value % 360f) + 360f) % 360f }
+
   companion object {
     const val NAME = "EdgeFadeView"
   }

@@ -100,9 +100,10 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `end`    | `boolean \| number \| EdgeConfig`     | `false`    | Logical trailing edge — maps to `right` in LTR, `left` in RTL |
 | `size`   | `number`                              | `80`       | Default fade depth (dp) for all active edges         |
 | `curve`  | `EdgeFadeCurve`                       | `'smooth'` | Default curve shape for all active edges             |
-| `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
+| `mode`   | `'mask' \| 'overlay' \| 'blur' \| 'lens'` | auto       | Render mode; inferred from `color` or `lens` when omitted |
 | `color`  | `ColorValue`                          | —          | Overlay color, or optional frost veil color in `blur` mode (omit for pure blur) |
 | `blurRadius` | `number`                          | `28`       | Max blur radius (dp) at the outer edge, `blur` mode only |
+| `lens`   | `EdgeFadeLensConfig`                  | —          | Liquid-glass rim config (`lens` mode only, Android 13+ only); passing `lens` implies `mode="lens"` |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
 
@@ -206,6 +207,23 @@ a frosted material veil on top of the blur — omit it for a pure, tint-free Gau
 > **Blur needs opaque content.** Blurring content with transparent gaps produces dark
 > premultiplied-alpha fringes. Give the `EdgeFadeView` (or its content) a solid
 > `backgroundColor` — the view composites that opaque backdrop before blurring.
+
+### `mode="lens"`
+
+The whole view becomes a liquid-glass panel: each enabled edge refracts its own band of
+content via an AGSL `RuntimeShader`, creating a distortion lens effect where the rim curves
+and bends the view as light passes through glass. The refraction strength, chromatic dispersion,
+and specular highlights are all configurable.
+
+```tsx
+<EdgeFadeView mode="lens" top={100} bottom={100} radius={16}
+  lens={{ refraction: 0.25, dispersion: 0.1, specular: 0.4, angle: 225 }}>
+  <ScrollView>{/* refracted at top and bottom edges */}</ScrollView>
+</EdgeFadeView>
+```
+
+> **Android 13 (API 33)+ only.** On iOS and Web, `lens` mode renders children untouched
+> (pass-through) and logs a one-time `__DEV__` warning. iOS implementation is planned.
 
 ### Per-edge colors
 
@@ -326,15 +344,15 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 
 | Platform          | Implementation                                                              |
 | ----------------- | --------------------------------------------------------------------------- |
-| Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
+| Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered; `lens` mode via `RuntimeShader` distortion |
 | Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
 | Android API 31+   | `blur` mode — progressive stack of `RenderEffect.createBlurEffect` levels, clipped to the fade strips, masked by curve-slice gradients |
-| iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
+| iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`); `lens` mode pass-through (planned) |
 | iOS 13+           | `blur` mode — progressive stack of masked `UIVisualEffectView`s (pure Gaussian, no material tint), intensity via paused `UIViewPropertyAnimator`; public API only |
-| Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
+| Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`; `lens` mode pass-through |
 
-> `mode="blur"` runs natively on iOS 13+ and Android 12+ (API 31); Web and older Android fall back to `mask`.
+> `mode="blur"` runs natively on iOS 13+ and Android 12+ (API 31); Web and older Android fall back to `mask`. `mode="lens"` runs on Android 13+ (API 33); iOS and Web fall back to pass-through.
 
 ### Android — nested scrolling
 
@@ -432,6 +450,7 @@ import type {
   EdgeFadeCurve,
   EdgeFadeMode,
   EdgeConfig,
+  EdgeFadeLensConfig,
   CubicBezierCurve,
   StopsCurve,
 } from 'react-native-edge-fade';

@@ -26,6 +26,28 @@ export type EdgeFadeCurve = CurvePreset | CubicBezierCurve | StopsCurve;
 
 export type EdgeFadeMode = 'mask' | 'overlay' | 'blur' | 'lens';
 
+/**
+ * Liquid-glass lens configuration for `mode="lens"`. Android 13 (API 33)+
+ * only; on iOS and web, lens renders children untouched (pass-through).
+ * Plain numbers only — Reanimated SharedValues inside this object are not
+ * supported (values are read on the JS thread at render time); pass
+ * throttled JS mirrors to animate them.
+ */
+export interface EdgeFadeLensConfig {
+  /** Refraction strength of the liquid-glass rim (0 = flat). Clamped to [0,1]. Default 0.25. */
+  refraction?: number;
+  /** Chromatic dispersion (RGB fringing) at the rim (0 = none). Clamped to [0,1]. Default 0. */
+  dispersion?: number;
+  /** Saturation multiplier applied to the refracted content (1 = neutral). Clamped to [0,2]. Default 1. */
+  saturation?: number;
+  /** Contrast multiplier applied to the refracted content (1 = neutral). Clamped to [0,2]. Default 1. */
+  contrast?: number;
+  /** Specular / reflection highlight strength (0 = off). Clamped to [0,1]. Default 0. */
+  specular?: number;
+  /** Direction of the specular highlight, in degrees (0 = right, 90 = down). Normalized to [0,360). Default 225 (top-left). */
+  angle?: number;
+}
+
 export interface EdgeConfig {
   /** Fade depth in dp. Overrides the component-level `size`. */
   size?: number;
@@ -54,6 +76,8 @@ export interface EdgeFadeViewProps extends ViewProps {
    * 'blur'    — fade content into a blurred copy of itself toward the enabled
    *             edges (progressive blur). Sharp at the inner edge, fully blurred
    *             at the outer edge, following the per-edge `size`/`curve`.
+   * 'lens'    — liquid-glass rim distortion over the whole view. Android 13
+   *             (API 33)+ only; iOS and web render children untouched.
    */
   mode?: EdgeFadeMode;
   /**
@@ -91,6 +115,12 @@ export interface EdgeFadeViewProps extends ViewProps {
    * then more solid frost. Android only; defaults to 0.35.
    */
   frostProgression?: number;
+  /**
+   * Lens mode (`mode="lens"`) configuration — liquid-glass rim distortion
+   * over the whole view. Android 13 (API 33)+ only; on iOS and web, lens
+   * renders children untouched (pass-through).
+   */
+  lens?: EdgeFadeLensConfig;
   /**
    * Corner radius (dp) applied as a native clip path that also clips the fade
    * mask, keeping the gradient flush with the rounded edge.

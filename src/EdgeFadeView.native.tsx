@@ -1,14 +1,23 @@
 import { memo } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
-import { resolveNativeProps, resolveRadius } from './normalize';
+import {
+  resolveNativeProps,
+  resolveRadius,
+  warnLensPlatformOnce,
+} from './normalize';
 import type { EdgeFadeViewProps } from './types';
 
 export const EdgeFadeView = memo(function EdgeFadeView(
   props: EdgeFadeViewProps
 ) {
   const n = resolveNativeProps(props);
+
+  if (__DEV__ && Platform.OS === 'ios' && n.mode === 'lens') {
+    warnLensPlatformOnce();
+  }
+
   const {
     top: _t,
     bottom: _b,
@@ -21,6 +30,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    lens: _lens,
     radius,
     style,
     children,
@@ -54,6 +64,12 @@ export const EdgeFadeView = memo(function EdgeFadeView(
       overlayColorBottom={n.overlayColorBottom}
       overlayColorLeft={n.overlayColorLeft}
       overlayColorRight={n.overlayColorRight}
+      lensRefraction={n.lensRefraction}
+      lensDispersion={n.lensDispersion}
+      lensSaturation={n.lensSaturation}
+      lensContrast={n.lensContrast}
+      lensSpecular={n.lensSpecular}
+      lensAngle={n.lensAngle}
       fadeRadius={resolvedRadius}
     >
       {children}

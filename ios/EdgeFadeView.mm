@@ -48,9 +48,10 @@ using namespace facebook::react;
 // ─── Render mode enum ────────────────────────────────────────────────────────
 
 typedef NS_ENUM(NSInteger, EdgeFadeRenderMode) {
-  EdgeFadeModeMask,    // default — alpha mask on self.layer
-  EdgeFadeModeOverlay, // painted gradient strips above content
-  EdgeFadeModeBlur,    // UIVisualEffectView blurred, edge-masked, optional veil
+  EdgeFadeModeMask,        // default — alpha mask on self.layer
+  EdgeFadeModeOverlay,     // painted gradient strips above content
+  EdgeFadeModeBlur,        // UIVisualEffectView blurred, edge-masked, optional veil
+  EdgeFadeModePassthrough, // "lens" mode on iOS — no fade layers, children render untouched
 };
 
 // ─── Progressive-blur model (blur mode) ───────────────────────────────────────
@@ -339,19 +340,23 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   // Resolve the new render mode.
   NSString *modeStr = [NSString stringWithUTF8String:p.mode.c_str()];
   EdgeFadeRenderMode newMode;
-  if ([@"overlay" isEqualToString:modeStr])    newMode = EdgeFadeModeOverlay;
-  else if ([@"blur" isEqualToString:modeStr])  newMode = EdgeFadeModeBlur;
-  else                                         newMode = EdgeFadeModeMask;
+  if ([@"overlay" isEqualToString:modeStr])     newMode = EdgeFadeModeOverlay;
+  else if ([@"blur" isEqualToString:modeStr])   newMode = EdgeFadeModeBlur;
+  // "lens" (liquid-glass AGSL) is Android-only for now — iOS falls back to a
+  // clean pass-through (no fade layers at all) instead of degrading to mask.
+  else if ([@"lens" isEqualToString:modeStr])   newMode = EdgeFadeModePassthrough;
+  else                                          newMode = EdgeFadeModeMask;
 
   // Rebuild layers when the mode flips OR when the layer for the current mode
   // is still missing (first updateProps call — `_props` defaults don't trigger
   // a mode flip when the user picks the default mode).
   BOOL layerMissing;
   switch (newMode) {
-    case EdgeFadeModeMask:    layerMissing = (_maskLayer == nil);  break;
-    case EdgeFadeModeOverlay: layerMissing = (_overlayTop == nil); break;
-    case EdgeFadeModeBlur:    layerMissing = (_blurViews[0][0] == nil); break;
-    default:                  layerMissing = NO;                   break;
+    case EdgeFadeModeMask:        layerMissing = (_maskLayer == nil);  break;
+    case EdgeFadeModeOverlay:     layerMissing = (_overlayTop == nil); break;
+    case EdgeFadeModeBlur:        layerMissing = (_blurViews[0][0] == nil); break;
+    case EdgeFadeModePassthrough: layerMissing = NO; break; // no layers to build, ever
+    default:                      layerMissing = NO; break;
   }
   EF_BENCH_LOG("up_switch");
 
@@ -369,6 +374,8 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     EF_BENCH_LOG("up_overlay_color");
     if (sizeChanged) [self _updateLayerFrames];
     EF_BENCH_LOG("up_overlay_size");
+  } else if (_renderMode == EdgeFadeModePassthrough) {
+    // No layers exist in passthrough — nothing to sync on size/curve/color changes.
   } else {
     // Blur mode — incremental updates.
     if (sizeChanged || curveChanged) [self _syncBlurMaskLayers];
@@ -510,6 +517,8 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     _overlayRight  = [self _makeGradientLayerWithScale:scale];
     [self _rebuildOverlayColors];
     [self _updateLayerFrames];
+  } else if (_renderMode == EdgeFadeModePassthrough) {
+    // Nothing to build — children render untouched, no fade layer of any kind.
   } else {
     // Blur mode — build blur view + mask, then optionally the frost veil.
     [self _buildBlurView];

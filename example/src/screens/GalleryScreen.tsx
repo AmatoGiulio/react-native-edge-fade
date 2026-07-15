@@ -58,8 +58,19 @@ export function GalleryScreen() {
   const { catalog, isLoading, isError } = useCatalog();
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
-  const { curve, blurRadius, frostSaturation, frostLift, frostProgression } =
-    useFadeRender();
+  const {
+    curve,
+    blurRadius,
+    frostSaturation,
+    frostLift,
+    frostProgression,
+    lensRefraction,
+    lensDispersion,
+    lensSaturation,
+    lensContrast,
+    lensSpecular,
+    lensAngle,
+  } = useFadeRender();
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
@@ -84,6 +95,14 @@ export function GalleryScreen() {
         frostSaturation={frostSaturation}
         frostLift={frostLift}
         frostProgression={frostProgression}
+        lens={{
+          refraction: lensRefraction,
+          dispersion: lensDispersion,
+          saturation: lensSaturation,
+          contrast: lensContrast,
+          specular: lensSpecular,
+          angle: lensAngle,
+        }}
         color={tint}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
@@ -97,7 +116,6 @@ export function GalleryScreen() {
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.listContent}
-
           />
         )}
       </AnimatedEdgeFadeView>
@@ -126,7 +144,12 @@ const s = StyleSheet.create({
 
   cell: { flex: 1, aspectRatio: 1, padding: GAP / 2 },
   img: { flex: 1, borderRadius: 2 },
-  skeletonCell: { width: '25%', aspectRatio: 1, padding: GAP / 2, borderRadius: 2 },
+  skeletonCell: {
+    width: '25%',
+    aspectRatio: 1,
+    padding: GAP / 2,
+    borderRadius: 2,
+  },
 
   listContent: { paddingTop: 116, paddingBottom: 0 },
 

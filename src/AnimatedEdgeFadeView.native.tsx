@@ -1,8 +1,12 @@
 import { memo, type ReactElement } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import NativeEdgeFadeView from './EdgeFadeViewNativeComponent';
-import { resolveNativeProps, resolveRadius } from './normalize';
+import {
+  resolveNativeProps,
+  resolveRadius,
+  warnLensPlatformOnce,
+} from './normalize';
 import { isSharedValueLike, type SharedValueLike } from './sharedValue';
 import type { EdgeConfig, EdgeFadeViewProps } from './types';
 
@@ -128,6 +132,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const n = resolveNativeProps(staticProps);
   const resolvedRadius = resolveRadius(staticProps.radius, props.style);
 
+  if (__DEV__ && Platform.OS === 'ios' && n.mode === 'lens') {
+    warnLensPlatformOnce();
+  }
+
   const {
     top: _t,
     bottom: _b,
@@ -139,6 +147,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     curve: _c,
     mode: _m,
     color: _col,
+    lens: _lens,
     radius: _radius,
     style,
     children,
@@ -180,6 +189,12 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       overlayColorBottom={n.overlayColorBottom}
       overlayColorLeft={n.overlayColorLeft}
       overlayColorRight={n.overlayColorRight}
+      lensRefraction={n.lensRefraction}
+      lensDispersion={n.lensDispersion}
+      lensSaturation={n.lensSaturation}
+      lensContrast={n.lensContrast}
+      lensSpecular={n.lensSpecular}
+      lensAngle={n.lensAngle}
       fadeRadius={resolvedRadius}
       animatedProps={animatedProps}
     >

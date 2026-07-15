@@ -15,6 +15,7 @@ import { PanelTitle, PanelResetButton } from '@/components/PanelHeader';
 import { useScheme, PALETTES } from '@/theme';
 
 import DiscoverTune from '@expo/material-symbols/discover_tune.xml';
+import DynamicFeed from '@expo/material-symbols/dynamic_feed.xml';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30 * 60 * 1000 } },
@@ -51,7 +52,18 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios' ? 'text.below.photo' : DynamicFeed
+                      }
+                      tintColor={t.headerTint}
+                      onPress={() => router.push('/feed')}
+                    />
+                    <Stack.Toolbar.Button
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -70,7 +82,11 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -89,7 +105,34 @@ export default function RootLayout() {
                 >
                   <Stack.Toolbar placement="right">
                     <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'slider.horizontal.below.rectangle' : DiscoverTune}
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
+                      tintColor={t.headerTint}
+                      onPress={() => router.push('/panel')}
+                    />
+                  </Stack.Toolbar>
+                </Stack.Screen>
+                <Stack.Screen
+                  name="feed"
+                  options={{
+                    headerShown: true,
+                    headerTransparent: true,
+                    headerTitle: 'Feed',
+                    headerBackButtonDisplayMode: 'minimal',
+                    headerTintColor: t.headerTint,
+                    animation: 'slide_from_right',
+                  }}
+                >
+                  <Stack.Toolbar placement="right">
+                    <Stack.Toolbar.Button
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
@@ -101,14 +144,20 @@ export default function RootLayout() {
                     presentation: 'formSheet',
 
                     headerTitle: () => <PanelTitle />,
-                    headerRight: () => <PanelResetButton color={t.headerTint} />,
+                    headerRight: () => (
+                      <PanelResetButton color={t.headerTint} />
+                    ),
 
                     headerTransparent: Platform.OS === 'ios',
-                    sheetAllowedDetents: Platform.OS === 'ios' ? [0.7, 1.0] : [0.7],
+                    sheetAllowedDetents:
+                      Platform.OS === 'ios' ? [0.7, 1.0] : [0.7],
                     sheetCornerRadius: Platform.OS === 'ios' ? 28 : 32,
                     headerShown: true,
                     headerTitleAlign: 'center',
-                    contentStyle: { backgroundColor: Platform.OS === 'ios' ? 'transparent' : t.card },
+                    contentStyle: {
+                      backgroundColor:
+                        Platform.OS === 'ios' ? 'transparent' : t.card,
+                    },
                   }}
                 />
               </Stack>

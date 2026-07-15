@@ -88,9 +88,7 @@ export function PhotoScreen() {
         <View style={s.meta}>
           <Text style={[s.title, { color: t.text }]}>{item.title}</Text>
           <View style={s.authorRow}>
-            <View
-              style={[s.accentDot, { backgroundColor: item.accent }]}
-            />
+            <View style={[s.accentDot, { backgroundColor: item.accent }]} />
             <Text style={[s.subtitle, { color: t.subtext }]}>
               {item.author} · {item.width}×{item.height}
             </Text>

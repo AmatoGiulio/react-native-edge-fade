@@ -24,7 +24,9 @@ import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Edge fade renderer.
@@ -92,6 +94,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   var lensSaturation: Float = 1f
   var lensContrast:   Float = 1f
   var lensSpecular:   Float = 0.0f
+  // Direction of the specular highlight, in degrees (0 = +x / right, 90 = down).
+  // Drives the shader's `lightDir` uniform. Default 225° matches the legacy
+  // hardcoded (-1,-1) top-left light.
+  var lensAngle:      Float = 225f
 
   /** Global overlay color. `null` in mask mode or when only per-edge colors are used. */
   var overlayColor:       Int? = null
@@ -242,9 +248,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // and trail/flick during a fling. Invalidating on every scroll change forces
   // dispatchDraw to re-record the children at the new offset, keeping the fade
   // frame-synced with the scroll (the sync half of Cloudy's snapshot+sync
-  // pipeline). Gated on an active fade so idle screens pay nothing.
+  // pipeline). Gated on an active fade so idle screens pay nothing — lens mode
+  // is included unconditionally since its rim refracts the scrolled content
+  // even when all fade sizes are 0.
   private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
-    if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
+    if (mode == "lens" || fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
       invalidate()
     }
   }
@@ -453,13 +461,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
     val shader = (lensShader ?: RuntimeShader(LIQUID_GLASS_AGSL).also { lensShader = it })
     val fw = w.toFloat(); val fh = h.toFloat()
-    val corner = fadeRadius.coerceAtMost(minOf(fw, fh) * 0.5f)
-    shader.setFloatUniform("resolution", fw, fh)
-    shader.setFloatUniform("lensCenter", fw * 0.5f, fh * 0.5f)
     shader.setFloatUniform("lensSize", fw, fh)
-    shader.setFloatUniform("cornerRadius", corner)
+    // Per-edge band depth (px): a side with size 0 gets no glass (hard cut).
+    shader.setFloatUniform("edgeSize", fadeTop, fadeBottom, fadeLeft, fadeRight)
     shader.setFloatUniform("refraction", lensRefraction)
-    shader.setFloatUniform("curve", LENS_CURVE)
     shader.setFloatUniform("dispersion", lensDispersion)
     shader.setFloatUniform("saturation", lensSaturation)
     shader.setFloatUniform("contrast", lensContrast)
@@ -473,19 +478,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     } else {
       shader.setFloatUniform("tint", 0f, 0f, 0f, 0f)
     }
-    shader.setFloatUniform("edge", LENS_EDGE)
-    shader.setFloatUniform("lightDir", -1f, -1f)
+    val lightRad = Math.toRadians(lensAngle.toDouble())
+    shader.setFloatUniform("lightDir", cos(lightRad).toFloat(), sin(lightRad).toFloat())
     shader.setFloatUniform("specStrength", lensSpecular)
     shader.setFloatUniform("specPower", 10f)
-    shader.setFloatUniform("specRimMix", 0.4f)
-    shader.setFloatUniform("specWidthPx", 12f)
     shader.setFloatUniform("specLightZ", 0.55f)
-    shader.setFloatUniform("specDomeFrac", 1.15f)
-    shader.setFloatUniform("specBodyPower", 2.5f)
-    shader.setFloatUniform("specBodyGain", 0.6f)
-    shader.setFloatUniform("specFocalK", 0.55f)
-    shader.setFloatUniform("specPoolFrac", 0.7f)
-    shader.setFloatUniform("specPoolGain", 1.3f)
 
     node.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "content"))
     canvas.drawRenderNode(node)
@@ -823,12 +820,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // (start 0.65 + 0.35 = 1.0), making the bottom the most blurred.
     private const val UNIFORM_RAMP_WIDTH = 0.35f
 
-    // Per-level strip render scale. LAYERED keeps the three light levels full-res
-    // (their small radius can't hide upscale blur) and runs the two heaviest at
-    // half-res (the large blur hides the bilinear upscale). UNIFORM is full-res.
+    // Per-level strip render scale: the light first level stays full-res (its
+    // small radius can't hide upscale blur), the heavy levels run at half-res —
+    // ~4× fewer pixels on the expensive Gaussians, and their large radius hides
+    // the bilinear upscale. Validated A/B (2026-07-12): p95 25 vs 57ms,
+    // pixel-identical interior.
     private val LEVEL_DOWNSCALE =
       if (BLUR_STYLE == BLUR_STYLE_LAYERED) floatArrayOf(1f, 1f, 1f, 0.5f, 0.5f)
-      else floatArrayOf(1f, 1f, 1f)
+      else floatArrayOf(1f, 0.5f, 0.5f)
 
     // Frost grade defaults (see the frostSaturation / frostLift props). Below 1
     // for saturation desaturates toward a soft pastel; lift ~1 keeps it light —
@@ -842,74 +841,24 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     private const val VEIL_MAX_ALPHA = 0.6f
 
     // ── Lens mode (liquid glass) ──────────────────────────────────────────────
-    // Fixed shader knobs (Cloudy LiquidGlassDefaults); the rest are props.
-    private const val LENS_CURVE = 0.25f
-    private const val LENS_EDGE = 0.2f
-
-    // Cloudy's LiquidGlass AGSL (skydoves/cloudy, Apache-2.0). SDF rounded-box
-    // refraction + chromatic dispersion + saturation/contrast/tint grade + a
-    // multi-term specular highlight (focal pool + body sheen + Blinn rim + back
-    // rim), anti-aliased at the boundary. `content` binds to the recorded view.
+    // Edge-aware liquid glass. Each enabled edge refracts its own band, `size` px
+    // deep (from `fade{Top,Bottom,Left,Right}`); an edge with size 0 is a hard cut
+    // (no glass there), and corners bend only where two active edges meet — so the
+    // lens fits the same per-edge model as mask/blur/overlay instead of always
+    // rounding the whole view. `content` binds to the recorded view.
     private val LIQUID_GLASS_AGSL = """
-      uniform float2 resolution;
-      uniform float2 lensCenter;
-      uniform float2 lensSize;
-      uniform float cornerRadius;
+      uniform float2 lensSize;      // view size (w, h) in px
+      uniform float4 edgeSize;      // active band depth per edge in px: (top, bottom, left, right)
       uniform float refraction;
-      uniform float curve;
       uniform float dispersion;
       uniform float saturation;
       uniform float contrast;
       uniform float4 tint;
-      uniform float edge;
       uniform float2 lightDir;
       uniform float specStrength;
       uniform float specPower;
-      uniform float specRimMix;
-      uniform float specWidthPx;
       uniform float specLightZ;
-      uniform float specDomeFrac;
-      uniform float specBodyPower;
-      uniform float specBodyGain;
-      uniform float specFocalK;
-      uniform float specPoolFrac;
-      uniform float specPoolGain;
       uniform shader content;
-
-      const float SMOOTH_EDGE_PX = 1.5;
-      const float SEAM_BLEND_PX = 8.0;
-
-      float boxRoundedSDF(float2 p, float2 halfDim, float r) {
-          float2 d = abs(p) - halfDim + float2(r);
-          float exterior = length(max(d, 0.0));
-          float interior = min(max(d.x, d.y), 0.0);
-          return exterior + interior - r;
-      }
-
-      float2 lensNormalDirection(float2 p, float2 halfDim, float r) {
-          float2 d = abs(p) - halfDim + float2(r);
-          float2 s = float2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0);
-          if (max(d.x, d.y) > 0.0) {
-              return s * normalize(max(d, 0.0));
-          }
-          return d.x > d.y ? float2(s.x, 0.0) : float2(0.0, s.y);
-      }
-
-      // Seam-blended interior normal for refraction. The box SDF's interior
-      // gradient is piecewise-axis-aligned, so a large lens splits into 4
-      // triangular sectors with a hard direction seam on each diagonal (visible
-      // "triangles"). Blend the horizontal/vertical dominance over `seam` px so
-      // the refraction direction rotates smoothly across the diagonal instead.
-      float2 lensNormalBlended(float2 p, float2 halfDim, float r, float seam) {
-          float2 d = abs(p) - halfDim + float2(r);
-          float2 s = float2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0);
-          if (max(d.x, d.y) > 0.0) {
-              return s * normalize(max(d, 0.0));
-          }
-          float w = clamp(0.5 + 0.5 * (d.x - d.y) / max(seam, 1.0), 0.0, 1.0);
-          float2 v = float2(s.x * w, s.y * (1.0 - w)) + float2(0.0, 1.0e-4);
-          return normalize(v);
-      }
 
       float toBrightness(half3 c) {
           return dot(c, half3(0.2126, 0.7152, 0.0722));
@@ -923,40 +872,51 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       }
 
       half4 main(float2 xy) {
-          float2 halfDim = lensSize * 0.5;
-          float r = min(cornerRadius, min(halfDim.x, halfDim.y));
+          float W = lensSize.x;
+          float H = lensSize.y;
 
-          float2 p = xy - lensCenter;
-          float sdf = boxRoundedSDF(p, halfDim, r);
+          // Per-edge inward penetration: 1 at the edge, 0 at `size` px inward.
+          // size == 0 → no band on that edge (hard cut, content stays sharp).
+          float tT = edgeSize.x > 0.0 ? clamp(1.0 - xy.y       / edgeSize.x, 0.0, 1.0) : 0.0;
+          float tB = edgeSize.y > 0.0 ? clamp(1.0 - (H - xy.y) / edgeSize.y, 0.0, 1.0) : 0.0;
+          float tL = edgeSize.z > 0.0 ? clamp(1.0 - xy.x       / edgeSize.z, 0.0, 1.0) : 0.0;
+          float tR = edgeSize.w > 0.0 ? clamp(1.0 - (W - xy.x) / edgeSize.w, 0.0, 1.0) : 0.0;
 
-          if (sdf > SMOOTH_EDGE_PX) {
-              return content.eval(xy);
+          float rim = max(max(tT, tB), max(tL, tR));
+          if (rim <= 0.0) {
+              return content.eval(xy);   // interior + disabled edges: untouched
           }
 
+          // Outward edge normal (toward the nearest active edge). Summing the two
+          // components lets a corner rotate smoothly along its diagonal.
+          float2 nrm = float2(tR - tL, tB - tT);
+          float  nl  = length(nrm);
+          float2 normal = nl > 1.0e-4 ? nrm / nl : float2(0.0, 0.0);
+
+          // Dominant edge's band depth (px) scales the displacement, so a deeper
+          // `size` refracts further — same feel as the fade band in other modes.
+          float bandPx = max(max(tT * edgeSize.x, tB * edgeSize.y),
+                             max(tL * edgeSize.z, tR * edgeSize.w));
+
+          // Perceptual falloff: smoothstep distributes the displacement across the
+          // whole band (visible from ~the inner third), while still accelerating
+          // toward the outer edge — the old circular profile (1 - sqrt(1 - rim²))
+          // confined the visible distortion to the outermost ~20% of the band,
+          // making the band size feel unresponsive.
+          float bend = rim * rim * (3.0 - 2.0 * rim);
+
           float2 sampleXY = xy;
-          if (refraction > 0.0 && curve > 0.0) {
-              float minDim = min(halfDim.x, halfDim.y);
-              float depth = clamp(-sdf / (minDim * refraction), 0.0, 1.0);
-              float curvature = 1.0 - depth;
-              float bend = 1.0 - sqrt(1.0 - curvature * curvature);
-              // Seam-blended normal (blend width ~ the lens half-extent) so the
-              // refraction rotates smoothly across the diagonals — no triangles.
-              float2 normal = lensNormalBlended(p, halfDim, r, minDim * 0.75);
-              sampleXY = xy - bend * curve * minDim * normal;
+          if (refraction > 0.0) {
+              // normal points outward, so subtract to sample deeper inside.
+              sampleXY = xy - bend * refraction * bandPx * normal;
           }
 
           half4 pixel;
           if (dispersion > 0.0) {
-              float2 normP = p / halfDim;
-              float2 shift = dispersion * normP * normP * normP * min(halfDim.x, halfDim.y) * 0.1;
-              float2 xyR = sampleXY - shift;
-              float2 xyG = sampleXY;
-              float2 xyB = sampleXY + shift;
-              float sdfR = boxRoundedSDF(xyR - lensCenter, halfDim, r);
-              float sdfB = boxRoundedSDF(xyB - lensCenter, halfDim, r);
-              half4 gVal = content.eval(xyG);
-              half4 rVal = (sdfR <= 0.0) ? content.eval(xyR) : gVal;
-              half4 bVal = (sdfB <= 0.0) ? content.eval(xyB) : gVal;
+              float2 shift = dispersion * rim * rim * bandPx * 0.1 * normal;
+              half4 gVal = content.eval(sampleXY);
+              half4 rVal = content.eval(sampleXY + shift);
+              half4 bVal = content.eval(sampleXY - shift);
               pixel = half4(rVal.r, gVal.g, bVal.b, gVal.a);
           } else {
               pixel = content.eval(sampleXY);
@@ -968,62 +928,18 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
           pixel.rgb = processColor(pixel.rgb, saturation, contrast, tint);
 
-          if (edge > 0.0 && specStrength > 0.0) {
-              float2 lightVec = normalize(lightDir);
-
-              float2 d2 = abs(p) - halfDim + float2(r);
-              float2 s2 = float2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0);
-              float2 specDir2;
-              if (max(d2.x, d2.y) > 0.0) {
-                  specDir2 = s2 * normalize(max(d2, 0.0));
-              } else {
-                  float w  = clamp(0.5 + 0.5 * (d2.x - d2.y) / SEAM_BLEND_PX, 0.0, 1.0);
-                  float2 v = float2(s2.x * w, s2.y * (1.0 - w)) + float2(0.0, 1.0e-4);
-                  specDir2 = normalize(v);
-              }
-
-              float minHalf = min(halfDim.x, halfDim.y);
-              float bevelPx = max(minHalf * specDomeFrac, 1.0);
-              float depthIn = max(-sdf, 0.0);
-              float t       = clamp(depthIn / bevelPx, 0.0, 1.0);
-              float n_cos   = 1.0 - t;
-              float n_sin   = sqrt(max(1.0 - n_cos * n_cos, 0.0));
-              float3 N      = normalize(float3(specDir2 * n_cos, n_sin + 1.0e-3));
-
-              float3 L = normalize(float3(lightVec, specLightZ));
+          // Reflection: a soft Blinn highlight along the light direction, tilted by
+          // the rim normal and gated by rim so it only rides the active edges.
+          if (specStrength > 0.0) {
+              float3 N = normalize(float3(normal * rim, 1.0 - rim * 0.85 + 1.0e-3));
+              float3 L = normalize(float3(lightDir, specLightZ));
               float3 V = float3(0.0, 0.0, 1.0);
-
-              float2 focal     = lightVec * (minHalf * specFocalK);
-              float  poolR     = max(minHalf * specPoolFrac, 1.0);
-              float  poolD     = length(p - focal);
-              float  pool      = 1.0 - smoothstep(0.0, poolR, poolD);
-              float  inside    = 1.0 - smoothstep(-6.0, 0.0, sdf);
-              float  focalPool = pool * pool * specStrength * specPoolGain * inside;
-
-              float ndl       = max(dot(N, L), 0.0);
-              float bodySheen = pow(ndl, specBodyPower) * specStrength * specBodyGain;
-
-              float3 H       = normalize(L + V);
-              float  rimBand = smoothstep(-max(specWidthPx, 1.0), 0.0, sdf);
-              float  glint   = pow(max(dot(N, H), 0.0), specPower) * specStrength;
-              float  rim     = glint * rimBand;
-
-              float3 Lb   = normalize(float3(-lightVec, specLightZ));
-              float  back  = pow(max(dot(N, Lb), 0.0), specPower) * specStrength * rimBand * 0.25;
-
-              float2 hp = fract((p / minHalf) * 0.5 + 0.5);
-              float  dn = fract(sin(dot(hp, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
-
-              float body      = focalPool + bodySheen + dn * (1.0 / 255.0) * specStrength;
-              float rimMix    = clamp(specRimMix, 0.0, 1.0);
-              float highlight = body * (1.0 - rimMix) + (rim + back) * rimMix;
-
-              pixel.rgb += half3((1.0 - pixel.rgb) * clamp(highlight, 0.0, 1.0));
+              float3 Hh = normalize(L + V);
+              float sheen = pow(max(dot(N, Hh), 0.0), specPower) * specStrength * rim;
+              pixel.rgb += half3((1.0 - pixel.rgb) * clamp(sheen, 0.0, 1.0));
           }
 
-          float alpha = 1.0 - smoothstep(-SMOOTH_EDGE_PX * 0.5, SMOOTH_EDGE_PX * 0.5, sdf);
-          half4 bg = content.eval(xy);
-          return mix(bg, pixel, alpha);
+          return pixel;
       }
     """
 

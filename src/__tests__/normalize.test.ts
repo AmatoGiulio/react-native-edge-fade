@@ -284,6 +284,127 @@ describe('resolveNativeProps — DEV warnings', () => {
   });
 });
 
+// ── Lens mode ──────────────────────────────────────────────────────────────────
+
+describe('resolveNativeProps — lens', () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  test('defaults when `lens` is absent', () => {
+    const n = resolveNativeProps({ bottom: true });
+    expect(n.lensRefraction).toBe(0.25);
+    expect(n.lensDispersion).toBe(0);
+    expect(n.lensSaturation).toBe(1);
+    expect(n.lensContrast).toBe(1);
+    expect(n.lensSpecular).toBe(0);
+    expect(n.lensAngle).toBe(225);
+  });
+
+  test('defaults when `lens` is an empty object', () => {
+    const n = resolveNativeProps({ lens: {} });
+    expect(n.lensRefraction).toBe(0.25);
+    expect(n.lensDispersion).toBe(0);
+    expect(n.lensSaturation).toBe(1);
+    expect(n.lensContrast).toBe(1);
+    expect(n.lensSpecular).toBe(0);
+    expect(n.lensAngle).toBe(225);
+  });
+
+  test('forwards each field to its flat native output', () => {
+    const n = resolveNativeProps({
+      lens: {
+        refraction: 0.5,
+        dispersion: 0.3,
+        saturation: 1.4,
+        contrast: 0.8,
+        specular: 0.6,
+        angle: 90,
+      },
+    });
+    expect(n.lensRefraction).toBe(0.5);
+    expect(n.lensDispersion).toBe(0.3);
+    expect(n.lensSaturation).toBe(1.4);
+    expect(n.lensContrast).toBe(0.8);
+    expect(n.lensSpecular).toBe(0.6);
+    expect(n.lensAngle).toBe(90);
+  });
+
+  test('clamps out-of-range fields and warns', () => {
+    const n = resolveNativeProps({
+      lens: {
+        refraction: 2,
+        dispersion: -0.1,
+        saturation: -1,
+        contrast: 3,
+        specular: 1.5,
+      },
+    });
+    expect(n.lensRefraction).toBe(1);
+    expect(n.lensDispersion).toBe(0);
+    expect(n.lensSaturation).toBe(0);
+    expect(n.lensContrast).toBe(2);
+    expect(n.lensSpecular).toBe(1);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  test('normalizes angle into [0, 360) without warning', () => {
+    expect(resolveNativeProps({ lens: { angle: -45 } }).lensAngle).toBe(315);
+    expect(resolveNativeProps({ lens: { angle: 450 } }).lensAngle).toBe(90);
+    expect(resolveNativeProps({ lens: { angle: 225 } }).lensAngle).toBe(225);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  test('mode infers lens when `lens` is set without explicit mode', () => {
+    expect(resolveNativeProps({ bottom: true, lens: {} }).mode).toBe('lens');
+  });
+
+  test('explicit mode overrides lens inference and warns', () => {
+    const n = resolveNativeProps({ mode: 'blur', lens: {} });
+    expect(n.mode).toBe('blur');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('`lens` is ignored when `mode="blur"`')
+    );
+  });
+
+  test('lens + color without explicit mode infers lens and warns that color is ignored', () => {
+    const n = resolveNativeProps({ lens: {}, color: 'red' });
+    expect(n.mode).toBe('lens');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('`lens` and `color` are both set')
+    );
+  });
+
+  test('regression: mode inference without `lens` is unchanged', () => {
+    expect(resolveNativeProps({ bottom: true }).mode).toBe('mask');
+    expect(resolveNativeProps({ bottom: true, color: '#000' }).mode).toBe(
+      'overlay'
+    );
+  });
+
+  test('SharedValue-like lens field falls back to default and warns', () => {
+    const n = resolveNativeProps({
+      lens: {
+        refraction: {
+          value: 0.5,
+          addListener() {},
+          removeListener() {},
+        } as any,
+      },
+    });
+    expect(n.lensRefraction).toBe(0.25);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('SharedValues inside `lens` are not supported')
+    );
+  });
+});
+
 // ── Radius resolution ──────────────────────────────────────────────────────────
 
 describe('resolveRadius', () => {

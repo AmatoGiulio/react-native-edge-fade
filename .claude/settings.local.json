@@ -105,7 +105,12 @@
       "Bash(grep -n \"Defaults to 20\\\\|default 20\\\\|default: 20\\\\|\\\\`20\\\\`\\\\|reached at the outer\" src/types.ts README.md)",
       "Bash(yarn add *)",
       "Bash(git rm *)",
-      "Bash(adb -s emulator-5554 logcat -d -t 120)"
+      "Bash(adb -s emulator-5554 logcat -d -t 120)",
+      "Bash(yarn test *)",
+      "Bash(git -C /Users/giulioamato/Documents/GitHub/react-native-edge-fade status --short)",
+      "Bash(git -C /Users/giulioamato/Documents/GitHub/react-native-edge-fade diff --stat src/EdgeFadeViewNativeComponent.ts)",
+      "Bash(git -C /Users/giulioamato/Documents/GitHub/react-native-edge-fade diff src/EdgeFadeViewNativeComponent.ts)",
+      "Bash(git switch *)"
     ]
   }
 }
