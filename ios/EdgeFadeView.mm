@@ -475,24 +475,43 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   // Blur mode — frost veil first, then each level's animator + view + mask.
   [self _teardownFrostVeil];
 
+  [self _neutralizeBlurAnimators];
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
-      if (_blurAnimators[e][k]) {
-        // finishAtPosition: before releasing — a paused animator that deallocs
-        // while in the .active state can crash UIKit (rdar:// FB11963912).
-        // An `.inactive` animator needs neither stop nor finish (the crash only
-        // affects active/paused animators), so skip to avoid spurious work.
-        if (_blurAnimators[e][k].state != UIViewAnimatingStateInactive) {
-          [_blurAnimators[e][k] stopAnimation:YES];
-          [_blurAnimators[e][k] finishAnimationAtPosition:UIViewAnimatingPositionEnd];
-        }
-        _blurAnimators[e][k] = nil;
-      }
       [_blurViews[e][k] removeFromSuperview];
       _blurViews[e][k] = nil;
       _blurMaskLayers[e][k] = nil;
     }
   }
+}
+
+// Stop + finish every paused blur animator before it can be released — a
+// UIViewPropertyAnimator deallocated while active/paused raises an
+// NSException (rdar:// FB11963912; reproduced on RN dev reload, where the
+// view deallocs without a mode flip ever running _teardownFadeLayers).
+// The legal sequence is stopAnimation:NO (→ .stopped) followed by
+// finishAnimationAtPosition: — finish on an animator stopped with
+// `withoutFinishing:YES` (→ .inactive) itself raises.
+// An `.inactive` animator needs neither call, so it is skipped.
+- (void)_neutralizeBlurAnimators {
+  for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+      UIViewPropertyAnimator *animator = _blurAnimators[e][k];
+      if (animator != nil) {
+        if (animator.state == UIViewAnimatingStateActive) {
+          [animator stopAnimation:NO];
+        }
+        if (animator.state == UIViewAnimatingStateStopped) {
+          [animator finishAnimationAtPosition:UIViewAnimatingPositionCurrent];
+        }
+        _blurAnimators[e][k] = nil;
+      }
+    }
+  }
+}
+
+- (void)dealloc {
+  [self _neutralizeBlurAnimators];
 }
 
 - (void)_buildFadeLayers {
