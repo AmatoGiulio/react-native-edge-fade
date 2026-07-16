@@ -190,6 +190,35 @@ static NSArray<id> *veilColors(UIColor *color)
   return [result copy];
 }
 
+// Max opacity of the saturation-compensation layer at the outer edge. Tuned
+// against Android's frost grade on saturated content (chroma parity within a
+// few points at the band's outer edge).
+static const CGFloat kEdgeFadeSatCompMax = 0.6;
+
+// Gray ramp for the saturation-compensation layers: the blend takes only the
+// SOURCE's saturation (zero, any gray) and keeps the backdrop's hue/luminosity,
+// so the gray value itself is irrelevant — alpha sets the desaturation amount.
+// Smoothstep across the full band, in lockstep with the blur's own ramp.
+static NSArray<id> *satCompColors(void)
+{
+  static NSArray<id> *cached;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    NSMutableArray *result = [NSMutableArray arrayWithCapacity:kVeilStops];
+    for (int i = 0; i < kVeilStops; i++) {
+      const CGFloat t = (CGFloat)i / (kVeilStops - 1);
+      const CGFloat weight = t * t * (3.0 - 2.0 * t); // smoothstep
+      CGFloat components[4] = {0.5, 0.5, 0.5, weight * kEdgeFadeSatCompMax};
+      CGColorRef c = CGColorCreate(space, components);
+      [result addObject:(__bridge_transfer id)c];
+    }
+    CGColorSpaceRelease(space);
+    cached = [result copy];
+  });
+  return cached;
+}
+
 // Evenly-spaced locations matching veilColors' 16 smoothstep stops.
 static NSArray<NSNumber *> *veilLocations(void)
 {
@@ -202,6 +231,39 @@ static NSArray<NSNumber *> *veilLocations(void)
   });
   return cached;
 }
+
+// ─── Pure-blur effect view ────────────────────────────────────────────────────
+// UIVisualEffectView composes its effect out of a backdrop-blur subview plus
+// tint/luminosity subviews that produce a milky white lift at partial and full
+// intensity. One-shot stripping (hide them after configuring the effect) is not
+// enough: UIKit re-creates/unhides those subviews asynchronously whenever it
+// re-applies the effect — often a runloop tick AFTER our strip ran, so the wash
+// came back (visible as a uniform brightness lift on the blurred half). This
+// subclass enforces the strip structurally: any non-Backdrop subview is hidden
+// the moment it is added and re-hidden on every layout pass. Introspection is
+// public class-name strings only (App Store-safe).
+
+@interface EdgeFadePureBlurView : UIVisualEffectView
+@end
+
+@implementation EdgeFadePureBlurView
+
+- (void)didAddSubview:(UIView *)subview {
+  [super didAddSubview:subview];
+  if (![NSStringFromClass(subview.class) containsString:@"Backdrop"]) {
+    subview.hidden = YES;
+  }
+}
+
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  for (UIView *subview in self.subviews) {
+    const BOOL keep = [NSStringFromClass(subview.class) containsString:@"Backdrop"];
+    if (subview.hidden == keep) subview.hidden = !keep;
+  }
+}
+
+@end
 
 // ─── EdgeFadeView ─────────────────────────────────────────────────────────────
 
@@ -237,6 +299,16 @@ static NSArray<NSNumber *> *veilLocations(void)
   // Frost veil — optional per-edge CAGradientLayers on top of the blur stack,
   // painted only when _overlayColor is set (opt-in, replicating Android behavior).
   CAGradientLayer *_frostTop, *_frostBottom, *_frostLeft, *_frostRight;
+
+  // Saturation compensation — always-on per-edge gray gradient layers between
+  // the blur stack and the frost veil, composited with the public
+  // `saturationBlendMode` CA filter. UIBlurEffect's backdrop bakes a
+  // colorSaturate boost into its recipe (measured ~+45% chroma at the outer
+  // edge vs Android's graded pipeline) that public API cannot strip from the
+  // effect itself; blending a zero-saturation source over it pulls the result
+  // back toward the Android look, ramped with the blur so the interior is
+  // untouched.
+  CAGradientLayer *_satTop, *_satBottom, *_satLeft, *_satRight;
 
   // Per-layer color cache — avoid rebuilding colors on unrelated prop changes.
   NSString *_cachedCurveTop, *_cachedCurveBottom, *_cachedCurveLeft, *_cachedCurveRight;
@@ -307,6 +379,10 @@ static NSArray<NSNumber *> *veilLocations(void)
   if (_frostTop) {
     _frostTop.contentsScale = _frostBottom.contentsScale =
     _frostLeft.contentsScale = _frostRight.contentsScale = scale;
+  }
+  if (_satTop) {
+    _satTop.contentsScale = _satBottom.contentsScale =
+    _satLeft.contentsScale = _satRight.contentsScale = scale;
   }
 }
 
@@ -485,6 +561,12 @@ static NSArray<NSNumber *> *veilLocations(void)
       for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
         if (_blurViews[e][k]) [self addSubview:_blurViews[e][k]];
       }
+    }
+    if (_satTop) {
+      [self.layer addSublayer:_satTop];
+      [self.layer addSublayer:_satBottom];
+      [self.layer addSublayer:_satLeft];
+      [self.layer addSublayer:_satRight];
     }
     if (_frostTop) {
       [self.layer addSublayer:_frostTop];
@@ -755,7 +837,7 @@ static NSArray<NSNumber *> *veilLocations(void)
       EF_BENCH_LOG("bbv_mask");
 
       // Effect view with nil effect; the animator drives the effect below.
-      UIVisualEffectView *view = [[UIVisualEffectView alloc] initWithEffect:nil];
+      UIVisualEffectView *view = [[EdgeFadePureBlurView alloc] initWithEffect:nil];
       view.userInteractionEnabled = NO;
       view.layer.mask = mask;
       _blurViews[e][k] = view;
@@ -802,6 +884,25 @@ static NSArray<NSNumber *> *veilLocations(void)
   EF_BENCH_LOG("bbv_syncMasks");
   [self _applyBlurFraction];
   EF_BENCH_LOG("bbv_applyFraction");
+
+  // Saturation compensation layers — above the blur stack (added after the
+  // effect subviews), below the frost veil (built later, so it lands on top).
+  _satTop    = [self _makeSatCompLayerWithScale:scale];
+  _satBottom = [self _makeSatCompLayerWithScale:scale];
+  _satLeft   = [self _makeSatCompLayerWithScale:scale];
+  _satRight  = [self _makeSatCompLayerWithScale:scale];
+}
+
+- (CAGradientLayer *)_makeSatCompLayerWithScale:(CGFloat)scale {
+  CAGradientLayer *layer = [CAGradientLayer layer];
+  layer.contentsScale = scale;
+  layer.colors    = satCompColors();
+  layer.locations = veilLocations();
+  // Public CA blend-mode filter name (CALayer.compositingFilter) — takes the
+  // source's saturation (zero) and the destination's hue/luminosity.
+  layer.compositingFilter = @"saturationBlendMode";
+  [self.layer addSublayer:layer];
+  return layer;
 }
 
 // UIVisualEffectView composes its blur effect out of several private subviews
@@ -889,6 +990,12 @@ static NSArray<NSNumber *> *veilLocations(void)
 }
 
 - (void)_teardownFrostVeil {
+  [_satTop    removeFromSuperlayer];
+  [_satBottom removeFromSuperlayer];
+  [_satLeft   removeFromSuperlayer];
+  [_satRight  removeFromSuperlayer];
+  _satTop = _satBottom = _satLeft = _satRight = nil;
+
   [_frostTop    removeFromSuperlayer];
   [_frostBottom removeFromSuperlayer];
   [_frostLeft   removeFromSuperlayer];
@@ -979,6 +1086,25 @@ static NSArray<NSNumber *> *veilLocations(void)
         view.frame                  = frame;
         _blurMaskLayers[e][k].frame = view.bounds;
       }
+    }
+
+    // Saturation-compensation layers: same geometry as the veil strips.
+    if (_satTop) {
+      _satTop.frame      = CGRectMake(0, 0, w, _fadeTop);
+      _satTop.startPoint = CGPointMake(0.5, 1); _satTop.endPoint = CGPointMake(0.5, 0);
+      _satTop.hidden     = (_fadeTop <= 0);
+
+      _satBottom.frame      = CGRectMake(0, h - _fadeBottom, w, _fadeBottom);
+      _satBottom.startPoint = CGPointMake(0.5, 0); _satBottom.endPoint = CGPointMake(0.5, 1);
+      _satBottom.hidden     = (_fadeBottom <= 0);
+
+      _satLeft.frame      = CGRectMake(0, 0, _fadeLeft, h);
+      _satLeft.startPoint = CGPointMake(1, 0.5); _satLeft.endPoint = CGPointMake(0, 0.5);
+      _satLeft.hidden     = (_fadeLeft <= 0);
+
+      _satRight.frame      = CGRectMake(w - _fadeRight, 0, _fadeRight, h);
+      _satRight.startPoint = CGPointMake(0, 0.5); _satRight.endPoint = CGPointMake(1, 0.5);
+      _satRight.hidden     = (_fadeRight <= 0);
     }
 
     // Frost veil layers: same frame/startPoint/endPoint as overlay strips.
