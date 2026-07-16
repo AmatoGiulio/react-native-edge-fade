@@ -25,9 +25,18 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *curveTop, *curveBottom, *curveLeft, *curveRight;
 
 /// Plateau window for this level:
-/// `weight(t) = presenceAt(curve, clamp((t − levelStart)/rampWidth, 0, 1))`.
+/// `weight(t) = shape(clamp((t − levelStart)/rampWidth, 0, 1))`.
 /// Defaults: levelStart = 0, rampWidth = 1 (ramp across the full band).
 @property CGFloat levelStart, rampWidth;
+
+/// Ramp shaping. YES (default) shapes the fade-in by the fade curve's presence
+/// profile — used by level 0, the visible sharp→frost transition, so editing
+/// the curve reshapes it. NO uses a zero-slope smoothstep — used by the heavier
+/// levels, whose fade-ins are internal cross-fades between two blur radii: a
+/// non-zero-slope entry draws a visible onset line ("band") on scrolling
+/// content, and their ramps extend to the outer edge so there are no interior
+/// constant-blend plateaus.
+@property BOOL curveShaped;
 
 @end
 

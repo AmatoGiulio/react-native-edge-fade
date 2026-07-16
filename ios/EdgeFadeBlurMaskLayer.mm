@@ -38,11 +38,14 @@ static inline CGFloat presenceAtResolved(const CGFloat *alphas, const CGFloat *s
   return 1.0 - alphas[count - 1];
 }
 
-static CGGradientRef buildBlurMaskGradient(NSString *curve, CGFloat start, CGFloat rampWidth)
+static CGGradientRef buildBlurMaskGradient(NSString *curve, CGFloat start, CGFloat rampWidth,
+                                            BOOL curveShaped)
 {
-  const CGFloat *alphas; const CGFloat *curveStops; size_t count;
-  CGFloat *dynAlphas, *dynStops;
-  EdgeFadeResolveCurve(curve, &alphas, &curveStops, &count, &dynAlphas, &dynStops);
+  const CGFloat *alphas = NULL; const CGFloat *curveStops = NULL; size_t count = 0;
+  CGFloat *dynAlphas = NULL, *dynStops = NULL;
+  if (curveShaped) {
+    EdgeFadeResolveCurve(curve, &alphas, &curveStops, &count, &dynAlphas, &dynStops);
+  }
 
   // Guard against a degenerate ramp: treat it as a hard step at `start`.
   const CGFloat span = rampWidth > 0.0 ? rampWidth : 0.0;
@@ -61,7 +64,11 @@ static CGGradientRef buildBlurMaskGradient(NSString *curve, CGFloat start, CGFlo
     if (u < 0.0) u = 0.0; else if (u > 1.0) u = 1.0;
     stops[i]              = t;
     components[i * 2]     = 1.0;
-    components[i * 2 + 1] = presenceAtResolved(alphas, curveStops, count, u);
+    // Level 0: curve-shaped (the visible transition). Heavy levels: zero-slope
+    // smoothstep — see the header note on scroll banding.
+    components[i * 2 + 1] = curveShaped
+        ? presenceAtResolved(alphas, curveStops, count, u)
+        : u * u * (3.0 - 2.0 * u);
   }
 
   CGGradientRef g = CGGradientCreateWithColorComponents(space, components, stops, kMaskStops);
@@ -70,45 +77,39 @@ static CGGradientRef buildBlurMaskGradient(NSString *curve, CGFloat start, CGFlo
   return g;
 }
 
-// Canonical plateau windows for the two HEAVIER levels (start, rampWidth fixed):
-// level 1 = (0.35, 0.35), level 2 = (0.65, 0.35). Level 0's rampWidth is the
-// runtime `frostProgression` prop, so it always takes the per-instance cache.
-static const CGFloat kCanonicalStart[2]     = {0.35, 0.65};
-static const CGFloat kCanonicalRampWidth    = 0.35;
+// Canonical plateau windows for the two HEAVIER levels: level 1 = (start 0.35,
+// ramp 0.65), level 2 = (start 0.65, ramp 0.35) — both reach weight 1 exactly
+// at the outer edge, so there are no interior constant-blend plateaus. Their
+// smoothstep shaping is curve-INDEPENDENT, so the static cache holds just two
+// gradients. Level 0 (curve-shaped, runtime rampWidth) takes the per-instance
+// path.
+static const CGFloat kCanonicalStart[2] = {0.35, 0.65};
+static const CGFloat kCanonicalRamp[2]  = {0.65, 0.35};
 
-// Maps a canonical (start, rampWidth) window to 0 or 1 (index into the static
-// cache), or -1 for anything else (level 0 / custom windows).
+// Maps a canonical (start, rampWidth) heavy window to 0 or 1 (index into the
+// static cache), or -1 for anything else.
 static NSInteger canonicalWindowIndex(CGFloat start, CGFloat rampWidth)
 {
   const CGFloat eps = 1e-4;
-  if (fabs(rampWidth - kCanonicalRampWidth) >= eps) return -1;
   for (NSInteger k = 0; k < 2; k++) {
-    if (fabs(start - kCanonicalStart[k]) < eps) return k;
+    if (fabs(start - kCanonicalStart[k]) < eps && fabs(rampWidth - kCanonicalRamp[k]) < eps) {
+      return k;
+    }
   }
   return -1;
 }
 
-// Static preset cache — 6 presets × 2 canonical heavy-level windows, built once
-// per process. Level 0 (runtime rampWidth) takes the per-instance path.
-static CGGradientRef blurMaskGradientForPreset(NSString *curve, NSInteger window)
+static CGGradientRef blurMaskGradientForHeavyWindow(NSInteger window)
 {
-  static CGGradientRef cache[6][2];
+  static CGGradientRef cache[2];
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    NSArray<NSString *> *presets = @[ @"smooth", @"sharp", @"gentle", @"soft", @"linear", @"smoother" ];
-    for (NSUInteger p = 0; p < presets.count; p++) {
-      for (NSInteger k = 0; k < 2; k++) {
-        cache[p][k] = buildBlurMaskGradient(presets[p], kCanonicalStart[k], kCanonicalRampWidth);
-      }
+    for (NSInteger k = 0; k < 2; k++) {
+      cache[k] = buildBlurMaskGradient(nil, kCanonicalStart[k], kCanonicalRamp[k], NO);
     }
   });
   if (window < 0 || window > 1) window = 0;
-  if ([curve isEqualToString:@"sharp"])    return cache[1][window];
-  if ([curve isEqualToString:@"gentle"])   return cache[2][window];
-  if ([curve isEqualToString:@"soft"])     return cache[3][window];
-  if ([curve isEqualToString:@"linear"])   return cache[4][window];
-  if ([curve isEqualToString:@"smoother"]) return cache[5][window];
-  return cache[0][window];
+  return cache[window];
 }
 
 // ─── Layer ────────────────────────────────────────────────────────────────────
@@ -133,6 +134,7 @@ static CGGradientRef blurMaskGradientForPreset(NSString *curve, NSInteger window
   // plateau offset. EdgeFadeView overrides start/rampWidth per level.
   _levelStart = 0.0;
   _rampWidth  = 1.0;
+  _curveShaped = YES;
   _cachedRampWidth = -1.0;
   // Seed with the main screen for snapshot/offscreen environments; the owning
   // view updates this via _syncLayerScales whenever the window/trait changes.
@@ -156,9 +158,10 @@ static CGGradientRef blurMaskGradientForPreset(NSString *curve, NSInteger window
 - (CGGradientRef)gradientForCurve:(NSString *)curve
                        cachedCurve:(NSString * __strong *)cachedCurve
                         cachedGrad:(CGGradientRef *)cachedGrad {
-  const NSInteger window = canonicalWindowIndex(self.levelStart, self.rampWidth);
-  if (window >= 0 && !EdgeFadeCurveIsCustom(curve)) {
-    return blurMaskGradientForPreset(curve, window);
+  if (!self.curveShaped) {
+    const NSInteger window = canonicalWindowIndex(self.levelStart, self.rampWidth);
+    if (window >= 0) return blurMaskGradientForHeavyWindow(window);
+    // Non-canonical smoothstep window — curve is irrelevant, cache per-edge.
   }
   if (self.rampWidth != _cachedRampWidth) {
     // rampWidth changed (frostProgression) — every cached edge gradient is stale.
@@ -171,7 +174,8 @@ static CGGradientRef blurMaskGradientForPreset(NSString *curve, NSInteger window
   }
   if (*cachedGrad == NULL || ![*cachedCurve isEqualToString:curve]) {
     if (*cachedGrad) CGGradientRelease(*cachedGrad);
-    *cachedGrad  = buildBlurMaskGradient(curve, self.levelStart, self.rampWidth);
+    *cachedGrad  = buildBlurMaskGradient(curve, self.levelStart, self.rampWidth,
+                                         self.curveShaped);
     *cachedCurve = curve;
   }
   return *cachedGrad;

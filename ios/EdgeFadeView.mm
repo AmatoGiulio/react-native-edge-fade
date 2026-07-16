@@ -60,8 +60,9 @@ typedef NS_ENUM(NSInteger, EdgeFadeRenderMode) {
 // along the band (inner t=0 → outer t=1) each level's mask stays 0 until its
 // start, ramps 0 → 1 — SHAPED by the fade curve's presence profile — over its
 // ramp width, then plateaus at 1:
-//   starts     = { 0, 0.35, 0.65 }
-//   ramp width = 0.35 (level 0's is the frostProgression prop)
+//   starts      = { 0, 0.35, 0.65 }
+//   ramp widths = { frostProgression, 0.65, 0.35 } — heavy ramps reach the
+//   outer edge (start + width = 1), so no interior constant-blend plateau
 // The three views stack in increasing radius: a short sharp→frost transition
 // on the light first level only, then progressively heavier blur toward the
 // outer edge — the bottom of the band is the most blurred.
@@ -112,12 +113,15 @@ static const NSInteger kEdgeFadeEdgeCount = 4;
 
 // Per-level radius fraction F[k] (level k's blur tops out at blurRadius·F[k])
 // and the UNIFORM plateau windows (Android parity — see EdgeFadeView.kt):
-// level k's mask stays 0 until kEdgeFadeLevelStart[k], ramps to 1 over
-// kEdgeFadeUniformRampWidth (level 0's ramp width is the frostProgression
-// prop), then plateaus — so the heavier blur fades in further toward the edge.
+// level k's mask stays 0 until kEdgeFadeLevelStart[k], then ramps to 1 over
+// its ramp width (level 0's is the frostProgression prop) — so the heavier
+// blur fades in further toward the edge.
 static const CGFloat kEdgeFadeLevelFractions[kEdgeFadeBlurLevels] = {0.35, 0.65, 1.0};
 static const CGFloat kEdgeFadeLevelStart[kEdgeFadeBlurLevels]     = {0.0, 0.35, 0.65};
-static const CGFloat kEdgeFadeUniformRampWidth = 0.35;
+// Heavy-level ramp widths (index 0 unused — level 0's ramp is frostProgression).
+// start + width = 1 for both, so no interior constant-blend plateau survives
+// (a plateau between two seams reads as a visible "band" while scrolling).
+static const CGFloat kEdgeFadeLevelRampWidth[kEdgeFadeBlurLevels] = {0.0, 0.65, 0.35};
 
 // frostProgression clamp bounds (matches the Android manager).
 static const CGFloat kEdgeFadeFrostProgressionMin = 0.05;
@@ -744,8 +748,9 @@ static NSArray<NSNumber *> *veilLocations(void)
       // Windowed blur mask — grayscale bitmap gating this level's slice of the band.
       EdgeFadeBlurMaskLayer *mask = [EdgeFadeBlurMaskLayer layer];
       mask.contentsScale = scale;
-      mask.levelStart = kEdgeFadeLevelStart[k];
-      mask.rampWidth  = (k == 0 ? _frostProgression : kEdgeFadeUniformRampWidth);
+      mask.levelStart  = kEdgeFadeLevelStart[k];
+      mask.rampWidth   = (k == 0 ? _frostProgression : kEdgeFadeLevelRampWidth[k]);
+      mask.curveShaped = (k == 0);
       _blurMaskLayers[e][k] = mask;
       EF_BENCH_LOG("bbv_mask");
 

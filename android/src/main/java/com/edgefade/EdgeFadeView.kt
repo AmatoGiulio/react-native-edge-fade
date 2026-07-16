@@ -639,10 +639,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       // fades in further toward the edge (the bottom ends up the most blurred).
       val transition = frostProgression.coerceIn(0.05f, 1f)
       val start = if (BLUR_STYLE == BLUR_STYLE_LAYERED) 0f else LEVEL_START[k]
-      val width = if (k == 0) transition else UNIFORM_RAMP_WIDTH
+      val width = if (k == 0) transition else LEVEL_RAMP_WIDTH[k]
       val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k, start * 10f + width)) {
         if (BLUR_STYLE == BLUR_STYLE_LAYERED) levelGradient(curve, lo, hi, gx0, gy0, gx1, gy1)
-        else frostGradient(curve, gx0, gy0, gx1, gy1, start, width)
+        else frostGradient(curve, gx0, gy0, gx1, gy1, start, width, curveShaped = k == 0)
       }
       val sc = canvas.saveLayer(bandLeft, bandTop, bandRight, bandBottom, null)
       canvas.translate(nLeft, nTop)
@@ -751,16 +751,22 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // stays on the light first level only. RGB is irrelevant under DST_IN.
   private fun frostGradient(
     curve: String, x0: Float, y0: Float, x1: Float, y1: Float, start: Float, width: Float,
+    curveShaped: Boolean,
   ): LinearGradient {
     // 32 stops (vs the old 16) so the sampled curve shape is resolved smoothly.
     val n = 32
     val stops = FloatArray(n) { it / (n - 1f) }
     val colors = IntArray(n) { i ->
-      // Position within this level's [start, start+width] ramp window, then shape
-      // the fade-in by the curve's presence profile instead of a fixed smoothstep
-      // so editing the Bézier curve reshapes the blur ramp.
+      // Position within this level's [start, start+width] ramp window. Level 0
+      // (the visible sharp→frost transition) is shaped by the curve's presence
+      // profile so editing the Bézier reshapes it; the heavier levels use a
+      // zero-slope smoothstep — their fade-ins are internal cross-fades between
+      // two blur radii, and a curve-shaped (non-zero slope) entry draws a
+      // visible onset line ("band") on scrolling content.
       val w = ((stops[i] - start) / width).coerceIn(0f, 1f)
-      val weight = EdgeFadeCurves.presenceAt(curve, w)
+      val weight =
+        if (curveShaped) EdgeFadeCurves.presenceAt(curve, w)
+        else w * w * (3f - 2f * w)
       ColorUtils.setAlphaComponent(Color.BLACK, (weight * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
@@ -818,10 +824,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // toward the edge. Unused by LAYERED.
     private val LEVEL_START = floatArrayOf(0f, 0.35f, 0.65f)
 
-    // UNIFORM only: ramp width for the heavier levels (level 0 uses `transition`).
-    // 0.35 so the full-radius level reaches alpha 1 right at the outer edge
-    // (start 0.65 + 0.35 = 1.0), making the bottom the most blurred.
-    private const val UNIFORM_RAMP_WIDTH = 0.35f
+    // UNIFORM only: per-level ramp widths (level 0 uses the `transition` prop).
+    // Every heavy level ramps all the way to the outer edge (start + width = 1)
+    // so there are NO interior plateaus: a region of constant blend between two
+    // seams reads as a visible "band" while scrolling. Index 0 is unused.
+    private val LEVEL_RAMP_WIDTH = floatArrayOf(0f, 0.65f, 0.35f)
 
     // Per-level strip render scale: the light first level stays full-res (its
     // small radius can't hide upscale blur), the heavy levels run at half-res —
