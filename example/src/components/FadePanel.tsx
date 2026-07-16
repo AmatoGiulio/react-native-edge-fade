@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch as RNSwitch,
   Text,
   View,
 } from 'react-native';
@@ -16,7 +17,7 @@ import type {
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 
-import { Host, Switch } from '@expo/ui';
+import { Host } from '@expo/ui';
 import { Icon as UniIcon, type IconName } from '@expo/ui';
 import { MenuView } from '@expo/ui/community/menu';
 import type { MenuAction } from '@expo/ui/community/menu';
@@ -95,19 +96,6 @@ function NativeSwitch({
   palette: AppPalette;
   scheme: Scheme;
 }) {
-  // iOS: remount the SwiftUI Host once the sheet's presentation animation is
-  // over. A Host attached mid-presentation keeps a stale frame (the toggle
-  // renders offset in its row) until the next native relayout — e.g. dragging
-  // the sheet to another detent. Bumping the key after ~400ms re-attaches it
-  // against the settled sheet frame; until then the Host is kept invisible so
-  // the stale frame never flashes.
-  const [hostEpoch, setHostEpoch] = useState(0);
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return;
-    const t = setTimeout(() => setHostEpoch(1), 400);
-    return () => clearTimeout(t);
-  }, []);
-
   if (Platform.OS === 'android') {
     // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
     const { Switch: ComposeSwitch } = require('@expo/ui/jetpack-compose');
@@ -128,18 +116,19 @@ function NativeSwitch({
       </Host>
     );
   }
-  // Explicit UISwitch size (51x31) instead of `matchContents`: the async
-  // SwiftUI measurement lands after RN lays out the row, so the toggle
-  // rendered offset/overflowing its card until the next relayout.
+  // iOS: plain react-native Switch (native UISwitch) instead of an @expo/ui
+  // SwiftUI island. Inside a formSheet the Host's async SwiftUI measurement
+  // kept rendering the toggle offset/overflowing its row no matter when it
+  // attached; the RN wrapper lays out deterministically and themes fine via
+  // trackColor.
   return (
-    <Host
-      key={hostEpoch}
-      colorScheme={scheme}
-      seedColor={palette.accent}
-      style={[s.iosSwitchHost, hostEpoch === 0 && s.iosSwitchHostSettling]}
-    >
-      <Switch value={value} onValueChange={onValueChange} />
-    </Host>
+    <RNSwitch
+      value={value}
+      onValueChange={onValueChange}
+      trackColor={{ false: palette.controlActive, true: palette.accent }}
+      thumbColor="#FFFFFF"
+      ios_backgroundColor={palette.controlActive}
+    />
   );
 }
 
@@ -696,8 +685,11 @@ function TintColorPickerIOS({
     disabled: disabledMod,
   } = require('@expo/ui/swift-ui/modifiers');
 
+  // Fixed height instead of `matchContents`: the async SwiftUI measurement
+  // collapsed the row to zero height inside the formSheet, leaving a hole in
+  // the list (uneven spacing) with an invisible picker.
   return (
-    <Host matchContents={{ vertical: true }} style={{ width: '100%' }}>
+    <Host style={{ width: '100%', height: 44 }}>
       <View
         style={{
           flexDirection: 'row',
@@ -771,10 +763,6 @@ const s = StyleSheet.create({
   },
   flex: { flex: 1 },
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  // Standard UISwitch intrinsic size.
-  iosSwitchHost: { width: 51, height: 31 },
-  // Hidden until the post-presentation remount (see NativeSwitch).
-  iosSwitchHostSettling: { opacity: 0 },
 
   advanced: {
     flexDirection: 'row',
