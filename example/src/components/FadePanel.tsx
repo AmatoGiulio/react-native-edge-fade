@@ -484,135 +484,171 @@ export function FadePanel() {
     </>
   );
 
+  // The scrollable body is shared between platforms, but the *root* element
+  // returned to react-native-screens differs (see below): on iOS the
+  // ScrollView must be the screen's direct child, not wrapped in a `flex: 1`
+  // View.
+  const scrollBody = (
+    <>
+      <View style={[s.seg, { backgroundColor: rowBg }]}>
+        {modes.map((m) => {
+          const selected = mode === m;
+          return (
+            <Pressable
+              key={m}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={[
+                s.segItem,
+                selected && { backgroundColor: t.controlActive },
+              ]}
+              onPress={() => setMode(m)}
+            >
+              <Text
+                style={[s.segText, { color: selected ? t.text : t.faintText }]}
+              >
+                {m}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={s.padWrap}>
+        <BezierPlot
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          tint={scheme}
+          variant="pad"
+          showPresenceBands={mode === 'blur'}
+          onEdit={markCustom}
+        />
+      </View>
+
+      <ThemedMenu
+        actions={presetMenuActions}
+        onSelect={(id) => {
+          const p = BEZIER_PRESETS.find((pr) => pr.label === id);
+          if (p) applyPreset(p.label, p.value);
+        }}
+        palette={t}
+        scheme={scheme}
+        style={s.menuHeight}
+      >
+        <View style={rowStyle}>
+          <Text style={[s.monoLabel, { color: t.faintText }]}>preset</Text>
+          <View style={s.flex} />
+          <View style={s.rowInline}>
+            <Text style={[s.monoLabel, { color: t.text }]}>{preset}</Text>
+            <NativeIcon
+              name={
+                Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore
+              }
+              size={Platform.OS === 'ios' ? 12 : 16}
+              color={t.faintText}
+            />
+          </View>
+        </View>
+      </ThemedMenu>
+      {/*
+        <DialRow label="top" value={top} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="bottom" value={bottom} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="left" value={left} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        <DialRow label="right" value={right} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
+        */}
+      <DialRow
+        label="blur"
+        value={blur}
+        min={0}
+        max={100}
+        step={1}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+        disabled={mode !== 'blur'}
+      />
+
+      {Platform.OS === 'android' ? (
+        advancedContent
+      ) : (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showAdvanced }}
+            style={s.advanced}
+            onPress={() => setShowAdvanced((v) => !v)}
+          >
+            <Text style={[s.advancedLabel, { color: t.text }]}>advanced</Text>
+            <SymbolIcon
+              name={showAdvanced ? 'chevron.up' : 'chevron.down'}
+              color={t.faintText}
+              size={12}
+            />
+          </Pressable>
+
+          {showAdvanced && advancedContent}
+        </>
+      )}
+    </>
+  );
+
+  if (Platform.OS === 'ios') {
+    // IMPORTANT: the ScrollView must be the screen's direct/only child here,
+    // not nested inside a `flex: 1` wrapper View.
+    //
+    // react-native-screens' formSheet presentation forcibly re-applies the
+    // descendant ScrollView's native frame every time its `bounds` change
+    // (which fires on every scroll delta, since UIScrollView.bounds.origin
+    // === contentOffset) — see RNSScreen.mm
+    // `applyFrameCorrectionForDescendantScrollView` /
+    // `-observeValueForKeyPath:...`. When the ScrollView is a *direct* child
+    // of the screen's content wrapper, this hits the intended, safe code
+    // path (`coerceChildScrollViewComponentSizeToSize`, "Case 1: ScrollView
+    // first child"). When an intervening `View` sits between the screen
+    // root and the ScrollView (as the previous `<View style={{ flex: 1 }}>`
+    // wrapper did), that lookup fails and react-native-screens falls back to
+    // unconditionally stomping `scrollView.frame = self.frame` on every
+    // scroll frame. Combined with the ScrollView's content height changing
+    // (expanding "advanced"), that stale/legacy frame assignment is what
+    // makes the whole sheet's content go invisible once the user scrolls.
+    // react-native-screens' own maintainers acknowledge this class of bug is
+    // unresolved for `flex: 1` top-level formSheet containers (see
+    // software-mansion/react-native-screens issues #2992 and #3569, and the
+    // comment above `applyFrameCorrectionForDescendantScrollView`).
+    return (
+      <ScrollView
+        style={[s.scroll, { paddingTop: topHeight, backgroundColor: t.card }]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.body}
+      >
+        {scrollBody}
+      </ScrollView>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: t.card }}>
       {/* Android form sheets don't host the Stack header (react-native-screens
           doesn't support nested stack rendering for Android sheets yet), so the
           native headerTitle/headerRight never render. Surface the title + reset
           as a fixed header OUTSIDE the ScrollView so it stays pinned instead of
-          scrolling with the content. iOS keeps the real native header. */}
-      {Platform.OS === 'android' && (
-        <View style={s.sheetHeader}>
-          <PanelTitle />
-          <View style={s.sheetReset}>
-            <PanelResetButton color={t.headerTint} />
-          </View>
+          scrolling with the content. */}
+      <View style={s.sheetHeader}>
+        <PanelTitle />
+        <View style={s.sheetReset}>
+          <PanelResetButton color={t.headerTint} />
         </View>
-      )}
+      </View>
 
       <ScrollView
-        {...(Platform.OS === 'android' ? { nestedScrollEnabled: true } : null)}
-        style={[
-          s.scroll,
-          { paddingTop: Platform.OS === 'android' ? 0 : topHeight },
-        ]}
+        nestedScrollEnabled
+        style={[s.scroll, { paddingTop: 0 }]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.body}
       >
-        <View style={[s.seg, { backgroundColor: rowBg }]}>
-          {modes.map((m) => {
-            const selected = mode === m;
-            return (
-              <Pressable
-                key={m}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                style={[
-                  s.segItem,
-                  selected && { backgroundColor: t.controlActive },
-                ]}
-                onPress={() => setMode(m)}
-              >
-                <Text
-                  style={[
-                    s.segText,
-                    { color: selected ? t.text : t.faintText },
-                  ]}
-                >
-                  {m}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <View style={s.padWrap}>
-          <BezierPlot
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            tint={scheme}
-            variant="pad"
-            showPresenceBands={mode === 'blur'}
-            onEdit={markCustom}
-          />
-        </View>
-
-        <ThemedMenu
-          actions={presetMenuActions}
-          onSelect={(id) => {
-            const p = BEZIER_PRESETS.find((pr) => pr.label === id);
-            if (p) applyPreset(p.label, p.value);
-          }}
-          palette={t}
-          scheme={scheme}
-          style={s.menuHeight}
-        >
-          <View style={rowStyle}>
-            <Text style={[s.monoLabel, { color: t.faintText }]}>preset</Text>
-            <View style={s.flex} />
-            <View style={s.rowInline}>
-              <Text style={[s.monoLabel, { color: t.text }]}>{preset}</Text>
-              <NativeIcon
-                name={
-                  Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore
-                }
-                size={Platform.OS === 'ios' ? 12 : 16}
-                color={t.faintText}
-              />
-            </View>
-          </View>
-        </ThemedMenu>
-        {/*
-        <DialRow label="top" value={top} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="bottom" value={bottom} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="left" value={left} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="right" value={right} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        */}
-        <DialRow
-          label="blur"
-          value={blur}
-          min={0}
-          max={100}
-          step={1}
-          format={fmtPx}
-          tint={scheme}
-          {...dialSurface}
-          disabled={mode !== 'blur'}
-        />
-
-        {Platform.OS === 'android' ? (
-          advancedContent
-        ) : (
-          <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: showAdvanced }}
-              style={s.advanced}
-              onPress={() => setShowAdvanced((v) => !v)}
-            >
-              <Text style={[s.advancedLabel, { color: t.text }]}>advanced</Text>
-              <SymbolIcon
-                name={showAdvanced ? 'chevron.up' : 'chevron.down'}
-                color={t.faintText}
-                size={12}
-              />
-            </Pressable>
-
-            {showAdvanced && advancedContent}
-          </>
-        )}
+        {scrollBody}
       </ScrollView>
     </View>
   );
