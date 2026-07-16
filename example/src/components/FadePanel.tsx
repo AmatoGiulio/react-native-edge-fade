@@ -425,50 +425,47 @@ export function FadePanel() {
         />
       </View>
 
-      {Platform.OS === 'ios' ? (
-        <TintColorPickerIOS
-          tint={tint}
-          setTint={setTint}
-          disabled={!frostOn}
-          rowBg={rowBg}
-          textColor={t.text}
-          faintTextColor={t.faintText}
-        />
-      ) : (
-        <View style={rowStyle}>
-          <Text
-            style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
-          >
-            tint color
-          </Text>
-          <View style={s.flex} />
-          <ThemedMenu
-            actions={tintMenuActions}
-            onSelect={(id) => {
-              if (frostOn) setTint(id);
-            }}
-            palette={t}
-            scheme={scheme}
-          >
-            <View style={s.rowInline}>
-              <Text
-                style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
-              >
-                {currentTintLabel}
-              </Text>
-              <Text
-                style={[
-                  s.tintDot,
-                  { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
-                ]}
-              >
-                {'\u25CF'}
-              </Text>
-              <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
-            </View>
-          </ThemedMenu>
-        </View>
-      )}
+      {/* Shared preset-menu tint row. iOS used to embed the SwiftUI
+          ColorPicker in an @expo/ui Host here, but Hosts wrapping RN children
+          never lay out reliably inside the formSheet (collapsed/offset rows) \u2014
+          the MenuView path is the one that behaves on both platforms. */}
+      <View style={rowStyle}>
+        <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
+          tint color
+        </Text>
+        <View style={s.flex} />
+        <ThemedMenu
+          actions={tintMenuActions}
+          onSelect={(id) => {
+            if (frostOn) setTint(id);
+          }}
+          palette={t}
+          scheme={scheme}
+        >
+          <View style={s.rowInline}>
+            <Text
+              style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
+            >
+              {currentTintLabel}
+            </Text>
+            <Text
+              style={[
+                s.tintDot,
+                { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
+              ]}
+            >
+              {'\u25CF'}
+            </Text>
+            <NativeIcon
+              name={
+                Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore
+              }
+              size={Platform.OS === 'ios' ? 12 : 16}
+              color={t.faintText}
+            />
+          </View>
+        </ThemedMenu>
+      </View>
 
       <View style={rowStyle}>
         <Text style={[s.monoLabel, { color: t.text }]}>auto demo</Text>
@@ -661,62 +658,6 @@ export function FadePanel() {
         {scrollBody}
       </ScrollView>
     </View>
-  );
-}
-
-function TintColorPickerIOS({
-  tint,
-  setTint,
-  disabled,
-  rowBg,
-  textColor,
-  faintTextColor,
-}: {
-  tint: string | undefined;
-  setTint: (t: string | undefined) => void;
-  disabled: boolean;
-  rowBg: string;
-  textColor: string;
-  faintTextColor: string;
-}) {
-  const { ColorPicker } = require('@expo/ui/swift-ui');
-  const {
-    labelsHidden,
-    disabled: disabledMod,
-  } = require('@expo/ui/swift-ui/modifiers');
-
-  // Fixed height instead of `matchContents`: the async SwiftUI measurement
-  // collapsed the row to zero height inside the formSheet, leaving a hole in
-  // the list (uneven spacing) with an invisible picker.
-  return (
-    <Host style={{ width: '100%', height: 44 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderRadius: 12,
-          paddingHorizontal: 14,
-          height: 44,
-          backgroundColor: rowBg,
-        }}
-      >
-        <Text
-          style={[
-            s.monoLabel,
-            { color: disabled ? faintTextColor : textColor },
-          ]}
-        >
-          tint color
-        </Text>
-        <View style={{ flex: 1 }} />
-        <ColorPicker
-          selection={tint ?? DEFAULT_TINT}
-          supportsOpacity={false}
-          onSelectionChange={setTint}
-          modifiers={[labelsHidden(), disabledMod(disabled)]}
-        />
-      </View>
-    </Host>
   );
 }
 
