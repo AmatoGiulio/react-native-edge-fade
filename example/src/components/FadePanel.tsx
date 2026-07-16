@@ -99,7 +99,8 @@ function NativeSwitch({
   // over. A Host attached mid-presentation keeps a stale frame (the toggle
   // renders offset in its row) until the next native relayout — e.g. dragging
   // the sheet to another detent. Bumping the key after ~400ms re-attaches it
-  // against the settled sheet frame.
+  // against the settled sheet frame; until then the Host is kept invisible so
+  // the stale frame never flashes.
   const [hostEpoch, setHostEpoch] = useState(0);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
@@ -135,7 +136,7 @@ function NativeSwitch({
       key={hostEpoch}
       colorScheme={scheme}
       seedColor={palette.accent}
-      style={s.iosSwitchHost}
+      style={[s.iosSwitchHost, hostEpoch === 0 && s.iosSwitchHostSettling]}
     >
       <Switch value={value} onValueChange={onValueChange} />
     </Host>
@@ -772,6 +773,8 @@ const s = StyleSheet.create({
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   // Standard UISwitch intrinsic size.
   iosSwitchHost: { width: 51, height: 31 },
+  // Hidden until the post-presentation remount (see NativeSwitch).
+  iosSwitchHostSettling: { opacity: 0 },
 
   advanced: {
     flexDirection: 'row',
