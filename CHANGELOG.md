@@ -2,16 +2,28 @@
 
 ### Features
 
-* **android:** add `mode="blur"` — frosted-glass edge blur (iOS scroll-edge style). A single hardware Gaussian blur (`RenderEffect.createBlurEffect`) is masked by the per-edge curve and dissolved into a translucent material veil — matching iOS' uniform edge blur rather than a progressive radius ramp, at a fraction of the cost. New `blurRadius` prop (dp, default 20); `color` sets the frost material color (default white). Requires Android 12 (API 31)+; degrades to `mask` on older Android, iOS, and Web.
+* **blur:** `mode="blur"` — progressive frosted-glass edge blur, now closed on BOTH platforms with the same UNIFORM semantics. A 3-level increasing-radius stack (radii 0.35/0.65/1 × `blurRadius`): a short, curve-shaped sharp→frost transition on the light first level, then progressively heavier blur toward the outer edge, with no visible level seams while scrolling (heavy levels ramp to the outer edge with zero-slope smoothstep onsets). Android renders via `RenderEffect.createBlurEffect` + plateau `LinearGradient` masks composited `DST_IN` (API 31+; degrades to `mask` below); iOS via per-edge masked `UIVisualEffectView`s driven by paused `UIViewPropertyAnimator`s — public API only, iOS 13+. Web degrades to `mask`.
+* **blur:** `frostProgression` prop (both platforms) — fraction of the band over which the frost ramps from sharp to solid (clamped 0.05–1, default 0.35). Smaller = crisper Apple-style transition.
+* **blur:** `frostSaturation` / `frostLift` props (**Android only** — no public-API color grade on `UIVisualEffectView`) — saturation/brightness grade applied to the blurred pixels (defaults 0.9 / 1.03) for a soft pastel frosted-glass material.
+* **blur:** optional frost material veil via `color` — transparent (inner) → color (outer), 16-stop smoothstep across the full band, max opacity 0.6, aligned across platforms.
+* **blur:** the fade curve is live in blur mode — editing the curve (presets or custom Bézier) reshapes the sharp→frost transition.
 * **curves:** add `'smoother'` preset — a smootherstep S-curve (`6t⁵−15t⁴+10t³`) eased at both ends, so the fade eases in at the inner edge instead of breaking away immediately. Works across `mask`, `overlay`, and `blur`.
-* **example:** add blur playground (`Lab`) with a floating glass control panel and live sliders, plus an editorial blur demo.
-* **example:** rebuild the Photos showcase as an expo-router route group — the grid preview and a native form-sheet editor share one context, so the sheet's controls reflow the grid live. The editor uses native `@react-native-community/slider` sliders, config-preset chips (Subtle/Frosted/Nav bar/Heavy), and curve/frost selectors.
+* **example:** rebuilt as a themed Photos app (bundled local images, no network) with a shared native form-sheet tuner: mode selector, Bézier curve pad, dials for blur/frost parameters, frost tint with color picker.
+
+### Performance Improvements
+
+* **android:** the two heavy blur levels render at half resolution (~4× fewer pixels on the expensive Gaussians; the large radius hides the bilinear upscale). Gallery-scroll bench on emulator: p50 16ms / p95 17ms / p99 18ms, 0% legacy jank.
+* **ios:** per-edge band clipping — each effect view covers only its edge strip (plus sampling padding) instead of the whole view, cutting the backdrop pass area by ~70% for typical fade sizes.
+
+### Bug Fixes
+
+* **ios:** stop paused blur animators before dealloc — a view released without a mode flip (e.g. RN dev reload) aborted in `UIViewPropertyAnimator dealloc`.
+* **blur:** scroll sync — Android re-records the content on every scroll tick so the frost tracks a fling; iOS gets this for free from the live `UIVisualEffectView` backdrop.
 
 ### Notes
 
-* **android:** blur presence is boosted so the Gaussian blur saturates early and stays full across most of the fade band (instead of only showing in a thin outer sliver under the frost veil); veil max opacity eased 0.9 → 0.8 so more blurred content shows through. Default `blurRadius` raised 20 → 28 for a more visible effect out of the box.
 * `mode="blur"` needs opaque content — give the `EdgeFadeView` (or its content) a solid `backgroundColor` so the blur backdrop has no transparent gaps (avoids dark premultiplied-alpha fringes).
-* Native iOS `blur` is not yet implemented (falls back to `mask`).
+* Requirements: Android 12 (API 31)+ and iOS 13+ for blur; older Android and Web degrade to `mask`.
 
 ## 0.0.1 (2026-05-28)
 

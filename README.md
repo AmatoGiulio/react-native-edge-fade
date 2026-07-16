@@ -103,6 +103,9 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
 | `color`  | `ColorValue`                          | —          | Overlay color, or optional frost veil color in `blur` mode (omit for pure blur) |
 | `blurRadius` | `number`                          | `28`       | Max blur radius (dp) at the outer edge, `blur` mode only |
+| `frostProgression` | `number`                    | `0.35`     | `blur` mode — fraction of the band over which the frost ramps from sharp to solid (clamped 0.05–1) |
+| `frostSaturation` | `number`                     | `0.9`      | `blur` mode — saturation grade on the blurred pixels. **Android only** |
+| `frostLift` | `number`                           | `1.03`     | `blur` mode — brightness grade on the blurred pixels. **Android only** |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
 | `style`  | `ViewStyle`                           | —          | Forwarded to the native view                         |
 
@@ -187,12 +190,16 @@ increasing-radius Gaussian blurs, cross-faded along the band, so the perceived b
 continuously from sharp at the inner edge to the full `blurRadius` at the outer edge. Blur passes
 are clipped to the fade strips, so cost scales with the band area, not the view size.
 
-The `curve` governs *how* the blur progresses across the band (its presence is the complement of
-the curve's alpha — the blur takes over exactly what the curve dissolves, same semantics as mask
-mode); the band extent is set only by `top` / `bottom` / `left` / `right`.
+The band opens with a short sharp→frost transition — its length is the `frostProgression`
+prop and its shape follows the `curve`, so editing the Bézier reshapes the transition — then
+the blur deepens continuously toward the outer edge with no visible level seams. The band
+extent is set only by `top` / `bottom` / `left` / `right`.
 
 `blurRadius` sets the maximum blur depth (dp) reached at the outer edge. `color` optionally adds
-a frosted material veil on top of the blur — omit it for a pure, tint-free Gaussian blur.
+a frosted material veil on top of the blur (a smoothstep ramp to 0.6 max opacity) — omit it for
+a pure, tint-free Gaussian blur. On Android, `frostSaturation` / `frostLift` grade the blurred
+pixels toward a soft pastel frosted-glass material (no public-API equivalent exists for
+`UIVisualEffectView`, so they are silently ignored on iOS).
 
 ```tsx
 <EdgeFadeView mode="blur" top={120} bottom={160} blurRadius={24} curve="gentle">
@@ -329,7 +336,7 @@ Explicit alpha array from inner edge (`1.0`) to outer edge (`0.0`):
 | Android API 33+   | AGSL `RuntimeShader` — per-pixel curve evaluation, zero banding, dithered   |
 | Android API 29+   | `BlendMode.DST_IN` for mask compositing (legacy `PorterDuffXfermode` below) |
 | Android API < 33  | `LinearGradient` with 64 discrete stops                                     |
-| Android API 31+   | `blur` mode — progressive stack of `RenderEffect.createBlurEffect` levels, clipped to the fade strips, masked by curve-slice gradients |
+| Android API 31+   | `blur` mode — progressive stack of `RenderEffect.createBlurEffect` levels, clipped to the fade strips, masked by curve-aware plateau gradients (heavy levels at half resolution) |
 | iOS               | `CALayer` mask using `CGGradient` (`kCGBlendModeDestinationIn`)             |
 | iOS 13+           | `blur` mode — progressive stack of masked `UIVisualEffectView`s (pure Gaussian, no material tint), intensity via paused `UIViewPropertyAnimator`; public API only |
 | Web               | CSS `mask-image` + `linear-gradient`, `mask-composite: intersect`           |
