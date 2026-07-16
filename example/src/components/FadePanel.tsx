@@ -4,7 +4,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch as RNSwitch,
   Text,
   View,
 } from 'react-native';
@@ -17,7 +16,7 @@ import type {
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 
-import { Host } from '@expo/ui';
+import { Host, Row, Spacer, Switch, Text as UiText } from '@expo/ui';
 import { Icon as UniIcon, type IconName } from '@expo/ui';
 import { MenuView } from '@expo/ui/community/menu';
 import type { MenuAction } from '@expo/ui/community/menu';
@@ -77,58 +76,131 @@ function NativeIcon({
   );
 }
 
+// Row.style is a single UniversalStyle object (no style arrays) — merge the
+// shared row chrome with the theme background here.
+function uiRowStyle(rowBg: string) {
+  return {
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: rowBg,
+  };
+}
+
 /**
- * Theme-matched native toggle.
+ * Theme-matched settings row: mono label left, native toggle right.
  *
- * The universal `Switch` has no color API — it inherits the Compose/SwiftUI
- * MaterialTheme. To pin exact colors we drop to the platform Compose `Switch`
- * on Android, which exposes a `colors` prop, and paint every state from the app
- * palette. On iOS the universal `Switch` follows the `Host` `seedColor` (tint).
+ * iOS follows the documented @expo/ui pattern — the whole row is composed of
+ * universal components inside one `Host` (`Row` → `Text` + `Spacer` +
+ * `Switch`), never RN views nested in the Host (mixed trees don't lay out
+ * reliably inside a formSheet). The `Switch` picks up the accent through the
+ * Host's `seedColor`.
+ *
+ * Android keeps the RN row + platform Compose `Switch` island: the universal
+ * `Switch` has no color API and only Compose's `colors` prop can pin the
+ * exact palette state colors.
  */
-function NativeSwitch({
+function SwitchRow({
+  label,
   value,
   onValueChange,
   palette,
   scheme,
+  rowBg,
 }: {
+  label: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
   palette: AppPalette;
   scheme: Scheme;
+  rowBg: string;
 }) {
   if (Platform.OS === 'android') {
     // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
     const { Switch: ComposeSwitch } = require('@expo/ui/jetpack-compose');
     return (
-      <Host matchContents colorScheme={scheme}>
-        <ComposeSwitch
-          value={value}
-          onCheckedChange={onValueChange}
-          colors={{
-            checkedTrackColor: palette.accent,
-            checkedThumbColor: '#FFFFFF',
-            checkedBorderColor: palette.accent,
-            uncheckedTrackColor: palette.controlActive,
-            uncheckedThumbColor: '#FFFFFF',
-            uncheckedBorderColor: palette.controlActive,
-          }}
-        />
-      </Host>
+      <View style={[s.settingRow, { backgroundColor: rowBg }]}>
+        <Text style={[s.monoLabel, { color: palette.text }]}>{label}</Text>
+        <View style={s.flex} />
+        <Host matchContents colorScheme={scheme}>
+          <ComposeSwitch
+            value={value}
+            onCheckedChange={onValueChange}
+            colors={{
+              checkedTrackColor: palette.accent,
+              checkedThumbColor: '#FFFFFF',
+              checkedBorderColor: palette.accent,
+              uncheckedTrackColor: palette.controlActive,
+              uncheckedThumbColor: '#FFFFFF',
+              uncheckedBorderColor: palette.controlActive,
+            }}
+          />
+        </Host>
+      </View>
     );
   }
-  // iOS: plain react-native Switch (native UISwitch) instead of an @expo/ui
-  // SwiftUI island. Inside a formSheet the Host's async SwiftUI measurement
-  // kept rendering the toggle offset/overflowing its row no matter when it
-  // attached; the RN wrapper lays out deterministically and themes fine via
-  // trackColor.
   return (
-    <RNSwitch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: palette.controlActive, true: palette.accent }}
-      thumbColor="#FFFFFF"
-      ios_backgroundColor={palette.controlActive}
-    />
+    <Host style={s.uiRowHost} colorScheme={scheme} seedColor={palette.accent}>
+      <Row alignment="center" style={uiRowStyle(rowBg)}>
+        <UiText
+          textStyle={{ color: palette.text, fontFamily: 'Menlo', fontSize: 14 }}
+        >
+          {label}
+        </UiText>
+        <Spacer flexible />
+        <Switch value={value} onValueChange={onValueChange} />
+      </Row>
+    </Host>
+  );
+}
+
+/**
+ * iOS tint row in the same documented @expo/ui composition as SwitchRow:
+ * one `Host`, a `Row`, and only universal/SwiftUI children — the free-form
+ * SwiftUI `ColorPicker` on the trailing edge.
+ */
+function TintColorRowIOS({
+  tint,
+  setTint,
+  disabled,
+  rowBg,
+  palette,
+  scheme,
+}: {
+  tint: string | undefined;
+  setTint: (t: string | undefined) => void;
+  disabled: boolean;
+  rowBg: string;
+  palette: AppPalette;
+  scheme: Scheme;
+}) {
+  const { ColorPicker } = require('@expo/ui/swift-ui');
+  const {
+    labelsHidden,
+    disabled: disabledMod,
+  } = require('@expo/ui/swift-ui/modifiers');
+
+  return (
+    <Host style={s.uiRowHost} colorScheme={scheme} seedColor={palette.accent}>
+      <Row alignment="center" style={uiRowStyle(rowBg)}>
+        <UiText
+          textStyle={{
+            color: disabled ? palette.faintText : palette.text,
+            fontFamily: 'Menlo',
+            fontSize: 14,
+          }}
+        >
+          tint color
+        </UiText>
+        <Spacer flexible />
+        <ColorPicker
+          selection={tint ?? DEFAULT_TINT}
+          supportsOpacity={false}
+          onSelectionChange={setTint}
+          modifiers={[labelsHidden(), disabledMod(disabled)]}
+        />
+      </Row>
+    </Host>
   );
 }
 
@@ -414,80 +486,77 @@ export function FadePanel() {
         disabled={mode !== 'blur'}
       />
 
-      <View style={rowStyle}>
-        <Text style={[s.monoLabel, { color: t.text }]}>frost tint</Text>
-        <View style={s.flex} />
-        <NativeSwitch
-          value={frostOn}
-          onValueChange={onFrostToggle}
+      <SwitchRow
+        label="frost tint"
+        value={frostOn}
+        onValueChange={onFrostToggle}
+        palette={t}
+        scheme={scheme}
+        rowBg={rowBg}
+      />
+
+      {Platform.OS === 'ios' ? (
+        <TintColorRowIOS
+          tint={tint}
+          setTint={setTint}
+          disabled={!frostOn}
+          rowBg={rowBg}
           palette={t}
           scheme={scheme}
         />
-      </View>
+      ) : (
+        <View style={rowStyle}>
+          <Text
+            style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
+          >
+            tint color
+          </Text>
+          <View style={s.flex} />
+          <ThemedMenu
+            actions={tintMenuActions}
+            onSelect={(id) => {
+              if (frostOn) setTint(id);
+            }}
+            palette={t}
+            scheme={scheme}
+          >
+            <View style={s.rowInline}>
+              <Text
+                style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
+              >
+                {currentTintLabel}
+              </Text>
+              <Text
+                style={[
+                  s.tintDot,
+                  { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
+                ]}
+              >
+                {'\u25CF'}
+              </Text>
+              <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
+            </View>
+          </ThemedMenu>
+        </View>
+      )}
 
-      {/* Shared preset-menu tint row. iOS used to embed the SwiftUI
-          ColorPicker in an @expo/ui Host here, but Hosts wrapping RN children
-          never lay out reliably inside the formSheet (collapsed/offset rows) \u2014
-          the MenuView path is the one that behaves on both platforms. */}
-      <View style={rowStyle}>
-        <Text style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}>
-          tint color
-        </Text>
-        <View style={s.flex} />
-        <ThemedMenu
-          actions={tintMenuActions}
-          onSelect={(id) => {
-            if (frostOn) setTint(id);
-          }}
-          palette={t}
-          scheme={scheme}
-        >
-          <View style={s.rowInline}>
-            <Text
-              style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
-            >
-              {currentTintLabel}
-            </Text>
-            <Text
-              style={[
-                s.tintDot,
-                { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
-              ]}
-            >
-              {'\u25CF'}
-            </Text>
-            <NativeIcon
-              name={
-                Platform.OS === 'ios' ? 'chevron.up.chevron.down' : UnfoldMore
-              }
-              size={Platform.OS === 'ios' ? 12 : 16}
-              color={t.faintText}
-            />
-          </View>
-        </ThemedMenu>
-      </View>
+      <SwitchRow
+        label="auto demo"
+        value={autoDemo}
+        onValueChange={setAutoDemo}
+        palette={t}
+        scheme={scheme}
+        rowBg={rowBg}
+      />
 
-      <View style={rowStyle}>
-        <Text style={[s.monoLabel, { color: t.text }]}>auto demo</Text>
-        <View style={s.flex} />
-        <NativeSwitch
-          value={autoDemo}
-          onValueChange={setAutoDemo}
-          palette={t}
-          scheme={scheme}
-        />
-      </View>
-
-      <View style={rowStyle}>
-        <Text style={[s.monoLabel, { color: t.text }]}>debug bands</Text>
-        <View style={s.flex} />
-        <NativeSwitch
-          value={showBands}
-          onValueChange={setShowBands}
-          palette={t}
-          scheme={scheme}
-        />
-      </View>
+      <SwitchRow
+        label="debug bands"
+        value={showBands}
+        onValueChange={setShowBands}
+        palette={t}
+        scheme={scheme}
+        rowBg={rowBg}
+      />
     </>
   );
 
@@ -704,6 +773,18 @@ const s = StyleSheet.create({
   },
   flex: { flex: 1 },
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+
+  // Android settings row (RN layout + Compose switch island).
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 44,
+  },
+  // iOS settings row: the RN-side Host frame (the SwiftUI Row inside gets its
+  // chrome from uiRowStyle()).
+  uiRowHost: { width: '100%' as const, height: 44 },
 
   advanced: {
     flexDirection: 'row',
