@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Platform,
   Pressable,
@@ -95,6 +95,18 @@ function NativeSwitch({
   palette: AppPalette;
   scheme: Scheme;
 }) {
+  // iOS: remount the SwiftUI Host once the sheet's presentation animation is
+  // over. A Host attached mid-presentation keeps a stale frame (the toggle
+  // renders offset in its row) until the next native relayout — e.g. dragging
+  // the sheet to another detent. Bumping the key after ~400ms re-attaches it
+  // against the settled sheet frame.
+  const [hostEpoch, setHostEpoch] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    const t = setTimeout(() => setHostEpoch(1), 400);
+    return () => clearTimeout(t);
+  }, []);
+
   if (Platform.OS === 'android') {
     // Android-only import: requiring jetpack-compose on iOS crashes at runtime.
     const { Switch: ComposeSwitch } = require('@expo/ui/jetpack-compose');
@@ -120,6 +132,7 @@ function NativeSwitch({
   // rendered offset/overflowing its card until the next relayout.
   return (
     <Host
+      key={hostEpoch}
       colorScheme={scheme}
       seedColor={palette.accent}
       style={s.iosSwitchHost}
