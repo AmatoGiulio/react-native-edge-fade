@@ -115,8 +115,15 @@ function NativeSwitch({
       </Host>
     );
   }
+  // Explicit UISwitch size (51x31) instead of `matchContents`: the async
+  // SwiftUI measurement lands after RN lays out the row, so the toggle
+  // rendered offset/overflowing its card until the next relayout.
   return (
-    <Host matchContents colorScheme={scheme} seedColor={palette.accent}>
+    <Host
+      colorScheme={scheme}
+      seedColor={palette.accent}
+      style={s.iosSwitchHost}
+    >
       <Switch value={value} onValueChange={onValueChange} />
     </Host>
   );
@@ -750,6 +757,8 @@ const s = StyleSheet.create({
   },
   flex: { flex: 1 },
   rowInline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Standard UISwitch intrinsic size.
+  iosSwitchHost: { width: 51, height: 31 },
 
   advanced: {
     flexDirection: 'row',
