@@ -56,16 +56,15 @@ typedef NS_ENUM(NSInteger, EdgeFadeRenderMode) {
 // ─── Progressive-blur model (blur mode) ───────────────────────────────────────
 //
 // True progressive blur (Apple Music) is not one blur cross-faded — it is a
-// stack of increasing-radius blurs, each visible only over its own slice of the
-// band. We model presence(t) = 1 − alpha(t) (the curve's own complement, rising
-// inner → outer) and cut the presence range into three fixed fractions
-//   F = { 1/3, 2/3, 1 }.
-// Level k (0-based) owns the slice [F[k-1], F[k]] (F[-1] = 0) and its mask weight
-// is weight_k(t) = clamp((presence(t) − lo) / (hi − lo), 0, 1), staying 1 past
-// hi so the next-higher level cross-fades over it. The three views stack in
-// increasing radius: the sharp content shows through where all weights are 0
-// (band interior), a light blur near the inner ramp, the heaviest blur at the
-// outer edge — a smooth radius ramp instead of a single hard blur.
+// stack of increasing-radius blurs. UNIFORM plateau model (Android parity):
+// along the band (inner t=0 → outer t=1) each level's mask stays 0 until its
+// start, ramps 0 → 1 — SHAPED by the fade curve's presence profile — over its
+// ramp width, then plateaus at 1:
+//   starts     = { 0, 0.35, 0.65 }
+//   ramp width = 0.35 (level 0's is the frostProgression prop)
+// The three views stack in increasing radius: a short sharp→frost transition
+// on the light first level only, then progressively heavier blur toward the
+// outer edge — the bottom of the band is the most blurred.
 //
 // Per-level blur *intensity* is tied to _blurRadius scaled by F[k]: level 0
 // tops out at a third of the radius, level 2 at the full radius, so at
@@ -111,12 +110,18 @@ typedef NS_ENUM(NSInteger, EdgeFadeEdge) {
 };
 static const NSInteger kEdgeFadeEdgeCount = 4;
 
-// Upper presence boundary F[k] for each level; lower boundary is F[k-1] (F[-1]=0).
-static const CGFloat kEdgeFadeLevelFractions[kEdgeFadeBlurLevels] = {1.0 / 3.0, 2.0 / 3.0, 1.0};
+// Per-level radius fraction F[k] (level k's blur tops out at blurRadius·F[k])
+// and the UNIFORM plateau windows (Android parity — see EdgeFadeView.kt):
+// level k's mask stays 0 until kEdgeFadeLevelStart[k], ramps to 1 over
+// kEdgeFadeUniformRampWidth (level 0's ramp width is the frostProgression
+// prop), then plateaus — so the heavier blur fades in further toward the edge.
+static const CGFloat kEdgeFadeLevelFractions[kEdgeFadeBlurLevels] = {0.35, 0.65, 1.0};
+static const CGFloat kEdgeFadeLevelStart[kEdgeFadeBlurLevels]     = {0.0, 0.35, 0.65};
+static const CGFloat kEdgeFadeUniformRampWidth = 0.35;
 
-// Convenience: window [lo, hi] for level k.
-static inline CGFloat EdgeFadeLevelLo(NSInteger k) { return k == 0 ? 0.0 : kEdgeFadeLevelFractions[k - 1]; }
-static inline CGFloat EdgeFadeLevelHi(NSInteger k) { return kEdgeFadeLevelFractions[k]; }
+// frostProgression clamp bounds (matches the Android manager).
+static const CGFloat kEdgeFadeFrostProgressionMin = 0.05;
+static const CGFloat kEdgeFadeFrostProgressionMax = 1.0;
 
 // ─── Overlay colors ───────────────────────────────────────────────────────────
 //
@@ -152,36 +157,46 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
 // ─── Veil colors ─────────────────────────────────────────────────────────────
 //
 // Builds `CAGradientLayer.colors` for a frost veil strip: transparent (inner) →
-// `color` capped at VEIL_MAX_ALPHA (outer), opacity(t) = (1 − alpha(t)) ·
-// VEIL_MAX_ALPHA. Matches Android's veilGradient / VEIL_MAX_ALPHA = 0.8. Stops
-// run inner (i=0) → outer (i=count-1), matching the gradient's startPoint/
-// endPoint set in _updateLayerFrames, so a forward loop suffices.
+// `color` capped at VEIL_MAX_ALPHA (outer). Android-UNIFORM parity
+// (veilGradient in EdgeFadeView.kt): the blur radius grows smoothly across the
+// whole band, so the veil ramps the same way — a 16-stop smoothstep over the
+// FULL band, independent of the fade curve (a curve-shaped ramp-then-plateau
+// read as a hard tint line at low blur). VEIL_MAX_ALPHA matches Android's 0.6.
 
-static const CGFloat kVeilMaxAlpha = 0.8;
+static const CGFloat kVeilMaxAlpha = 0.6;
+static const int     kVeilStops    = 16;
 
-static NSArray<id> *veilColors(NSString *curve, UIColor *color)
+static NSArray<id> *veilColors(UIColor *color)
 {
-  const CGFloat *alphas; const CGFloat *stops; size_t count;
-  CGFloat *dynAlphas, *dynStops;
-  EdgeFadeResolveCurve(curve, &alphas, &stops, &count, &dynAlphas, &dynStops);
-  (void)stops;
-
   CGFloat r, g, b, a;
   [color getRed:&r green:&g blue:&b alpha:&a];
 
   CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-  NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
-  for (NSInteger i = 0; i < (NSInteger)count; i++) {
-    // Each stop's alpha = (1 - curve_alpha) * base_alpha * VEIL_MAX_ALPHA.
+  NSMutableArray *result = [NSMutableArray arrayWithCapacity:kVeilStops];
+  for (int i = 0; i < kVeilStops; i++) {
+    const CGFloat t = (CGFloat)i / (kVeilStops - 1);
+    const CGFloat weight = t * t * (3.0 - 2.0 * t); // smoothstep
     // Cap so even the outer edge stays slightly translucent — a hint of blurred
     // content shows through, like iOS frosted material.
-    CGFloat components[4] = {r, g, b, a * (1.0 - alphas[i]) * kVeilMaxAlpha};
+    CGFloat components[4] = {r, g, b, a * weight * kVeilMaxAlpha};
     CGColorRef c = CGColorCreate(space, components);
     [result addObject:(__bridge_transfer id)c];
   }
   CGColorSpaceRelease(space);
-  if (dynAlphas) { free(dynAlphas); free(dynStops); }
   return [result copy];
+}
+
+// Evenly-spaced locations matching veilColors' 16 smoothstep stops.
+static NSArray<NSNumber *> *veilLocations(void)
+{
+  static NSArray<NSNumber *> *cached;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    NSMutableArray *locs = [NSMutableArray arrayWithCapacity:kVeilStops];
+    for (int i = 0; i < kVeilStops; i++) [locs addObject:@((CGFloat)i / (kVeilStops - 1))];
+    cached = [locs copy];
+  });
+  return cached;
 }
 
 // ─── EdgeFadeView ─────────────────────────────────────────────────────────────
@@ -223,9 +238,9 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   NSString *_cachedCurveTop, *_cachedCurveBottom, *_cachedCurveLeft, *_cachedCurveRight;
   UIColor  *_cachedColorTop, *_cachedColorBottom, *_cachedColorLeft, *_cachedColorRight;
 
-  // Per-frost-layer veil color cache.
-  NSString *_cachedVeilCurveTop, *_cachedVeilCurveBottom, *_cachedVeilCurveLeft, *_cachedVeilCurveRight;
-  UIColor  *_cachedVeilColorTop, *_cachedVeilColorBottom, *_cachedVeilColorLeft, *_cachedVeilColorRight;
+  // Veil color cache (the UNIFORM veil ramp is curve-independent, so the four
+  // edges share one colors array — only the color needs caching).
+  UIColor  *_cachedVeilColorTop;
 
   // Current config
   EdgeFadeRenderMode _renderMode;
@@ -235,6 +250,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   UIColor  *_overlayColorTop, *_overlayColorBottom, *_overlayColorLeft, *_overlayColorRight;
   CGFloat   _fadeRadius;
   CGFloat   _blurRadius;
+  CGFloat   _frostProgression;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -246,6 +262,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
     static const auto defaultProps = std::make_shared<const EdgeFadeViewProps>();
     _props = defaultProps;
     _renderMode = EdgeFadeModeMask;
+    _frostProgression = 0.35;
     // Continuous corner curve matches Apple's system squircle and composes more
     // cleanly with `layer.mask` than the default circular curve.
     if (@available(iOS 13.0, *)) {
@@ -321,6 +338,7 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   const BOOL modeChanged        = p.mode       != op.mode;
   const BOOL radiusChanged      = p.fadeRadius != op.fadeRadius;
   const BOOL blurRadiusChanged  = p.blurRadius != op.blurRadius;
+  const BOOL frostProgressionChanged = p.frostProgression != op.frostProgression;
 
   _fadeTop    = (CGFloat)p.fadeTop;    _fadeBottom = (CGFloat)p.fadeBottom;
   _fadeLeft   = (CGFloat)p.fadeLeft;   _fadeRight  = (CGFloat)p.fadeRight;
@@ -334,6 +352,13 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   _overlayColorLeft   = p.overlayColorLeft   ? RCTUIColorFromSharedColor(p.overlayColorLeft)   : nil;
   _overlayColorRight  = p.overlayColorRight  ? RCTUIColorFromSharedColor(p.overlayColorRight)  : nil;
   _blurRadius = (CGFloat)p.blurRadius;
+  // Codegen's Float default is 0.0 (there is no per-prop default in the spec),
+  // so an unset frostProgression arrives as 0 — map it to the documented 0.35
+  // default (parity with the Android manager's defaultFloat) before clamping.
+  _frostProgression = p.frostProgression <= 0.0
+      ? 0.35
+      : MIN(MAX((CGFloat)p.frostProgression,
+                kEdgeFadeFrostProgressionMin), kEdgeFadeFrostProgressionMax);
   EF_BENCH_LOG("up_diff");
 
   // Resolve the new render mode.
@@ -397,6 +422,16 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
       [self _applyBlurFraction];
     }
     EF_BENCH_LOG("up_blur_radius");
+    if (frostProgressionChanged) {
+      // Only level 0's ramp width is the frostProgression prop; heavier levels
+      // keep their fixed plateau windows.
+      for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+        EdgeFadeBlurMaskLayer *m = _blurMaskLayers[e][0];
+        m.rampWidth = _frostProgression;
+        [m setNeedsDisplay];
+      }
+    }
+    EF_BENCH_LOG("up_blur_frostProgression");
   }
 
   if (radiusChanged) {
@@ -656,9 +691,9 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
 // Each mask layer's fade/curve properties are only ever set here — the layers
 // themselves never read _fadeTop/_curveTop etc. directly — so without this,
 // property changes after the initial build would leave the masks stale and
-// the fade sliders / curve chips would have no visible effect. levelLo/levelHi
-// are set once at build time and never touched here (they define the fixed
-// presence window of each level). Callers invalidate via _invalidateBlurMaskLayers.
+// the fade sliders / curve chips would have no visible effect. levelStart is
+// set once at build time; level 0's rampWidth (frostProgression) is updated
+// from updateProps when the prop changes. Callers invalidate via _invalidateBlurMaskLayers.
 //
 // Per-edge masks: each strip's mask draws in the STRIP's local coordinates and
 // carries ONLY its own edge's fade (the other three are 0), so the mask paints a
@@ -709,8 +744,8 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
       // Windowed blur mask — grayscale bitmap gating this level's slice of the band.
       EdgeFadeBlurMaskLayer *mask = [EdgeFadeBlurMaskLayer layer];
       mask.contentsScale = scale;
-      mask.levelLo = EdgeFadeLevelLo(k);
-      mask.levelHi = EdgeFadeLevelHi(k);
+      mask.levelStart = kEdgeFadeLevelStart[k];
+      mask.rampWidth  = (k == 0 ? _frostProgression : kEdgeFadeUniformRampWidth);
       _blurMaskLayers[e][k] = mask;
       EF_BENCH_LOG("bbv_mask");
 
@@ -854,34 +889,23 @@ static NSArray<id> *veilColors(NSString *curve, UIColor *color)
   [_frostLeft   removeFromSuperlayer];
   [_frostRight  removeFromSuperlayer];
   _frostTop = _frostBottom = _frostLeft = _frostRight = nil;
-  _cachedVeilCurveTop = _cachedVeilCurveBottom = _cachedVeilCurveLeft = _cachedVeilCurveRight = nil;
-  _cachedVeilColorTop = _cachedVeilColorBottom = _cachedVeilColorLeft = _cachedVeilColorRight = nil;
+  _cachedVeilColorTop = nil;
 }
 
+// The UNIFORM veil ramp is curve-independent (see veilColors), so the four
+// edges share one colors array and only the color enters the cache key.
 - (void)_rebuildVeilColors {
   if (!_frostTop || !_overlayColor) return;
   UIColor *color = _overlayColor;
+  if ([color isEqual:_cachedVeilColorTop]) return;
 
-  if (![_curveTop isEqualToString:_cachedVeilCurveTop] || ![color isEqual:_cachedVeilColorTop]) {
-    _frostTop.colors    = veilColors(_curveTop, color);
-    _frostTop.locations = EdgeFadeLocationsForCurve(_curveTop);
-    _cachedVeilCurveTop = _curveTop; _cachedVeilColorTop = color;
-  }
-  if (![_curveBottom isEqualToString:_cachedVeilCurveBottom] || ![color isEqual:_cachedVeilColorBottom]) {
-    _frostBottom.colors    = veilColors(_curveBottom, color);
-    _frostBottom.locations = EdgeFadeLocationsForCurve(_curveBottom);
-    _cachedVeilCurveBottom = _curveBottom; _cachedVeilColorBottom = color;
-  }
-  if (![_curveLeft isEqualToString:_cachedVeilCurveLeft] || ![color isEqual:_cachedVeilColorLeft]) {
-    _frostLeft.colors    = veilColors(_curveLeft, color);
-    _frostLeft.locations = EdgeFadeLocationsForCurve(_curveLeft);
-    _cachedVeilCurveLeft = _curveLeft; _cachedVeilColorLeft = color;
-  }
-  if (![_curveRight isEqualToString:_cachedVeilCurveRight] || ![color isEqual:_cachedVeilColorRight]) {
-    _frostRight.colors    = veilColors(_curveRight, color);
-    _frostRight.locations = EdgeFadeLocationsForCurve(_curveRight);
-    _cachedVeilCurveRight = _curveRight; _cachedVeilColorRight = color;
-  }
+  NSArray<id> *colors          = veilColors(color);
+  NSArray<NSNumber *> *locs    = veilLocations();
+  _frostTop.colors    = colors; _frostTop.locations    = locs;
+  _frostBottom.colors = colors; _frostBottom.locations = locs;
+  _frostLeft.colors   = colors; _frostLeft.locations   = locs;
+  _frostRight.colors  = colors; _frostRight.locations  = locs;
+  _cachedVeilColorTop = color;
 }
 
 // ─── Frame sync ──────────────────────────────────────────────────────────────

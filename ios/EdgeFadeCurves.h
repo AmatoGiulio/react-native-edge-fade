@@ -30,4 +30,9 @@ void EdgeFadeResolveCurve(NSString *curve,
 /// suitable for `CAGradientLayer.locations`. Custom curves allocate a fresh array.
 NSArray<NSNumber *> *EdgeFadeLocationsForCurve(NSString *curve);
 
+/// Interpolated blur presence (`1 − alpha`) of `curve` at normalized position
+/// `t ∈ [0, 1]` (inner → outer), linearly interpolating between the curve's
+/// samples. Mirror of the Android `EdgeFadeCurves.presenceAt`.
+CGFloat EdgeFadePresenceAt(NSString *curve, CGFloat t);
+
 NS_ASSUME_NONNULL_END

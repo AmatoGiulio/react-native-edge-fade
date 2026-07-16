@@ -76,19 +76,21 @@ export interface EdgeFadeViewProps extends ViewProps {
   /**
    * Blur mode frost grade — saturation multiplier applied to the blurred pixels
    * (1 = neutral). Below 1 desaturates toward a soft pastel frosted-glass look;
-   * above 1 keeps it colourful. Android only; defaults to 0.9.
+   * above 1 keeps it colourful. **Android only** — silently ignored on iOS
+   * (no public-API color grade on UIVisualEffectView). Defaults to 0.9.
    */
   frostSaturation?: number;
   /**
    * Blur mode frost grade — brightness multiplier applied to the blurred pixels
    * (1 = neutral). Slightly above 1 gives a light frosted-glass lift; below 1
-   * darkens. Android only; defaults to 1.03.
+   * darkens. **Android only** — silently ignored on iOS (no public-API color
+   * grade on UIVisualEffectView). Defaults to 1.03.
    */
   frostLift?: number;
   /**
    * Blur mode — fraction of the band over which the frost mask ramps from sharp
-   * to a solid frost plateau (0–1). Smaller = crisper Apple-style transition
-   * then more solid frost. Android only; defaults to 0.35.
+   * to a solid frost plateau. Smaller = crisper Apple-style transition then
+   * more solid frost. Android and iOS; clamped to [0.05, 1]; defaults to 0.35.
    */
   frostProgression?: number;
   /**

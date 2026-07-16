@@ -88,6 +88,30 @@ void EdgeFadeResolveCurve(NSString *curve,
   presetCurveData(EdgeFadeCurveIsCustom(curve) ? @"smooth" : curve, alphas, stops, count);
 }
 
+// ─── Presence sampling ────────────────────────────────────────────────────────
+
+CGFloat EdgeFadePresenceAt(NSString *curve, CGFloat t)
+{
+  const CGFloat *alphas; const CGFloat *stops; size_t count;
+  CGFloat *dynAlphas, *dynStops;
+  EdgeFadeResolveCurve(curve, &alphas, &stops, &count, &dynAlphas, &dynStops);
+
+  if (t <= 0.0) t = 0.0; else if (t >= 1.0) t = 1.0;
+
+  CGFloat alpha = alphas[count - 1];
+  for (size_t i = 1; i < count; i++) {
+    if (t <= stops[i]) {
+      const CGFloat span = stops[i] - stops[i - 1];
+      const CGFloat f = span > 0.0 ? (t - stops[i - 1]) / span : 1.0;
+      alpha = alphas[i - 1] + (alphas[i] - alphas[i - 1]) * f;
+      break;
+    }
+  }
+
+  if (dynAlphas) { free(dynAlphas); free(dynStops); }
+  return 1.0 - alpha;
+}
+
 // ─── Locations cache ──────────────────────────────────────────────────────────
 
 static NSArray<NSNumber *> *cachedPresetLocations(void) {
