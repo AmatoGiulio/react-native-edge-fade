@@ -478,7 +478,7 @@ export function FadePanel() {
         label="transition"
         value={frostProg}
         min={0.05}
-        max={0.9}
+        max={1}
         step={0.05}
         format={fmt2}
         tint={scheme}

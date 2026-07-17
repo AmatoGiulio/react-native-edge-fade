@@ -1,9 +1,13 @@
 ## Unreleased
 
+### Breaking Changes
+
+* **blur:** the fade curve now governs the whole blur progression across the band, not just level 0's sharp→frost onset — the curve is the envelope the perceived radius follows from sharp (inner edge) to full `blurRadius` (outer edge). `frostProgression`'s default changes from `0.35` to `1` (the envelope spans the full band); pass `frostProgression={0.35}` to keep the old crisp-onset look.
+
 ### Features
 
 * **blur:** `mode="blur"` — progressive frosted-glass edge blur, now closed on BOTH platforms with the same UNIFORM semantics. A 3-level increasing-radius stack (radii 0.35/0.65/1 × `blurRadius`): a short, curve-shaped sharp→frost transition on the light first level, then progressively heavier blur toward the outer edge, with no visible level seams while scrolling (heavy levels ramp to the outer edge with zero-slope smoothstep onsets). Android renders via `RenderEffect.createBlurEffect` + plateau `LinearGradient` masks composited `DST_IN` (API 31+; degrades to `mask` below); iOS via per-edge masked `UIVisualEffectView`s driven by paused `UIViewPropertyAnimator`s — public API only, iOS 13+. Web degrades to `mask`.
-* **blur:** `frostProgression` prop (both platforms) — fraction of the band over which the frost ramps from sharp to solid (clamped 0.05–1, default 0.35). Smaller = crisper Apple-style transition.
+* **blur:** `frostProgression` prop (both platforms) — fraction of the band over which the curve's blur envelope completes (clamped 0.05–1, default 1). Smaller = the envelope compresses toward the inner edge, reaching full blur sooner.
 * **blur:** `frostSaturation` / `frostLift` props (**Android only** — no public-API color grade on `UIVisualEffectView`) — saturation/brightness grade applied to the blurred pixels (defaults 0.9 / 1.03) for a soft pastel frosted-glass material.
 * **blur:** optional frost material veil via `color` — transparent (inner) → color (outer), 16-stop smoothstep across the full band, max opacity 0.6, aligned across platforms.
 * **blur:** the fade curve is live in blur mode — editing the curve (presets or custom Bézier) reshapes the sharp→frost transition.

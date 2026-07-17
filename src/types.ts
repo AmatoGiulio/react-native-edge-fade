@@ -88,9 +88,11 @@ export interface EdgeFadeViewProps extends ViewProps {
    */
   frostLift?: number;
   /**
-   * Blur mode — fraction of the band over which the frost mask ramps from sharp
-   * to a solid frost plateau. Smaller = crisper Apple-style transition then
-   * more solid frost. Android and iOS; clamped to [0.05, 1]; defaults to 0.35.
+   * Blur mode — the `curve` shapes the blur's entire progression across the
+   * band; `frostProgression` is the fraction of the band (inner→outer) over
+   * which that curve envelope completes. Smaller = the same shape compressed
+   * toward the inner edge, reaching full blur sooner. Android and iOS; clamped
+   * to [0.05, 1]; defaults to 1 (the curve spans the full band).
    */
   frostProgression?: number;
   /**

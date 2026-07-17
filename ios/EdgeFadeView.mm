@@ -56,16 +56,20 @@ typedef NS_ENUM(NSInteger, EdgeFadeRenderMode) {
 // ─── Progressive-blur model (blur mode) ───────────────────────────────────────
 //
 // True progressive blur (Apple Music) is not one blur cross-faded — it is a
-// stack of increasing-radius blurs. UNIFORM plateau model (Android parity):
-// along the band (inner t=0 → outer t=1) each level's mask stays 0 until its
-// start, ramps 0 → 1 — SHAPED by the fade curve's presence profile — over its
-// ramp width, then plateaus at 1:
-//   starts      = { 0, 0.35, 0.65 }
-//   ramp widths = { frostProgression, 0.65, 0.35 } — heavy ramps reach the
-//   outer edge (start + width = 1), so no interior constant-blend plateau
-// The three views stack in increasing radius: a short sharp→frost transition
-// on the light first level only, then progressively heavier blur toward the
-// outer edge — the bottom of the band is the most blurred.
+// stack of increasing-radius blurs. The fade curve is now the envelope of the
+// perceived radius across the WHOLE band (Android parity — see
+// EdgeFadeView.kt / frostGradient): along the band (inner t=0 → outer t=1),
+// `u = min(t/frostProgression, 1)` compresses the curve's presence envelope
+// into the inner `frostProgression` fraction of the band, `P = presenceAt
+// (curve, u)`, and each level k resolves its own [sliceLo,sliceHi] slice of P:
+//   slices = { [0,0.35], [0.35,0.65], [0.65,1.0] }
+// Level 0 uses the raw slice weight (the visible sharp→frost transition, so
+// editing the curve reshapes it directly); levels 1-2 apply a zero-slope
+// smoothstep to their slice weight as an anti-banding pass, since their
+// fade-ins are internal cross-fades between two blur radii. The three views
+// stack in increasing radius, so the perceived radius grows toward the outer
+// edge following the curve's own shape — the bottom of the band ends up the
+// most blurred.
 //
 // Per-level blur *intensity* is tied to _blurRadius scaled by F[k]: level 0
 // tops out at a third of the radius, level 2 at the full radius, so at
@@ -111,17 +115,10 @@ typedef NS_ENUM(NSInteger, EdgeFadeEdge) {
 };
 static const NSInteger kEdgeFadeEdgeCount = 4;
 
-// Per-level radius fraction F[k] (level k's blur tops out at blurRadius·F[k])
-// and the UNIFORM plateau windows (Android parity — see EdgeFadeView.kt):
-// level k's mask stays 0 until kEdgeFadeLevelStart[k], then ramps to 1 over
-// its ramp width (level 0's is the frostProgression prop) — so the heavier
-// blur fades in further toward the edge.
+// Per-level radius fraction F[k] (level k's blur tops out at blurRadius·F[k]),
+// doubling as each level's [lo,hi] slice of the curve's presence envelope
+// (lo = the previous entry, or 0 for k=0) — see EdgeFadeBlurMaskLayer.mm.
 static const CGFloat kEdgeFadeLevelFractions[kEdgeFadeBlurLevels] = {0.35, 0.65, 1.0};
-static const CGFloat kEdgeFadeLevelStart[kEdgeFadeBlurLevels]     = {0.0, 0.35, 0.65};
-// Heavy-level ramp widths (index 0 unused — level 0's ramp is frostProgression).
-// start + width = 1 for both, so no interior constant-blend plateau survives
-// (a plateau between two seams reads as a visible "band" while scrolling).
-static const CGFloat kEdgeFadeLevelRampWidth[kEdgeFadeBlurLevels] = {0.0, 0.65, 0.35};
 
 // frostProgression clamp bounds (matches the Android manager).
 static const CGFloat kEdgeFadeFrostProgressionMin = 0.05;
@@ -338,7 +335,7 @@ static NSArray<NSNumber *> *veilLocations(void)
     static const auto defaultProps = std::make_shared<const EdgeFadeViewProps>();
     _props = defaultProps;
     _renderMode = EdgeFadeModeMask;
-    _frostProgression = 0.35;
+    _frostProgression = 1.0;
     // Continuous corner curve matches Apple's system squircle and composes more
     // cleanly with `layer.mask` than the default circular curve.
     if (@available(iOS 13.0, *)) {
@@ -433,10 +430,10 @@ static NSArray<NSNumber *> *veilLocations(void)
   _overlayColorRight  = p.overlayColorRight  ? RCTUIColorFromSharedColor(p.overlayColorRight)  : nil;
   _blurRadius = (CGFloat)p.blurRadius;
   // Codegen's Float default is 0.0 (there is no per-prop default in the spec),
-  // so an unset frostProgression arrives as 0 — map it to the documented 0.35
+  // so an unset frostProgression arrives as 0 — map it to the documented 1.0
   // default (parity with the Android manager's defaultFloat) before clamping.
   _frostProgression = p.frostProgression <= 0.0
-      ? 0.35
+      ? 1.0
       : MIN(MAX((CGFloat)p.frostProgression,
                 kEdgeFadeFrostProgressionMin), kEdgeFadeFrostProgressionMax);
   EF_BENCH_LOG("up_diff");
@@ -503,12 +500,14 @@ static NSArray<NSNumber *> *veilLocations(void)
     }
     EF_BENCH_LOG("up_blur_radius");
     if (frostProgressionChanged) {
-      // Only level 0's ramp width is the frostProgression prop; heavier levels
-      // keep their fixed plateau windows.
+      // Every level now resolves the curve's envelope through frostProgression,
+      // so all 12 masks (4 edges × 3 levels) need the new value.
       for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
-        EdgeFadeBlurMaskLayer *m = _blurMaskLayers[e][0];
-        m.rampWidth = _frostProgression;
-        [m setNeedsDisplay];
+        for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+          EdgeFadeBlurMaskLayer *m = _blurMaskLayers[e][k];
+          m.frostProgression = _frostProgression;
+          [m setNeedsDisplay];
+        }
       }
     }
     EF_BENCH_LOG("up_blur_frostProgression");
@@ -777,9 +776,10 @@ static NSArray<NSNumber *> *veilLocations(void)
 // Each mask layer's fade/curve properties are only ever set here — the layers
 // themselves never read _fadeTop/_curveTop etc. directly — so without this,
 // property changes after the initial build would leave the masks stale and
-// the fade sliders / curve chips would have no visible effect. levelStart is
-// set once at build time; level 0's rampWidth (frostProgression) is updated
-// from updateProps when the prop changes. Callers invalidate via _invalidateBlurMaskLayers.
+// the fade sliders / curve chips would have no visible effect. sliceLo/sliceHi
+// are set once at build time; frostProgression (now shared by all levels) is
+// updated from updateProps when the prop changes. Callers invalidate via
+// _invalidateBlurMaskLayers.
 //
 // Per-edge masks: each strip's mask draws in the STRIP's local coordinates and
 // carries ONLY its own edge's fade (the other three are 0), so the mask paints a
@@ -830,8 +830,9 @@ static NSArray<NSNumber *> *veilLocations(void)
       // Windowed blur mask — grayscale bitmap gating this level's slice of the band.
       EdgeFadeBlurMaskLayer *mask = [EdgeFadeBlurMaskLayer layer];
       mask.contentsScale = scale;
-      mask.levelStart  = kEdgeFadeLevelStart[k];
-      mask.rampWidth   = (k == 0 ? _frostProgression : kEdgeFadeLevelRampWidth[k]);
+      mask.sliceLo = (k == 0 ? 0.0 : kEdgeFadeLevelFractions[k - 1]);
+      mask.sliceHi = kEdgeFadeLevelFractions[k];
+      mask.frostProgression = _frostProgression;
       mask.curveShaped = (k == 0);
       _blurMaskLayers[e][k] = mask;
       EF_BENCH_LOG("bbv_mask");

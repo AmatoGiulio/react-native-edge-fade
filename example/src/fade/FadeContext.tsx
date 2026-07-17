@@ -99,7 +99,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   const radius = useSharedValue(0);
   const frostSat = useSharedValue(0.9);
   const frostLift = useSharedValue(1.03);
-  const frostProg = useSharedValue(0.35);
+  const frostProg = useSharedValue(1);
 
   const [mode, setMode] = useState<EdgeFadeMode>('blur');
   // No frost tint by default: a pure content-derived Gaussian blur that adapts
@@ -148,7 +148,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     radius.set(0);
     frostSat.set(0.9);
     frostLift.set(1.03);
-    frostProg.set(0.35);
+    frostProg.set(1);
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
@@ -244,7 +244,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     'worklet';
     return frostProg.get();
   }, [frostProg]);
-  const frostProgression = useThrottledMirror(readFrostProg, 0.35);
+  const frostProgression = useThrottledMirror(readFrostProg, 1);
 
   const render = useMemo<FadeRender>(
     () => ({

@@ -94,7 +94,7 @@ class EdgeFadeViewManager :
   @ReactProp(name = "frostLift", defaultFloat = 1.03f)
   override fun setFrostLift(view: EdgeFadeView, value: Float) { view.frostLift = value }
 
-  @ReactProp(name = "frostProgression", defaultFloat = 0.35f)
+  @ReactProp(name = "frostProgression", defaultFloat = 1f)
   override fun setFrostProgression(view: EdgeFadeView, value: Float) { view.frostProgression = value }
 
   companion object {

@@ -103,7 +103,7 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 | `mode`   | `'mask' \| 'overlay' \| 'blur'`       | auto       | Render mode; inferred from `color` when omitted      |
 | `color`  | `ColorValue`                          | —          | Overlay color, or optional frost veil color in `blur` mode (omit for pure blur) |
 | `blurRadius` | `number`                          | `28`       | Max blur radius (dp) at the outer edge, `blur` mode only |
-| `frostProgression` | `number`                    | `0.35`     | `blur` mode — fraction of the band over which the frost ramps from sharp to solid (clamped 0.05–1) |
+| `frostProgression` | `number`                    | `1`        | `blur` mode — fraction of the band over which the curve's blur envelope completes (clamped 0.05–1) |
 | `frostSaturation` | `number`                     | `0.9`      | `blur` mode — saturation grade on the blurred pixels. **Android only** |
 | `frostLift` | `number`                           | `1.03`     | `blur` mode — brightness grade on the blurred pixels. **Android only** |
 | `radius` | `number`                              | —          | Corner radius (dp). Use this instead of `style.borderRadius` |
@@ -190,10 +190,12 @@ increasing-radius Gaussian blurs, cross-faded along the band, so the perceived b
 continuously from sharp at the inner edge to the full `blurRadius` at the outer edge. Blur passes
 are clipped to the fade strips, so cost scales with the band area, not the view size.
 
-The band opens with a short sharp→frost transition — its length is the `frostProgression`
-prop and its shape follows the `curve`, so editing the Bézier reshapes the transition — then
-the blur deepens continuously toward the outer edge with no visible level seams. The band
-extent is set only by `top` / `bottom` / `left` / `right`.
+The `curve` shapes the entire blur progression, not just its onset: it's the envelope the
+perceived radius follows from sharp at the inner edge to full `blurRadius` at the outer edge, so
+editing the Bézier reshapes the whole ramp. `frostProgression` (default `1`) is the fraction of
+the band (inner→outer) over which that envelope completes — smaller values compress the same
+shape toward the inner edge, reaching full blur sooner and holding it for the rest of the band.
+The band extent is set only by `top` / `bottom` / `left` / `right`.
 
 `blurRadius` sets the maximum blur depth (dp) reached at the outer edge. `color` optionally adds
 a frosted material veil on top of the blur (a smoothstep ramp to 0.6 max opacity) — omit it for

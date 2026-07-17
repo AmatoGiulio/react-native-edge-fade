@@ -78,11 +78,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Frost tuning (blur mode). frostSaturation/frostLift = saturation + brightness
   // grade applied to the blurred pixels (1 = neutral; sat < 1 desaturates toward
   // a soft pastel, lift ~1 keeps it light). frostProgression = fraction of the
-  // band over which the frost mask ramps sharp → solid (short = crisp Apple-style
-  // transition, then a solid frost plateau).
+  // band over which the fade curve's presence envelope completes; the curve now
+  // shapes the whole blur progression (all three levels), not just level 0's
+  // sharp→frost onset — a shorter fp compresses that envelope toward the inner
+  // edge (default 1 = the curve spans the full band).
   var frostSaturation: Float = 0.9f
   var frostLift:       Float = 1.03f
-  var frostProgression: Float = 0.35f
+  var frostProgression: Float = 1f
 
   // Lens mode (mode="lens"): the whole view becomes a rounded-rect liquid-glass
   // panel refracting its own content (Cloudy LiquidGlass shader, API 33+).
@@ -634,15 +636,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
       // Composite: offscreen layer over the band, node drawn back at 1:1, then a
       // DST_IN gradient (view coords) multiplies its alpha. LAYERED masks each
-      // level to its [lo,hi] slice of the fade curve; UNIFORM masks each level
-      // with a geometric plateau starting at LEVEL_START[k] so the heavier blur
-      // fades in further toward the edge (the bottom ends up the most blurred).
-      val transition = frostProgression.coerceIn(0.05f, 1f)
-      val start = if (BLUR_STYLE == BLUR_STYLE_LAYERED) 0f else LEVEL_START[k]
-      val width = if (k == 0) transition else LEVEL_RAMP_WIDTH[k]
-      val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k, start * 10f + width)) {
+      // level to its [lo,hi] slice of the fade curve; UNIFORM masks each level to
+      // the same [lo,hi] presence slice but resolves presence through the fade
+      // curve's envelope (compressed into `fp` of the band), so the curve now
+      // governs the whole progression, not just level 0's onset.
+      val fp = frostProgression.coerceIn(0.05f, 1f)
+      val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k, fp)) {
         if (BLUR_STYLE == BLUR_STYLE_LAYERED) levelGradient(curve, lo, hi, gx0, gy0, gx1, gy1)
-        else frostGradient(curve, gx0, gy0, gx1, gy1, start, width, curveShaped = k == 0)
+        else frostGradient(curve, gx0, gy0, gx1, gy1, lo, hi, fp, curveShaped = k == 0)
       }
       val sc = canvas.saveLayer(bandLeft, bandTop, bandRight, bandBottom, null)
       canvas.translate(nLeft, nTop)
@@ -743,30 +744,30 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
   }
 
-  // UNIFORM plateau mask. Along inner (t=0) → outer (t=1): alpha stays 0 until
-  // `start`, ramps 0 → 1 (smoothstep) over the next `width` fraction of the band,
-  // then holds at 1. `start` lets each of UNIFORM's stacked levels fade its blur
-  // in further out than the last, so the radius grows toward the edge (the bottom
-  // is the most blurred) — a visible progression, while the sharp↔blur cross-fade
-  // stays on the light first level only. RGB is irrelevant under DST_IN.
+  // UNIFORM mask, curve-governed. Along inner (t=0) → outer (t=1):
+  //   u = min(t / fp, 1)            — compress the envelope into the inner `fp`
+  //                                    fraction of the band
+  //   P = presenceAt(curve, u)      — the fade curve's presence at u
+  //   v = clamp((P − lo)/(hi − lo)) — this level's [lo,hi] slice of P
+  //   weight = v for level 0 (the visible sharp→frost transition, so editing the
+  //     Bézier reshapes it directly); v·v·(3−2v) for the heavier levels — a
+  //     zero-slope smoothstep anti-banding pass, since their fade-ins are
+  //     internal cross-fades between two blur radii and a raw (non-zero-slope)
+  //     entry draws a visible onset line ("band") on scrolling content.
+  // RGB is irrelevant under DST_IN — only the alpha ramp is consumed.
   private fun frostGradient(
-    curve: String, x0: Float, y0: Float, x1: Float, y1: Float, start: Float, width: Float,
-    curveShaped: Boolean,
+    curve: String, x0: Float, y0: Float, x1: Float, y1: Float,
+    lo: Float, hi: Float, fp: Float, curveShaped: Boolean,
   ): LinearGradient {
     // 32 stops (vs the old 16) so the sampled curve shape is resolved smoothly.
     val n = 32
     val stops = FloatArray(n) { it / (n - 1f) }
+    val range = hi - lo
     val colors = IntArray(n) { i ->
-      // Position within this level's [start, start+width] ramp window. Level 0
-      // (the visible sharp→frost transition) is shaped by the curve's presence
-      // profile so editing the Bézier reshapes it; the heavier levels use a
-      // zero-slope smoothstep — their fade-ins are internal cross-fades between
-      // two blur radii, and a curve-shaped (non-zero slope) entry draws a
-      // visible onset line ("band") on scrolling content.
-      val w = ((stops[i] - start) / width).coerceIn(0f, 1f)
-      val weight =
-        if (curveShaped) EdgeFadeCurves.presenceAt(curve, w)
-        else w * w * (3f - 2f * w)
+      val u = (stops[i] / fp).coerceAtMost(1f)
+      val p = EdgeFadeCurves.presenceAt(curve, u)
+      val v = ((p - lo) / range).coerceIn(0f, 1f)
+      val weight = if (curveShaped) v else v * v * (3f - 2f * v)
       ColorUtils.setAlphaComponent(Color.BLACK, (weight * 255f).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
@@ -796,13 +797,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // share the same record → blur → mask-after-blur → composite path; they
     // differ only in how many Gaussian levels the stack has.
     //
-    //   UNIFORM — three createBlurEffect levels of increasing radius, each faded
-    //     in (via a geometric plateau mask, LEVEL_START) further out than the
-    //     last, so the radius grows toward the edge: a short sharp→frost start,
-    //     then progressively heavier blur, the bottom being the most blurred.
-    //     Cheap (three full-res Gaussians) and the sharp↔blur cross-fade stays on
-    //     the light first level only. `transition` (frostProgression) sets the
-    //     first level's ramp length.
+    //   UNIFORM — three createBlurEffect levels of increasing radius, each masked
+    //     to its own [lo,hi] slice of the fade curve's presence envelope (see
+    //     frostGradient), so the radius grows toward the edge following the
+    //     curve's own shape rather than a fixed geometric ramp. Cheap (three
+    //     full-res Gaussians). `frostProgression` compresses that envelope into
+    //     the inner fraction of the band (default 1 = spans the full band).
     //   LAYERED — five createBlurEffect levels of increasing radius (r·⅕ … r),
     //     each masked to its own slice of the FADE CURVE, so the progression
     //     follows the curve rather than a fixed geometric ramp. Finer stack
@@ -817,18 +817,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     private val LEVEL_BOUNDS =
       if (BLUR_STYLE == BLUR_STYLE_LAYERED) floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)
       else floatArrayOf(0.35f, 0.65f, 1f)
-
-    // UNIFORM only: geometric fraction (inner→outer) where each level's blur
-    // starts fading in. Level 0 starts at the inner edge (its ramp length is the
-    // `transition` prop); the heavier levels start further out so the blur grows
-    // toward the edge. Unused by LAYERED.
-    private val LEVEL_START = floatArrayOf(0f, 0.35f, 0.65f)
-
-    // UNIFORM only: per-level ramp widths (level 0 uses the `transition` prop).
-    // Every heavy level ramps all the way to the outer edge (start + width = 1)
-    // so there are NO interior plateaus: a region of constant blend between two
-    // seams reads as a visible "band" while scrolling. Index 0 is unused.
-    private val LEVEL_RAMP_WIDTH = floatArrayOf(0f, 0.65f, 0.35f)
 
     // Per-level strip render scale: the light first level stays full-res (its
     // small radius can't hide upscale blur), the heavy levels run at half-res —
