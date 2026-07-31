@@ -17,6 +17,9 @@ import type {
 const DEFAULT_SIZE = 80;
 const DEFAULT_CURVE: EdgeFadeCurve = 'smooth';
 const DEFAULT_BLUR_RADIUS = 28;
+const DEFAULT_FROST_SATURATION = 0.9;
+const DEFAULT_FROST_LIFT = 1.03;
+const DEFAULT_FROST_PROGRESSION = 1;
 
 interface ResolvedEdge {
   size: number;
@@ -65,6 +68,9 @@ export interface NativeEdgeProps {
   overlayColorLeft?: ColorValue;
   overlayColorRight?: ColorValue;
   blurRadius: number;
+  frostSaturation: number;
+  frostLift: number;
+  frostProgression: number;
 }
 
 /**
@@ -141,5 +147,8 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
     overlayColorLeft: left?.color,
     overlayColorRight: right?.color,
     blurRadius: props.blurRadius ?? DEFAULT_BLUR_RADIUS,
+    frostSaturation: props.frostSaturation ?? DEFAULT_FROST_SATURATION,
+    frostLift: props.frostLift ?? DEFAULT_FROST_LIFT,
+    frostProgression: props.frostProgression ?? DEFAULT_FROST_PROGRESSION,
   };
 }

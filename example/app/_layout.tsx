@@ -15,7 +15,7 @@ import { PanelTitle, PanelResetButton } from '@/components/PanelHeader';
 import { useScheme, PALETTES } from '@/theme';
 
 import DiscoverTune from '@expo/material-symbols/discover_tune.xml';
-
+import Web from '@expo/material-symbols/web.xml';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30 * 60 * 1000 } },
 });
@@ -59,6 +59,11 @@ export default function RootLayout() {
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
+                    <Stack.Toolbar.Button
+                      icon={Platform.OS === 'ios' ? 'safari' : Web}
+                      tintColor={t.headerTint}
+                      onPress={() => router.push('/webview')}
+                    />
                   </Stack.Toolbar>
                 </Stack.Screen>
                 <Stack.Screen
@@ -92,6 +97,29 @@ export default function RootLayout() {
                     headerTitle: 'Debug',
                     headerBackButtonDisplayMode: 'minimal',
                     headerTintColor: t.headerTint,
+                    animation: 'slide_from_right',
+                  }}
+                >
+                  <Stack.Toolbar placement="right">
+                    <Stack.Toolbar.Button
+                      icon={
+                        Platform.OS === 'ios'
+                          ? 'slider.horizontal.below.rectangle'
+                          : DiscoverTune
+                      }
+                      tintColor={t.headerTint}
+                      onPress={() => router.push('/panel')}
+                    />
+                  </Stack.Toolbar>
+                </Stack.Screen>
+                <Stack.Screen
+                  name="webview"
+                  options={{
+                    headerShown: true,
+                    headerTransparent: true,
+                    headerTitle: 'WebView',
+                    headerBackButtonDisplayMode: 'minimal',
+                    headerTintColor: 'transparent',
                     animation: 'slide_from_right',
                   }}
                 >

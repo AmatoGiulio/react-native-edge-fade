@@ -320,6 +320,10 @@ export function FadePanel() {
     y1,
     x2,
     y2,
+    top,
+    bottom,
+    left,
+    right,
     blur,
     radius,
     frostSat,
@@ -628,12 +632,46 @@ export function FadePanel() {
           </View>
         </View>
       </ThemedMenu>
-      {/*
-        <DialRow label="top" value={top} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="bottom" value={bottom} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="left" value={left} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        <DialRow label="right" value={right} min={0} max={320} step={2} format={fmtPx} tint={scheme} {...dialSurface} />
-        */}
+      <DialRow
+        label="top"
+        value={top}
+        min={0}
+        max={320}
+        step={2}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+      />
+      <DialRow
+        label="bottom"
+        value={bottom}
+        min={0}
+        max={320}
+        step={2}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+      />
+      <DialRow
+        label="left"
+        value={left}
+        min={0}
+        max={320}
+        step={2}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+      />
+      <DialRow
+        label="right"
+        value={right}
+        min={0}
+        max={320}
+        step={2}
+        format={fmtPx}
+        tint={scheme}
+        {...dialSurface}
+      />
       <DialRow
         label="blur"
         value={blur}

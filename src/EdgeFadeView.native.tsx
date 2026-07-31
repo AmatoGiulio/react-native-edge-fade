@@ -21,6 +21,9 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    frostSaturation: _fs,
+    frostLift: _fl,
+    frostProgression: _fp,
     radius,
     style,
     children,
@@ -49,6 +52,9 @@ export const EdgeFadeView = memo(function EdgeFadeView(
       curveRight={n.curveRight}
       mode={n.mode}
       blurRadius={n.blurRadius}
+      frostSaturation={n.frostSaturation}
+      frostLift={n.frostLift}
+      frostProgression={n.frostProgression}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

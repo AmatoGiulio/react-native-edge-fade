@@ -293,6 +293,17 @@ static NSArray<NSNumber *> *veilLocations(void)
   UIViewPropertyAnimator *_blurAnimators[kEdgeFadeEdgeCount][kEdgeFadeBlurLevels];
   EdgeFadeBlurMaskLayer  *_blurMaskLayers[kEdgeFadeEdgeCount][kEdgeFadeBlurLevels];
 
+  // CADisplayLink to force blur-backdrop refresh on every frame.
+  // UIVisualEffectView samples content behind it via CABackdropLayer. For views
+  // rendered out-of-process (e.g. WKWebView), the backdrop snapshot may become
+  // stale when the remote content updates — the blur renders a previous frame
+  // over the current sharp frame, showing as a "stained" / distorted region.
+  // Fractional frame nudging on each display tick forces CABackdropLayer to
+  // re-sample the latest composited content, keeping the blur in sync with
+  // dynamic WebView content. The display link is paused when blurRadius=0 or an
+  // edge has no active fade strip — zero cost when idle.
+  CADisplayLink *_displayLink;
+
   // Frost veil — optional per-edge CAGradientLayers on top of the blur stack,
   // painted only when _overlayColor is set (opt-in, replicating Android behavior).
   CAGradientLayer *_frostTop, *_frostBottom, *_frostLeft, *_frostRight;
@@ -478,6 +489,7 @@ static NSArray<NSNumber *> *veilLocations(void)
     if (sizeChanged) {
       [self _updateLayerFrames];
       [self _invalidateBlurMaskLayers];
+      [self _ensureDisplayLinkState];
     }
     EF_BENCH_LOG("up_blur_size");
     if (curveChanged) {
@@ -497,6 +509,7 @@ static NSArray<NSNumber *> *veilLocations(void)
     if (blurRadiusChanged) {
       [self _updateLayerFrames];
       [self _applyBlurFraction];
+      [self _ensureDisplayLinkState];
     }
     EF_BENCH_LOG("up_blur_radius");
     if (frostProgressionChanged) {
@@ -579,8 +592,10 @@ static NSArray<NSNumber *> *veilLocations(void)
 // ─── Fade layer management ───────────────────────────────────────────────────
 
 - (void)_teardownFadeLayers {
-  // Mask mode
-  self.layer.mask = nil;
+    // Mode switch — pause the display link before tearing down layers.
+    _displayLink.paused = YES;
+    // Mask mode
+    self.layer.mask = nil;
   _maskLayer = nil;
 
   // Overlay mode
@@ -631,6 +646,8 @@ static NSArray<NSNumber *> *veilLocations(void)
 }
 
 - (void)dealloc {
+  [_displayLink invalidate];
+  _displayLink = nil;
   [self _neutralizeBlurAnimators];
 }
 
@@ -886,6 +903,9 @@ static NSArray<NSNumber *> *veilLocations(void)
   [self _applyBlurFraction];
   EF_BENCH_LOG("bbv_applyFraction");
 
+  [self _ensureDisplayLinkState];
+  EF_BENCH_LOG("bbv_displayLink");
+
   // Saturation compensation layers — above the blur stack (added after the
   // effect subviews), below the frost veil (built later, so it lands on top).
   _satTop    = [self _makeSatCompLayerWithScale:scale];
@@ -917,6 +937,49 @@ static NSArray<NSNumber *> *veilLocations(void)
   for (UIView *subview in blurView.subviews) {
     subview.hidden = ![NSStringFromClass(subview.class) containsString:@"Backdrop"];
   }
+}
+
+// ─── CADisplayLink — blur backdrop refresh ───────────────────────────────────
+//
+// UIVisualEffectView's CABackdropLayer samples the composited layer tree behind
+// it. For out-of-process content (WKWebView), the snapshot may be stale —
+// producing a "stained" / distorted blur region when dynamic media (images,
+// video) loads or updates under the fade. Fractionally nudging each active
+// effect view's alpha on every display tick forces CABackdropLayer to re-sample
+// the latest composited frame, keeping the blur in sync with live WebView
+// content. The nudge is wrapped in a CATransaction with disabled actions so it
+// produces no visible flicker; 0.9998 vs 1.0 is imperceptible to the human eye
+// and does not change the visual output — it only marks the layer tree as dirty.
+
+- (void)_ensureDisplayLinkState {
+  BOOL needsActive = (_renderMode == EdgeFadeModeBlur && _blurRadius > 0
+                      && (_fadeTop > 0 || _fadeBottom > 0 || _fadeLeft > 0 || _fadeRight > 0));
+
+  if (!_displayLink) {
+    _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(_tickBlurBackdrop:)];
+    _displayLink.paused = YES;
+    [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+  }
+  _displayLink.paused = !needsActive;
+}
+
+- (void)_tickBlurBackdrop:(CADisplayLink *)link {
+  if (_renderMode != EdgeFadeModeBlur || _blurRadius <= 0) {
+    link.paused = YES;
+    return;
+  }
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
+      UIVisualEffectView *view = _blurViews[e][k];
+      if (view && !view.hidden) {
+        view.alpha = 0.9998;
+        view.alpha = 1.0;
+      }
+    }
+  }
+  [CATransaction commit];
 }
 
 // Map blurRadius (default 28, range 0–∞) to a per-level fraction in [0, 1] for

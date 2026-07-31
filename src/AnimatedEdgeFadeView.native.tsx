@@ -139,6 +139,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     curve: _c,
     mode: _m,
     color: _col,
+    blurRadius: _br,
+    frostSaturation: _fs,
+    frostLift: _fl,
+    frostProgression: _fp,
     radius: _radius,
     style,
     children,
@@ -175,6 +179,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       curveLeft={n.curveLeft}
       curveRight={n.curveRight}
       mode={n.mode}
+      blurRadius={n.blurRadius}
+      frostSaturation={n.frostSaturation}
+      frostLift={n.frostLift}
+      frostProgression={n.frostProgression}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

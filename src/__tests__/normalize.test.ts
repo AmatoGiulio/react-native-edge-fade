@@ -128,6 +128,27 @@ describe('resolveNativeProps — blurRadius', () => {
         .blurRadius
     ).toBe(0);
   });
+
+  test('defaults frost tuning props', () => {
+    const n = resolveNativeProps({ bottom: true, mode: 'blur' });
+    expect(n.frostSaturation).toBe(0.9);
+    expect(n.frostLift).toBe(1.03);
+    expect(n.frostProgression).toBe(1);
+  });
+
+  test('forwards explicit frost tuning props', () => {
+    const n = resolveNativeProps({
+      bottom: true,
+      mode: 'blur',
+      frostSaturation: 0.75,
+      frostLift: 1.1,
+      frostProgression: 0.35,
+    });
+
+    expect(n.frostSaturation).toBe(0.75);
+    expect(n.frostLift).toBe(1.1);
+    expect(n.frostProgression).toBe(0.35);
+  });
 });
 
 // ── Colors ─────────────────────────────────────────────────────────────────────

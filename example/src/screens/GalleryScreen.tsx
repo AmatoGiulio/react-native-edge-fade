@@ -23,12 +23,12 @@ const PhotoCell = memo(function PhotoCell({ item }: { item: CatalogItem }) {
         source={item.source}
         style={[s.img, { backgroundColor: item.color + '33' }]}
         contentFit="cover"
-        placeholder={
+        /*placeholder={
           item.blur_hash && item.blur_hash.length >= 6
             ? { blurhash: item.blur_hash }
             : undefined
-        }
-        transition={300}
+        }*/
+        //xtransition={300}
       />
     </Pressable>
   );
