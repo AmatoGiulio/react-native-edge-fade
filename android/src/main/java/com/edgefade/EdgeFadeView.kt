@@ -247,11 +247,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // scroll events into a single invalidation per vsync frame. Gated on an
   // active fade so idle screens pay nothing.
   private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
-    // TEMP: disabled to isolate flash cause.
-    // If flash goes away → scroll sync is the culprit.
-    // if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
-    //   invalidate()
-    // }
+    if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
+      invalidate()
+    }
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -521,9 +519,51 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
-    // DIAGNOSTIC: skip recording — only sharp base. Does it still flash?
+    // Record children once into the content RenderNode; each per-edge/level
+    // node references this recording so the blur only processes the edge
+    // strips, not the whole view. The RecordingCanvas captures all child
+    // types (WebView, video, images) via display-list recording.
+    //
+    // NOTE: RecordingCanvas.beginRecording triggers a WebView HTML re-render
+    // on Android, which may cause a brief flicker on HTML-only content.
+    // Video and images are unaffected. This is a WebView/RecordingCanvas
+    // platform interaction — not something the library can prevent without
+    // abandoning hardware-accelerated blur entirely.
+    val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
+    content.setPosition(0, 0, width, height)
+    val rc = content.beginRecording()
+    try {
+      background?.draw(rc)
+      super.dispatchDraw(rc)
+    } finally {
+      content.endRecording()
+    }
+
+    // Sharp base underneath the frost — content stays visible under the fade,
+    // just blurred toward the edge (no dissolve), like iOS.
     super.dispatchDraw(canvas)
-    return
+
+    if (fadeTop > 0f) {
+      drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
+        0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
+    }
+    if (fadeBottom > 0f) {
+      drawEdgeLevels(canvas, EDGE_BOTTOM, content, curveBottom, levelBottomCaches, fadeBottom, h,
+        0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
+    }
+    if (fadeLeft > 0f) {
+      drawEdgeLevels(canvas, EDGE_LEFT, content, curveLeft, levelLeftCaches, fadeLeft, 0f,
+        0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
+    }
+    if (fadeRight > 0f) {
+      drawEdgeLevels(canvas, EDGE_RIGHT, content, curveRight, levelRightCaches, fadeRight, w,
+        w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
+    }
+    lastBlurEffectRadius = blurRadius
+    lastFrostSaturation = frostSaturation
+    lastFrostLift = frostLift
+
+    overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
   }
 
   // Blur + composite one edge's level stack. For each level: record the content
