@@ -52,6 +52,20 @@ BOOL EdgeFadeCurveIsCustom(NSString *curve) {
   return [curve containsString:@","];
 }
 
+// Global cache for parsed custom curves. The same comma-separated alpha string
+// is often used on multiple edges (top, bottom, left, right) and in
+// EdgeFadePresenceAt — parsing it every time allocates two malloc buffers.
+// Cached entries are retained for the process lifetime; custom curves in a
+// typical app number < 10, so memory growth is negligible.
+static NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *customAlphaCache(void) {
+  static NSMutableDictionary *cache;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    cache = [NSMutableDictionary dictionary];
+  });
+  return cache;
+}
+
 // Returns heap-allocated buffers on success; caller must free().
 // Returns NO and leaves buffers nil on parse failure.
 static BOOL parseCustomCurve(NSString *curve,
@@ -63,12 +77,30 @@ static BOOL parseCustomCurve(NSString *curve,
   NSUInteger n = parts.count;
   if (n < 2) return NO;
 
+  // Check cache first — the same curve string re-parsed on multiple edges.
+  NSArray<NSNumber *> *cached = customAlphaCache()[curve];
+  if (cached) {
+    NSUInteger cn = cached.count;
+    CGFloat *alphas = (CGFloat *)malloc(cn * sizeof(CGFloat));
+    CGFloat *stops  = (CGFloat *)malloc(cn * sizeof(CGFloat));
+    for (NSUInteger i = 0; i < cn; i++) {
+      alphas[i] = cached[i].doubleValue;
+      stops[i]  = (CGFloat)i / (cn - 1);
+    }
+    *alphasOut = alphas; *stopsOut = stops; *countOut = cn;
+    return YES;
+  }
+
   CGFloat *alphas = (CGFloat *)malloc(n * sizeof(CGFloat));
   CGFloat *stops  = (CGFloat *)malloc(n * sizeof(CGFloat));
+  NSMutableArray<NSNumber *> *alphaCache = [NSMutableArray arrayWithCapacity:n];
   for (NSUInteger i = 0; i < n; i++) {
-    alphas[i] = [parts[i] doubleValue];
-    stops[i]  = (CGFloat)i / (n - 1);
+    CGFloat a = [parts[i] doubleValue];
+    alphas[i] = a;
+    stops[i] = (CGFloat)i / (n - 1);
+    [alphaCache addObject:@(a)];
   }
+  customAlphaCache()[curve] = alphaCache;
   *alphasOut = alphas; *stopsOut = stops; *countOut = n;
   return YES;
 }

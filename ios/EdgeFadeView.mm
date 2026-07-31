@@ -140,8 +140,24 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
   EdgeFadeResolveCurve(curve, &alphas, &stops, &count, &dynAlphas, &dynStops);
   (void)stops; // overlay uses EdgeFadeLocationsForCurve(); stops are consumed by the mask path only.
 
+  // Global per-(curve,color) cache — the same curve+color across multiple
+  // edges or instances avoids allocating a full 32-stop CGColorRef array.
   CGFloat r, g, b, a;
   [color getRed:&r green:&g blue:&b alpha:&a];
+
+  static NSMutableDictionary<NSString *, NSArray<id> *> *cache;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    cache = [NSMutableDictionary dictionary];
+  });
+
+  NSString *key =
+    [NSString stringWithFormat:@"%@|%.3f,%.3f,%.3f,%.3f", curve, r, g, b, a];
+  NSArray<id> *cached = cache[key];
+  if (cached) {
+    if (dynAlphas) { free(dynAlphas); free(dynStops); }
+    return cached;
+  }
 
   CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
   NSMutableArray *result = [NSMutableArray arrayWithCapacity:count];
@@ -152,7 +168,9 @@ static NSArray<id> *overlayColors(NSString *curve, UIColor *color)
   }
   CGColorSpaceRelease(space);
   if (dynAlphas) { free(dynAlphas); free(dynStops); }
-  return [result copy];
+
+  cache[key] = result;
+  return result;
 }
 
 // ─── Veil colors ─────────────────────────────────────────────────────────────

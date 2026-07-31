@@ -4,6 +4,18 @@ import type { CubicBezierCurve, EdgeFadeCurve, StopsCurve } from './types';
 const SAMPLE_N = 32;
 const SAMPLE_X = Array.from({ length: SAMPLE_N }, (_, i) => i / (SAMPLE_N - 1));
 
+// Global serialisation cache — the same cubicBezier or stops curve is often used
+// on multiple edges, so we avoid re-sampling 32 points + Newton iteration per edge.
+const _serializeCache = new Map<string, string>();
+
+function cacheKey(curve: EdgeFadeCurve): string {
+  if (typeof curve === 'string') return curve;
+  if (curve.type === 'cubicBezier') {
+    return `cb:${curve.x1},${curve.y1},${curve.x2},${curve.y2}`;
+  }
+  return `st:${curve.values.join(',')}`;
+}
+
 // ── Cubic bezier ──────────────────────────────────────────────────────────────
 // Chrome's polynomial form (Horner's method) + Newton iteration.
 // Control points: P0=(0,0), P1=(x1,y1), P2=(x2,y2), P3=(1,1).
@@ -58,10 +70,18 @@ function normalizeStops(curve: StopsCurve): number[] {
  * - cubicBezier and stops are sampled and serialized as "a0,a1,...,aN".
  */
 export function serializeCurve(curve: EdgeFadeCurve): string {
-  if (typeof curve === 'string') return curve;
-  const alphas =
-    curve.type === 'cubicBezier'
-      ? sampleCubicBezier(curve)
-      : normalizeStops(curve);
-  return alphas.join(',');
+  const key = cacheKey(curve);
+  const cached = _serializeCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const result =
+    typeof curve === 'string'
+      ? curve
+      : (curve.type === 'cubicBezier'
+          ? sampleCubicBezier(curve)
+          : normalizeStops(curve)
+        ).join(',');
+
+  _serializeCache.set(key, result);
+  return result;
 }
