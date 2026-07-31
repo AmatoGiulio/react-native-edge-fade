@@ -519,24 +519,25 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
-    // Record children once into the content RenderNode. drawBackground() in
-    // View.draw() already paints the background onto the main canvas; omitting
-    // background?.draw(rc) avoids a double-background draw when
-    // drawRenderNode(content) is later used for the sharp base.
-    //
-    // Children are drawn only ONCE per frame (recording). The sharp base and
-    // all blur strips read from the same RenderNode — no frame mismatch.
+    // Record children once into the content RenderNode; each per-edge/level
+    // node references this recording so the blur only processes the edge
+    // strips, not the whole view. The RecordingCanvas captures all child
+    // types (WebView, video, images) via display-list recording.
     val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
     content.setPosition(0, 0, width, height)
     val rc = content.beginRecording()
     try {
+      // Opaque backdrop fills transparency gaps so the Gaussian never bleeds
+      // and the frost fully occludes at any radius.
+      background?.draw(rc)
       super.dispatchDraw(rc)
     } finally {
       content.endRecording()
     }
 
-    // Sharp base from the same RenderNode — single draw pass for all children.
-    canvas.drawRenderNode(content)
+    // Sharp base underneath the frost — content stays visible under the fade,
+    // just blurred toward the edge (no dissolve), like iOS.
+    super.dispatchDraw(canvas)
 
     if (fadeTop > 0f) {
       drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
