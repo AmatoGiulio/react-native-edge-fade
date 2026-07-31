@@ -50,6 +50,8 @@ Building edge fades from scratch means juggling `MaskedView`, `LinearGradient`, 
 </EdgeFadeView>
 ```
 
+> **Android + WebView**: `mode="blur"` may briefly flicker on HTML content — `RecordingCanvas` triggers a WebView re-render pass. Video and images are unaffected. For WebView-heavy screens, use `mode="overlay"`. iOS works flawlessly with all content.
+
 ## Installation
 
 ```sh
