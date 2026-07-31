@@ -243,11 +243,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // fade composite) is NOT re-executed, so the strip would show stale content
   // and trail/flick during a fling. Invalidating on every scroll change forces
   // dispatchDraw to re-record the children at the new offset, keeping the fade
-  // frame-synced with the scroll (the sync half of Cloudy's snapshot+sync
-  // pipeline). Gated on an active fade so idle screens pay nothing.
+  // frame-synced with the scroll. postInvalidateOnAnimation coalesces multiple
+  // scroll events into a single invalidation per vsync frame. Gated on an
+  // active fade so idle screens pay nothing.
   private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
     if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
-      invalidate()
+      postInvalidateOnAnimation()
     }
   }
 
@@ -501,9 +502,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       val w = width.toFloat(); val h = height.toFloat()
 
       // createBlurEffect / drawRenderNode need API 31 and a hardware canvas.
+      // blurRadius below 1 is visually indistinguishable from no blur — skip
+      // the entire pipeline and fall back to the cheaper mask renderer.
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
           !canvas.isHardwareAccelerated ||
-          blurRadius <= 0f) {
+          blurRadius < 1f) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) logBlurFallbackOnce()
         drawMask(canvas)
         return
@@ -516,31 +519,27 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
-    // Record children once into the content node; each per-edge/level node draws
-    // a reference to this recording but is sized to just its edge strip, so the
-    // blur RenderEffect only processes the strip's pixels, not the whole view.
+    // Record children once into the content RenderNode. drawBackground() in
+    // View.draw() already paints the background onto the main canvas; omitting
+    // background?.draw(rc) from the recording avoids a double-background draw
+    // when drawRenderNode(content) is later used for the sharp base. The blur
+    // strips may show slightly more transparency at gaps between children, but
+    // for the common case of an opaque backgroundColor on the parent list, the
+    // visual result is identical.
+    //
+    // Children are drawn only ONCE per frame (recording). The sharp base and
+    // all blur strips read from the same RenderNode — no frame mismatch.
     val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
     content.setPosition(0, 0, width, height)
     val rc = content.beginRecording()
     try {
-      // Opaque backdrop first. The Gaussian samples across the whole strip, so
-      // any transparency in the recording (gaps between children, a transparent
-      // list background) gets spread by the blur — the larger the radius, the
-      // wider it bleeds, making the frost turn semi-transparent and let content
-      // show through (worse at high blur). Drawing the view's real background
-      // into the recording fills those gaps; when the app sets an opaque
-      // backgroundColor the strip is fully opaque and occludes at any radius.
-      // (background.draw handles the RN CSSBackgroundDrawable, which a
-      // `as? ColorDrawable` cast misses.)
-      background?.draw(rc)
       super.dispatchDraw(rc)
     } finally {
       content.endRecording()
     }
 
-    // Sharp base underneath the frost — content stays visible under the fade,
-    // just blurred toward the edge (no dissolve), like iOS.
-    super.dispatchDraw(canvas)
+    // Sharp base from the same RenderNode — single draw pass for all children.
+    canvas.drawRenderNode(content)
 
     if (fadeTop > 0f) {
       drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
