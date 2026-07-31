@@ -247,9 +247,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // scroll events into a single invalidation per vsync frame. Gated on an
   // active fade so idle screens pay nothing.
   private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
-    if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
-      postInvalidateOnAnimation()
-    }
+    // TEMP: disabled to isolate flash cause.
+    // If flash goes away → scroll sync is the culprit.
+    // if (fadeTop > 0f || fadeBottom > 0f || fadeLeft > 0f || fadeRight > 0f) {
+    //   invalidate()
+    // }
   }
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
