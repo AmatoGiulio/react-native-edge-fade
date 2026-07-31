@@ -521,47 +521,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
-    // Record children once into the content RenderNode; each per-edge/level
-    // node references this recording so the blur only processes the edge
-    // strips, not the whole view. The RecordingCanvas captures all child
-    // types (WebView, video, images) via display-list recording.
-    val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
-    content.setPosition(0, 0, width, height)
-    val rc = content.beginRecording()
-    try {
-      // Opaque backdrop fills transparency gaps so the Gaussian never bleeds
-      // and the frost fully occludes at any radius.
-      background?.draw(rc)
-      super.dispatchDraw(rc)
-    } finally {
-      content.endRecording()
-    }
-
-    // Sharp base underneath the frost — content stays visible under the fade,
-    // just blurred toward the edge (no dissolve), like iOS.
+    // DIAGNOSTIC: skip recording — only sharp base. Does it still flash?
     super.dispatchDraw(canvas)
-
-    if (fadeTop > 0f) {
-      drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
-        0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
-    }
-    if (fadeBottom > 0f) {
-      drawEdgeLevels(canvas, EDGE_BOTTOM, content, curveBottom, levelBottomCaches, fadeBottom, h,
-        0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
-    }
-    if (fadeLeft > 0f) {
-      drawEdgeLevels(canvas, EDGE_LEFT, content, curveLeft, levelLeftCaches, fadeLeft, 0f,
-        0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
-    }
-    if (fadeRight > 0f) {
-      drawEdgeLevels(canvas, EDGE_RIGHT, content, curveRight, levelRightCaches, fadeRight, w,
-        w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
-    }
-    lastBlurEffectRadius = blurRadius
-    lastFrostSaturation = frostSaturation
-    lastFrostLift = frostLift
-
-    overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
+    return
   }
 
   // Blur + composite one edge's level stack. For each level: record the content
