@@ -1,6 +1,7 @@
 package com.edgefade
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.Color
@@ -19,6 +20,8 @@ import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
@@ -126,6 +129,35 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // recording so the blur only reprocesses each edge strip, not the whole view.
   @Suppress("NewApi")
   private var blurNode: RenderNode? = null
+
+  // WebView detection — checked once per draw cycle. WebView content may not
+  // render correctly into a hardware RecordingCanvas (out-of-process surface).
+  // When a WebView descendant is found, the blur pipeline switches to per-edge
+  // software Bitmap capture for the strip areas; the sharp base uses the safe
+  // super.dispatchDraw(canvas) path. Without a WebView the optimised single-
+  // dispatchDraw path (RecordingCanvas → drawRenderNode) is used.
+  private var hasWebView = false
+  private var webViewChecked = false
+
+  // Per-edge strip bitmap caches — allocated once on first WebView draw and
+  // resized only when the strip dimensions change. Bitmaps are tiny: a typical
+  // 118dp top fade on a 390dp screen is only 390×118 pixels.
+  private data class StripBmp(var bitmap: Bitmap? = null, var canvas: Canvas? = null) {
+    fun ensure(w: Int, h: Int) {
+      if (w <= 0 || h <= 0) return
+      val b = bitmap
+      if (b != null && b.width == w && b.height == h) return
+      b?.recycle()
+      val nb = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+      bitmap = nb; canvas = Canvas(nb)
+    }
+  }
+  private val stripBmps = Array(EDGE_COUNT) { StripBmp() }
+
+  // Invalidate the WebView cache on hierarchy changes so a freshly-added
+  // WebView is detected on the next draw.
+  override fun onViewAdded(child: View) { super.onViewAdded(child); webViewChecked = false }
+  override fun onViewRemoved(child: View) { super.onViewRemoved(child); webViewChecked = false }
 
   // Per-edge × per-level nodes: levelNodes[edge][k], edge order TOP/BOTTOM/LEFT/
   // RIGHT (see companion consts). Each node is sized to just its edge strip;
@@ -275,10 +307,31 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     levelNodes = Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
     lastLevelRect.forEach { edge -> edge.fill(null) }
     lastBlurEffectRadius = -1f
+    stripBmps.forEach { it.bitmap?.recycle(); it.bitmap = null; it.canvas = null }
+    webViewChecked = false
     super.onDetachedFromWindow()
   }
 
   // ── Drawing ───────────────────────────────────────────────────────────────
+
+  // One-time walk of the view hierarchy looking for any WebView descendant.
+  // Cached until a child is added or removed.
+  private fun checkWebView() {
+    if (webViewChecked) return
+    webViewChecked = true
+    hasWebView = hasWebViewRecursive(this)
+  }
+
+  private fun hasWebViewRecursive(parent: ViewGroup): Boolean {
+    for (i in 0 until parent.childCount) {
+      val child = parent.getChildAt(i)
+      val name = child.javaClass.name
+      // react-native-webview and the underlying android.webkit.WebView
+      if (name.contains("WebView") || name.contains("webview")) return true
+      if (child is ViewGroup && hasWebViewRecursive(child)) return true
+    }
+    return false
+  }
 
   override fun dispatchDraw(canvas: Canvas) {
     Trace.beginSection("EdgeFade.dispatchDraw")
@@ -519,13 +572,23 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   @RequiresApi(Build.VERSION_CODES.S)
   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
+    checkWebView()
+
+    if (hasWebView) {
+      drawBlurLayeredWebView(canvas, w, h)
+    } else {
+      drawBlurLayeredStandard(canvas, w, h)
+    }
+  }
+
+  // ── Standard path (no WebView) — RecordingCanvas, single dispatchDraw ──────
+
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun drawBlurLayeredStandard(canvas: Canvas, w: Float, h: Float) {
     // Record children once into the content RenderNode. drawBackground() in
     // View.draw() already paints the background onto the main canvas; omitting
-    // background?.draw(rc) from the recording avoids a double-background draw
-    // when drawRenderNode(content) is later used for the sharp base. The blur
-    // strips may show slightly more transparency at gaps between children, but
-    // for the common case of an opaque backgroundColor on the parent list, the
-    // visual result is identical.
+    // background?.draw(rc) avoids a double-background draw when
+    // drawRenderNode(content) is later used for the sharp base.
     //
     // Children are drawn only ONCE per frame (recording). The sharp base and
     // all blur strips read from the same RenderNode — no frame mismatch.
@@ -561,8 +624,156 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     lastFrostSaturation = frostSaturation
     lastFrostLift = frostLift
 
-    // Optional frost material veil on top (opt-in via overlayColor).
     overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
+  }
+
+  // ── WebView path — per-edge software Bitmap capture ────────────────────────
+  //
+  // WebView content may not render into a hardware RecordingCanvas (it uses an
+  // out-of-process surface). For each active edge we capture ONLY the fade strip
+  // area to a small software Bitmap — a 390×118px top strip is ~184 KB, and the
+  // bitmap is reused across frames. Children's draw() calls are triggered but
+  // the GPU clips to the strip bounds, so the cost is confined to the band.
+  //
+  // The sharp base uses the always-reliable super.dispatchDraw(canvas).
+
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun drawBlurLayeredWebView(canvas: Canvas, w: Float, h: Float) {
+    // Sharp base — hardware dispatchDraw, works with any content.
+    super.dispatchDraw(canvas)
+
+    if (fadeTop > 0f) {
+      drawEdgeLevelsWebView(canvas, EDGE_TOP, curveTop, levelTopCaches, fadeTop, 0f,
+        0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)
+    }
+    if (fadeBottom > 0f) {
+      drawEdgeLevelsWebView(canvas, EDGE_BOTTOM, curveBottom, levelBottomCaches, fadeBottom, h,
+        0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)
+    }
+    if (fadeLeft > 0f) {
+      drawEdgeLevelsWebView(canvas, EDGE_LEFT, curveLeft, levelLeftCaches, fadeLeft, 0f,
+        0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)
+    }
+    if (fadeRight > 0f) {
+      drawEdgeLevelsWebView(canvas, EDGE_RIGHT, curveRight, levelRightCaches, fadeRight, w,
+        w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)
+    }
+    lastBlurEffectRadius = blurRadius
+    lastFrostSaturation = frostSaturation
+    lastFrostLift = frostLift
+
+    overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
+  }
+
+  // Like drawEdgeLevels but sources content from a per-edge software Bitmap
+  // instead of a full-view RenderNode. Captures only the strip area + padding.
+
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun drawEdgeLevelsWebView(
+    canvas: Canvas, edge: Int, curve: String,
+    caches: Array<GradientCache<LevelGradKey>>,
+    size: Float, dim: Float,
+    bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
+    gx0: Float, gy0: Float, gx1: Float, gy1: Float,
+  ) {
+    val vw = width.toFloat(); val vh = height.toFloat()
+    val edgeNodes = levelNodes[edge]
+    val edgeRects = lastLevelRect[edge]
+
+    // Capture the outermost (largest) level's padded rect — all three levels
+    // share the same bitmap. The outermost level needs the widest padding.
+    val maxPad = ceil(blurRadius * LEVEL_FRACTIONS.last())
+    val capLeft   = (bandLeft   - maxPad).coerceAtLeast(0f)
+    val capTop    = (bandTop    - maxPad).coerceAtLeast(0f)
+    val capRight  = (bandRight  + maxPad).coerceAtMost(vw)
+    val capBottom = (bandBottom + maxPad).coerceAtMost(vh)
+    val capW = ceil(capRight - capLeft).roundToInt()
+    val capH = ceil(capBottom - capTop).roundToInt()
+
+    val sb = stripBmps[edge]
+    sb.ensure(capW, capH)
+    val bmp = sb.bitmap!!
+    bmp.eraseColor(0)
+    val bmpCanvas = sb.canvas!!
+    bmpCanvas.save()
+    bmpCanvas.translate(-capLeft, -capTop)
+    background?.draw(bmpCanvas)
+    super.dispatchDraw(bmpCanvas)
+    bmpCanvas.restore()
+
+    // Record the strip bitmap into an edge-level RenderNode.
+    val edgeNode = (blurNode ?: RenderNode("EdgeFadeBlur_WebView").also { blurNode = it })
+    edgeNode.setPosition(0, 0, capW, capH)
+    val erc = edgeNode.beginRecording()
+    try {
+      erc.drawBitmap(bmp, 0f, 0f, null)
+    } finally {
+      edgeNode.endRecording()
+    }
+
+    // Now run the standard per-level pipeline, but pointing each level node
+    // at the edge RenderNode instead of a full-view content node.
+    var lo = 0f
+    for (k in LEVEL_FRACTIONS.indices) {
+      val hi = LEVEL_BOUNDS[k]
+      val ds = LEVEL_DOWNSCALE[k]
+      val radius = blurRadius * LEVEL_FRACTIONS[k]
+      val pad = ceil(radius)
+      val nLeft   = (bandLeft   - pad).coerceAtLeast(0f)
+      val nTop    = (bandTop    - pad).coerceAtLeast(0f)
+      val nRight  = (bandRight  + pad).coerceAtMost(vw)
+      val nBottom = (bandBottom + pad).coerceAtMost(vh)
+
+      val node = edgeNodes[k] ?: RenderNode("EdgeFadeBlurLevel_${edge}_$k").also { edgeNodes[k] = it }
+      node.setPosition(0, 0,
+        ceil((nRight - nLeft) * ds).roundToInt(), ceil((nBottom - nTop) * ds).roundToInt())
+      val rc = node.beginRecording()
+      try {
+        // Map the strip bitmap region (in edgeNode) to this level's padded rect.
+        // edgeNode contains (capLeft..capRight, capTop..capBottom).
+        // This level needs (nLeft..nRight, nTop..nBottom).
+        // Translate so that nLeft,nTop in view coords maps to the right spot in the bitmap.
+        rc.scale(ds, ds)
+        rc.translate(-nLeft + capLeft, -nTop + capTop)
+        rc.drawRenderNode(edgeNode)
+      } finally {
+        node.endRecording()
+      }
+
+      val prevRect = edgeRects[k]
+      val rectChanged = prevRect == null ||
+        prevRect.left != nLeft || prevRect.top != nTop ||
+        prevRect.right != nRight || prevRect.bottom != nBottom
+      val frostChanged = frostSaturation != lastFrostSaturation || frostLift != lastFrostLift
+      if (blurRadius != lastBlurEffectRadius || rectChanged || frostChanged) {
+        node.setRenderEffect(
+          if (radius > 0f) {
+            val blur = RenderEffect.createBlurEffect(radius * ds, radius * ds, Shader.TileMode.MIRROR)
+            RenderEffect.createColorFilterEffect(vibrancyFilter(), blur)
+          } else {
+            null
+          },
+        )
+      }
+      edgeRects[k] = (prevRect ?: RectF()).apply { set(nLeft, nTop, nRight, nBottom) }
+
+      val fp = frostProgression.coerceIn(0.05f, 1f)
+      val mask = caches[k].acquire(LevelGradKey(curve, size, dim, k, fp)) {
+        if (BLUR_STYLE == BLUR_STYLE_LAYERED) levelGradient(curve, lo, hi, gx0, gy0, gx1, gy1)
+        else frostGradient(curve, gx0, gy0, gx1, gy1, lo, hi, fp, curveShaped = k == 0)
+      }
+      val sc = canvas.saveLayer(bandLeft, bandTop, bandRight, bandBottom, null)
+      canvas.translate(nLeft, nTop)
+      canvas.scale(1f / ds, 1f / ds)
+      canvas.drawRenderNode(node)
+      canvas.scale(ds, ds)
+      canvas.translate(-nLeft, -nTop)
+      maskPaint.shader = mask
+      canvas.drawRect(bandLeft, bandTop, bandRight, bandBottom, maskPaint)
+      canvas.restoreToCount(sc)
+
+      lo = hi
+    }
   }
 
   // Blur + composite one edge's level stack. For each level: record the content
