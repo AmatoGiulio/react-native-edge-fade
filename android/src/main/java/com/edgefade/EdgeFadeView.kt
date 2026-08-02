@@ -19,7 +19,9 @@ import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
 import android.util.Log
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
@@ -48,7 +50,9 @@ import kotlin.math.roundToInt
  * view's background is drawn into the recording) so the Gaussian never bleeds
  * transparency, and the frost fully occludes at any radius. A scroll listener
  * re-runs the composite each frame so the frost tracks the content during a
- * fling.
+ * fling. Over a WebView the recording is additionally backed by a compositing
+ * layer so its Chromium draw functor runs once per frame rather than once per
+ * reference — see [drawBlurLayered].
  *
  * A compile-time [BLUR_STYLE] flag selects the pipeline: `UNIFORM` (default — a
  * single Gaussian + plateau mask, smoothest and cheapest) or `LAYERED` (a stack
@@ -235,6 +239,40 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Reused for the single-edge mask fast path so it doesn't allocate every frame.
   private val singleEdgeRect = RectF()
 
+  // ── WebView detection (blur mode) ─────────────────────────────────────────
+
+  // Whether any descendant is a WebView, which changes how the blur recording
+  // has to be drawn (see drawBlurLayered). Resolved by walking the subtree, and
+  // only when something may have changed — a WebView cannot appear or disappear
+  // without a layout pass, so the global layout listener is a sufficient (and
+  // cheap) invalidation signal. onViewAdded/onViewRemoved would not do: the
+  // WebView is typically a grandchild, nested inside a scrollable.
+  private var hasWebView = false
+  private var webViewScanDirty = true
+
+  private val layoutListener = ViewTreeObserver.OnGlobalLayoutListener {
+    webViewScanDirty = true
+  }
+
+  private fun hasWebViewDescendant(): Boolean {
+    if (webViewScanDirty) {
+      webViewScanDirty = false
+      hasWebView = containsWebView(this)
+    }
+    return hasWebView
+  }
+
+  private fun containsWebView(parent: ViewGroup): Boolean {
+    for (i in 0 until parent.childCount) {
+      val child = parent.getChildAt(i)
+      // react-native-webview's RNCWebView extends android.webkit.WebView, so an
+      // instance check covers it without matching on class names.
+      if (child is WebView) return true
+      if (child is ViewGroup && containsWebView(child)) return true
+    }
+    return false
+  }
+
   // ── Scroll sync ───────────────────────────────────────────────────────────
 
   // Our fade strips (mask/overlay/blur) are composited in dispatchDraw from a
@@ -257,10 +295,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     viewTreeObserver.addOnScrollChangedListener(scrollListener)
+    viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
+    webViewScanDirty = true
   }
 
   override fun onDetachedFromWindow() {
     viewTreeObserver.takeIf { it.isAlive }?.removeOnScrollChangedListener(scrollListener)
+    viewTreeObserver.takeIf { it.isAlive }?.removeOnGlobalLayoutListener(layoutListener)
     topSlot.release()
     bottomSlot.release()
     leftSlot.release()
@@ -523,12 +564,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     // node references this recording so the blur only processes the edge
     // strips, not the whole view. The RecordingCanvas captures all child
     // types (WebView, video, images) via display-list recording.
-    //
-    // NOTE: RecordingCanvas.beginRecording triggers a WebView HTML re-render
-    // on Android, which may cause a brief flicker on HTML-only content.
-    // Video and images are unaffected. This is a WebView/RecordingCanvas
-    // platform interaction — not something the library can prevent without
-    // abandoning hardware-accelerated blur entirely.
     val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
     content.setPosition(0, 0, width, height)
     val rc = content.beginRecording()
@@ -539,9 +574,36 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       content.endRecording()
     }
 
-    // Sharp base underneath the frost — content stays visible under the fade,
-    // just blurred toward the edge (no dissolve), like iOS.
-    super.dispatchDraw(canvas)
+    // Recording a display list does not execute it: hwui replays `content` once
+    // for every node that references it — the sharp base plus one per blur
+    // level, so four times per frame per edge with the default stack. Ordinary
+    // content redraws identically each time, but a WebView draws through a
+    // Chromium draw functor that produces exactly one compositor frame per
+    // vsync, so every replay after the first lands empty and paints the page's
+    // base colour instead. That is what made the fade flicker over WebView
+    // content (measured on a Pixel 8 emulator: 96% of frames corrupted,
+    // alternating, even with nothing moving).
+    //
+    // Backing the node with a layer fixes it — hwui then executes the display
+    // list once into an offscreen buffer and blits that to each reference, so
+    // the functor runs exactly once per frame. It is not free (~5ms/frame on a
+    // full-screen fade), so only content that actually needs it pays: without a
+    // WebView the node stays layer-less and the base is drawn the cheap way.
+    if (hasWebViewDescendant()) {
+      content.setUseCompositingLayer(true, null)
+      // Sharp base drawn from the same recording, so the children — and the
+      // functor with them — are executed once for the base and the strips
+      // together, rather than once more for a second dispatchDraw. The
+      // recording carries the background, which View.draw has already painted
+      // underneath; identical pixels for an opaque background, very slightly
+      // more opaque for a translucent one.
+      canvas.drawRenderNode(content)
+    } else {
+      content.setUseCompositingLayer(false, null)
+      // Sharp base underneath the frost — content stays visible under the fade,
+      // just blurred toward the edge (no dissolve), like iOS.
+      super.dispatchDraw(canvas)
+    }
 
     if (fadeTop > 0f) {
       drawEdgeLevels(canvas, EDGE_TOP, content, curveTop, levelTopCaches, fadeTop, 0f,
