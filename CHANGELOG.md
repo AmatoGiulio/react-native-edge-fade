@@ -1,4 +1,11 @@
-## Unreleased
+## 0.2.1 (2026-08-02)
+
+### Bug Fixes
+
+* **android:** `mode="blur"` no longer flickers over `WebView` content. hwui replays the blur's content recording once per referencing node — the sharp base plus one per blur level — and a `WebView` draws through a Chromium draw functor that yields exactly one compositor frame per vsync, so every replay after the first painted the page's base colour instead. The recording is now backed by a compositing layer when a `WebView` descendant is present, so the functor runs once per frame; the layer is gated on that detection, leaving every other case on the previous draw path. ([#3](https://github.com/AmatoGiulio/react-native-edge-fade/issues/3), [#4](https://github.com/AmatoGiulio/react-native-edge-fade/pull/4))
+* **ios:** `UIVisualEffectView`'s `CABackdropLayer` could sample a stale snapshot of out-of-process `WKWebView` content, leaving the blur showing an old frame while media loaded underneath. A `CADisplayLink` now marks the effect views dirty each tick so the backdrop re-samples the current frame. ([#3](https://github.com/AmatoGiulio/react-native-edge-fade/issues/3))
+
+## 0.2.0 (2026-07-17)
 
 ### Breaking Changes
 
