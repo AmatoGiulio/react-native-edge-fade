@@ -8,15 +8,18 @@ import androidx.annotation.RequiresApi
 /**
  * Experimental API 33+ spatially-variable blur shader.
  *
- * Unlike the production multi-Gaussian stack, the sample radius is computed for
- * every fragment from the same fade curve used by EdgeFadeView:
+ * Radius is evaluated continuously from the same fade curve used by EdgeFadeView:
  *
  *   radius(t) = maxRadius * presence(curve, min(t / frostProgression, 1))
  *
- * V2 uses a denser 13-tap Gaussian-like low-pass kernel. The extra intermediate
- * ring is specifically meant to reduce temporal shimmer on high-frequency image
- * grids while preserving the single-pass architecture. This is still an
- * approximation, not a mathematically exact Gaussian.
+ * V3 keeps the V2 single-pass architecture but makes sampling adaptive:
+ *   - tiny radius:  5 taps
+ *   - medium:       9 taps
+ *   - large:       13 taps
+ *
+ * The 13-tap footprint is also more compact than V2 (outer ring 0.78R instead
+ * of 0.92R) to reduce phase-sensitive shimmer on moving photographic content.
+ * This is a perceptual low-pass approximation, not an exact Gaussian.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeVariableBlurShader {
@@ -131,6 +134,62 @@ internal class EdgeFadeVariableBlurShader {
         return clamp(graded * lift, 0.0, 1.0);
       }
 
+      half4 blur5(float2 xy, float r) {
+        // Tiny-radius path: dense cross. This is cheaper and more stable than
+        // evaluating distant samples that collapse onto nearly the same texel.
+        float a = r * 0.42;
+        half4 c = tap(xy) * 0.36;
+        c += tap(xy + float2( a, 0.0)) * 0.16;
+        c += tap(xy + float2(-a, 0.0)) * 0.16;
+        c += tap(xy + float2(0.0,  a)) * 0.16;
+        c += tap(xy + float2(0.0, -a)) * 0.16;
+        return c;
+      }
+
+      half4 blur9(float2 xy, float r) {
+        // Medium-radius path: center + inner cross + diagonal ring. Radial
+        // coverage stays compact to avoid phase-sensitive long jumps.
+        half4 c = tap(xy) * 0.20;
+        float a = r * 0.30;
+        c += tap(xy + float2( a, 0.0)) * 0.12;
+        c += tap(xy + float2(-a, 0.0)) * 0.12;
+        c += tap(xy + float2(0.0,  a)) * 0.12;
+        c += tap(xy + float2(0.0, -a)) * 0.12;
+
+        float q = r * 0.43840620; // 0.62 / sqrt(2)
+        c += tap(xy + float2( q,  q)) * 0.08;
+        c += tap(xy + float2(-q,  q)) * 0.08;
+        c += tap(xy + float2( q, -q)) * 0.08;
+        c += tap(xy + float2(-q, -q)) * 0.08;
+        return c;
+      }
+
+      half4 blur13(float2 xy, float r) {
+        // Large-radius path: three compact rings. V2 reached 0.92R with only
+        // four outer samples; V3 caps the footprint at 0.78R and spends those
+        // samples on denser radial coverage instead.
+        half4 c = tap(xy) * 0.16;
+
+        float r0 = r * 0.28;
+        c += tap(xy + float2( r0, 0.0)) * 0.10;
+        c += tap(xy + float2(-r0, 0.0)) * 0.10;
+        c += tap(xy + float2(0.0,  r0)) * 0.10;
+        c += tap(xy + float2(0.0, -r0)) * 0.10;
+
+        float q = r * 0.36769553; // 0.52 / sqrt(2)
+        c += tap(xy + float2( q,  q)) * 0.07;
+        c += tap(xy + float2(-q,  q)) * 0.07;
+        c += tap(xy + float2( q, -q)) * 0.07;
+        c += tap(xy + float2(-q, -q)) * 0.07;
+
+        float r2 = r * 0.78;
+        c += tap(xy + float2( r2, 0.0)) * 0.04;
+        c += tap(xy + float2(-r2, 0.0)) * 0.04;
+        c += tap(xy + float2(0.0,  r2)) * 0.04;
+        c += tap(xy + float2(0.0, -r2)) * 0.04;
+        return c;
+      }
+
       half4 main(float2 xy) {
         float2 d = end - start;
         float len2 = dot(d, d);
@@ -142,28 +201,17 @@ internal class EdgeFadeVariableBlurShader {
         float presence = clamp(1.0 - alphaAt(u), 0.0, 1.0);
         float r = maxRadius * presence;
 
-        // 13 taps spread over three radii. Compared with V1's sparse center +
-        // inner axis + outer diagonal layout, this fills the radial gap that
-        // produced phase-dependent shimmer while photos moved beneath the fade.
-        half4 c = tap(xy) * 0.16;
-
-        float r0 = r * 0.32;
-        c += tap(xy + float2( r0, 0.0)) * 0.10;
-        c += tap(xy + float2(-r0, 0.0)) * 0.10;
-        c += tap(xy + float2(0.0,  r0)) * 0.10;
-        c += tap(xy + float2(0.0, -r0)) * 0.10;
-
-        float q = r * 0.41012193; // 0.58 / sqrt(2)
-        c += tap(xy + float2( q,  q)) * 0.07;
-        c += tap(xy + float2(-q,  q)) * 0.07;
-        c += tap(xy + float2( q, -q)) * 0.07;
-        c += tap(xy + float2(-q, -q)) * 0.07;
-
-        float r2 = r * 0.92;
-        c += tap(xy + float2( r2, 0.0)) * 0.04;
-        c += tap(xy + float2(-r2, 0.0)) * 0.04;
-        c += tap(xy + float2(0.0,  r2)) * 0.04;
-        c += tap(xy + float2(0.0, -r2)) * 0.04;
+        // r is expressed in the downscaled edge-node coordinate space. The
+        // thresholds therefore track actual sampler distance/cost rather than
+        // source-view pixels and remain coherent when downscale changes.
+        half4 c;
+        if (r < 1.5) {
+          c = blur5(xy, r);
+        } else if (r < 5.0) {
+          c = blur9(xy, r);
+        } else {
+          c = blur13(xy, r);
+        }
 
         c.rgb = grade(c.rgb);
         return c;
