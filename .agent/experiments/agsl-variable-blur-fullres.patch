@@ -1,0 +1,7 @@
+--- a/android/src/main/java/com/edgefade/EdgeFadeView.kt
++++ b/android/src/main/java/com/edgefade/EdgeFadeView.kt
+@@
+-    private const val VARIABLE_BLUR_DOWNSCALE = 0.625f
++    // Diagnostic only: full-resolution AGSL pass to isolate residual shimmer
++    // caused by edge-strip downsampling. Keep the 13-tap V2 kernel unchanged.
++    private const val VARIABLE_BLUR_DOWNSCALE = 1.0f
