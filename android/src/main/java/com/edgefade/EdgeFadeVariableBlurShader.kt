@@ -13,10 +13,10 @@ import androidx.annotation.RequiresApi
  *
  *   radius(t) = maxRadius * presence(curve, min(t / frostProgression, 1))
  *
- * This is intentionally a sparse 9-tap Gaussian-like low-pass kernel, not a
- * mathematically exact Gaussian. The experiment is about whether continuous
- * spatial radius + one composite can beat three native Gaussian passes in the
- * quality/performance tradeoff.
+ * V2 uses a denser 13-tap Gaussian-like low-pass kernel. The extra intermediate
+ * ring is specifically meant to reduce temporal shimmer on high-frequency image
+ * grids while preserving the single-pass architecture. This is still an
+ * approximation, not a mathematically exact Gaussian.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeVariableBlurShader {
@@ -118,9 +118,6 @@ internal class EdgeFadeVariableBlurShader {
       }
 
       float2 safeCoord(float2 p) {
-        // EdgeFadeView supplies a radius-sized recording pad around the visible
-        // band. Clamp is therefore a last-resort guard, not the normal sampler
-        // behavior at the sharp/frost seam.
         return clamp(p, float2(0.5), nodeSize - float2(0.5));
       }
 
@@ -145,22 +142,28 @@ internal class EdgeFadeVariableBlurShader {
         float presence = clamp(1.0 - alphaAt(u), 0.0, 1.0);
         float r = maxRadius * presence;
 
-        // The center sample has a deliberately high weight. At tiny radii this
-        // converges smoothly to the source instead of introducing a constant
-        // softening floor.
-        half4 c = tap(xy) * 0.20;
+        // 13 taps spread over three radii. Compared with V1's sparse center +
+        // inner axis + outer diagonal layout, this fills the radial gap that
+        // produced phase-dependent shimmer while photos moved beneath the fade.
+        half4 c = tap(xy) * 0.16;
 
-        float a = r * 0.45;
-        c += tap(xy + float2( a, 0.0)) * 0.12;
-        c += tap(xy + float2(-a, 0.0)) * 0.12;
-        c += tap(xy + float2(0.0,  a)) * 0.12;
-        c += tap(xy + float2(0.0, -a)) * 0.12;
+        float r0 = r * 0.32;
+        c += tap(xy + float2( r0, 0.0)) * 0.10;
+        c += tap(xy + float2(-r0, 0.0)) * 0.10;
+        c += tap(xy + float2(0.0,  r0)) * 0.10;
+        c += tap(xy + float2(0.0, -r0)) * 0.10;
 
-        float q = r * 0.70710678;
-        c += tap(xy + float2( q,  q)) * 0.08;
-        c += tap(xy + float2(-q,  q)) * 0.08;
-        c += tap(xy + float2( q, -q)) * 0.08;
-        c += tap(xy + float2(-q, -q)) * 0.08;
+        float q = r * 0.41012193; // 0.58 / sqrt(2)
+        c += tap(xy + float2( q,  q)) * 0.07;
+        c += tap(xy + float2(-q,  q)) * 0.07;
+        c += tap(xy + float2( q, -q)) * 0.07;
+        c += tap(xy + float2(-q, -q)) * 0.07;
+
+        float r2 = r * 0.92;
+        c += tap(xy + float2( r2, 0.0)) * 0.04;
+        c += tap(xy + float2(-r2, 0.0)) * 0.04;
+        c += tap(xy + float2(0.0,  r2)) * 0.04;
+        c += tap(xy + float2(0.0, -r2)) * 0.04;
 
         c.rgb = grade(c.rgb);
         return c;
