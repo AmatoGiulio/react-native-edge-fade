@@ -49,8 +49,8 @@
 +   * API 33+ experimental spatially-variable blur.
 +   *
 +   * The blur radius is evaluated continuously from the fade curve instead of
-+   * quantized into 3 Gaussian levels. Each active edge costs one half-resolution
-+   * RenderNode + one 9-tap RuntimeShader pass + one composite.
++   * quantized into 3 Gaussian levels. V2 uses a 0.625-resolution RenderNode,
++   * one 13-tap RuntimeShader pass, and one composited content source per frame.
 +   *
 +   * Returns false if RuntimeShader creation/uniform upload fails, so drawBlur()
 +   * can fall back to the production 3-band backend without double-drawing.
@@ -78,13 +78,12 @@
 +    if (fadeRight > 0f && !prepareVariableEdge(EDGE_RIGHT, content, curveRight, fadeRight,
 +        w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)) return false
 +
-+    if (hasWebViewDescendant()) {
-+      content.setUseCompositingLayer(true, null)
-+      canvas.drawRenderNode(content)
-+    } else {
-+      content.setUseCompositingLayer(false, null)
-+      super.dispatchDraw(canvas)
-+    }
++    // V2: always back the recorded subtree with one compositing layer. The
++    // sharp base and every AGSL edge now resolve from the exact same frame.
++    // This deliberately trades some memory/composite cost for temporal
++    // stability while FlashList recycles cells and image drawables update.
++    content.setUseCompositingLayer(true, null)
++    canvas.drawRenderNode(content)
 +
 +    if (fadeTop > 0f) drawPreparedVariableEdge(canvas, EDGE_TOP, fadeTop,
 +      0f, 0f, w, fadeTop)
@@ -178,7 +177,7 @@
 +    // Experimental API 33+ variable-radius AGSL backend. This branch enables it
 +    // for A/B testing only; main remains on the production 3-band renderer.
 +    private const val VARIABLE_BLUR_EXPERIMENT = true
-+    private const val VARIABLE_BLUR_DOWNSCALE = 0.5f
++    private const val VARIABLE_BLUR_DOWNSCALE = 0.625f
 +
 +    private var variableBlurFallbackLogged = false
 +    private fun logVariableBlurFallbackOnce(message: String, cause: Throwable?) {
