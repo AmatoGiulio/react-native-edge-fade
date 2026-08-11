@@ -1,0 +1,193 @@
+--- a/android/src/main/java/com/edgefade/EdgeFadeView.kt
++++ b/android/src/main/java/com/edgefade/EdgeFadeView.kt
+@@ -124,6 +124,14 @@
+   private var lensNode: RenderNode? = null
+   private var lensShader: RuntimeShader? = null
+ 
++  // API 33+ experimental spatially-variable blur. One node/shader wrapper per
++  // edge because RuntimeShader uniforms are mutable and edge-specific.
++  @Suppress("NewApi")
++  private var variableBlurNodes: Array<RenderNode?> = arrayOfNulls(EDGE_COUNT)
++  @Suppress("NewApi")
++  private var variableBlurShaders: Array<EdgeFadeVariableBlurShader?> = arrayOfNulls(EDGE_COUNT)
++  private val variableBlurRects: Array<RectF> = Array(EDGE_COUNT) { RectF() }
++
+   // ── Blur mode state (API 31+) ─────────────────────────────────────────────
+ 
+   // Children recorded once per frame; every per-edge/level node references this
+@@ -310,9 +318,12 @@
+       blurNode?.discardDisplayList()
+       lensNode?.discardDisplayList()
+       levelNodes.forEach { edge -> edge.forEach { it?.discardDisplayList() } }
++      variableBlurNodes.forEach { it?.discardDisplayList() }
+     }
+     blurNode = null
+     lensNode = null
++    variableBlurNodes = arrayOfNulls(EDGE_COUNT)
++    variableBlurShaders = arrayOfNulls(EDGE_COUNT)
+     levelNodes = Array(EDGE_COUNT) { arrayOfNulls(LEVEL_FRACTIONS.size) }
+     lastLevelRect.forEach { edge -> edge.fill(null) }
+     lastBlurEffectRadius = -1f
+@@ -552,12 +563,141 @@
+         drawMask(canvas)
+         return
+       }
+-      drawBlurLayered(canvas, w, h)
++      if (VARIABLE_BLUR_EXPERIMENT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++        if (!drawBlurVariableAgsl(canvas, w, h)) {
++          drawBlurLayered(canvas, w, h)
++        }
++      } else {
++        drawBlurLayered(canvas, w, h)
++      }
+     } finally {
+       Trace.endSection()
+     }
+   }
+ 
++  /**
++   * API 33+ experimental spatially-variable blur.
++   *
++   * The blur radius is evaluated continuously from the fade curve instead of
++   * quantized into 3 Gaussian levels. Each active edge costs one half-resolution
++   * RenderNode + one 9-tap RuntimeShader pass + one composite.
++   *
++   * Returns false if RuntimeShader creation/uniform upload fails, so drawBlur()
++   * can fall back to the production 3-band backend without double-drawing.
++   */
++  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
++  private fun drawBlurVariableAgsl(canvas: Canvas, w: Float, h: Float): Boolean {
++    val content = (blurNode ?: RenderNode("EdgeFadeBlur").also { blurNode = it })
++    content.setPosition(0, 0, width, height)
++    val rc = content.beginRecording()
++    try {
++      background?.draw(rc)
++      super.dispatchDraw(rc)
++    } finally {
++      content.endRecording()
++    }
++
++    // Validate/build all active edge shaders before drawing anything. If one
++    // edge fails we can still cleanly fall back to the production renderer.
++    if (fadeTop > 0f && !prepareVariableEdge(EDGE_TOP, content, curveTop, fadeTop,
++        0f, 0f, w, fadeTop, 0f, fadeTop, 0f, 0f)) return false
++    if (fadeBottom > 0f && !prepareVariableEdge(EDGE_BOTTOM, content, curveBottom, fadeBottom,
++        0f, h - fadeBottom, w, h, 0f, h - fadeBottom, 0f, h)) return false
++    if (fadeLeft > 0f && !prepareVariableEdge(EDGE_LEFT, content, curveLeft, fadeLeft,
++        0f, 0f, fadeLeft, h, fadeLeft, 0f, 0f, 0f)) return false
++    if (fadeRight > 0f && !prepareVariableEdge(EDGE_RIGHT, content, curveRight, fadeRight,
++        w - fadeRight, 0f, w, h, w - fadeRight, 0f, w, 0f)) return false
++
++    if (hasWebViewDescendant()) {
++      content.setUseCompositingLayer(true, null)
++      canvas.drawRenderNode(content)
++    } else {
++      content.setUseCompositingLayer(false, null)
++      super.dispatchDraw(canvas)
++    }
++
++    if (fadeTop > 0f) drawPreparedVariableEdge(canvas, EDGE_TOP, fadeTop,
++      0f, 0f, w, fadeTop)
++    if (fadeBottom > 0f) drawPreparedVariableEdge(canvas, EDGE_BOTTOM, fadeBottom,
++      0f, h - fadeBottom, w, h)
++    if (fadeLeft > 0f) drawPreparedVariableEdge(canvas, EDGE_LEFT, fadeLeft,
++      0f, 0f, fadeLeft, h)
++    if (fadeRight > 0f) drawPreparedVariableEdge(canvas, EDGE_RIGHT, fadeRight,
++      w - fadeRight, 0f, w, h)
++
++    overlayColor?.let { drawFrostVeil(canvas, w, h, it) }
++    return true
++  }
++
++  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
++  private fun prepareVariableEdge(
++    edge: Int, content: RenderNode, curve: String, size: Float,
++    bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
++    gx0: Float, gy0: Float, gx1: Float, gy1: Float,
++  ): Boolean {
++    val ds = VARIABLE_BLUR_DOWNSCALE
++    val pad = ceil(blurRadius)
++    val vw = width.toFloat(); val vh = height.toFloat()
++    val nLeft = (bandLeft - pad).coerceAtLeast(0f)
++    val nTop = (bandTop - pad).coerceAtLeast(0f)
++    val nRight = (bandRight + pad).coerceAtMost(vw)
++    val nBottom = (bandBottom + pad).coerceAtMost(vh)
++    val nodeW = ceil((nRight - nLeft) * ds).roundToInt().coerceAtLeast(1)
++    val nodeH = ceil((nBottom - nTop) * ds).roundToInt().coerceAtLeast(1)
++
++    val node = variableBlurNodes[edge]
++      ?: RenderNode("EdgeFadeVariableBlur_$edge").also { variableBlurNodes[edge] = it }
++    node.setPosition(0, 0, nodeW, nodeH)
++    val rc = node.beginRecording()
++    try {
++      rc.scale(ds, ds)
++      rc.translate(-nLeft, -nTop)
++      rc.drawRenderNode(content)
++    } finally {
++      node.endRecording()
++    }
++
++    val variable = variableBlurShaders[edge] ?: runCatching { EdgeFadeVariableBlurShader() }
++      .onFailure { logVariableBlurFallbackOnce("RuntimeShader compile failed", it) }
++      .getOrNull()
++      ?.also { variableBlurShaders[edge] = it }
++      ?: return false
++
++    val ok = variable.update(
++      curve = curve,
++      nodeWidth = nodeW.toFloat(), nodeHeight = nodeH.toFloat(),
++      x0 = (gx0 - nLeft) * ds, y0 = (gy0 - nTop) * ds,
++      x1 = (gx1 - nLeft) * ds, y1 = (gy1 - nTop) * ds,
++      maxRadius = blurRadius * ds,
++      frostProgression = frostProgression,
++      frostSaturation = frostSaturation,
++      frostLift = frostLift,
++    )
++    if (!ok) {
++      logVariableBlurFallbackOnce("RuntimeShader uniform upload failed", null)
++      return false
++    }
++    node.setRenderEffect(variable.renderEffect())
++    variableBlurRects[edge].set(nLeft, nTop, nRight, nBottom)
++    return true
++  }
++
++  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
++  private fun drawPreparedVariableEdge(
++    canvas: Canvas, edge: Int,
++    bandLeft: Float, bandTop: Float, bandRight: Float, bandBottom: Float,
++  ) {
++    val node = variableBlurNodes[edge] ?: return
++    val rect = variableBlurRects[edge]
++    val ds = VARIABLE_BLUR_DOWNSCALE
++    val sc = canvas.save()
++    canvas.clipRect(bandLeft, bandTop, bandRight, bandBottom)
++    canvas.translate(rect.left, rect.top)
++    canvas.scale(1f / ds, 1f / ds)
++    canvas.drawRenderNode(node)
++    canvas.restoreToCount(sc)
++  }
++
+   @RequiresApi(Build.VERSION_CODES.S)
+   private fun drawBlurLayered(canvas: Canvas, w: Float, h: Float) {
+     // Record children once into the content RenderNode; each per-edge/level
+@@ -855,6 +995,19 @@
+     private const val EDGE_RIGHT = 3
+     private const val EDGE_COUNT = 4
+ 
++    // Experimental API 33+ variable-radius AGSL backend. This branch enables it
++    // for A/B testing only; main remains on the production 3-band renderer.
++    private const val VARIABLE_BLUR_EXPERIMENT = true
++    private const val VARIABLE_BLUR_DOWNSCALE = 0.5f
++
++    private var variableBlurFallbackLogged = false
++    private fun logVariableBlurFallbackOnce(message: String, cause: Throwable?) {
++      if (!variableBlurFallbackLogged) {
++        variableBlurFallbackLogged = true
++        Log.w("EdgeFadeView", "$message — falling back to 3-band blur.", cause)
++      }
++    }
++
+     // Blur style — compile-time choice between two masked-blur pipelines that
+     // share the same record → blur → mask-after-blur → composite path; they
+     // differ only in how many Gaussian levels the stack has.
