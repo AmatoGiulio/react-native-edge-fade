@@ -1,1 +1,1 @@
-export { GalleryScreen as default } from '@/screens/GalleryScreen';
+export { default } from './orbit';
