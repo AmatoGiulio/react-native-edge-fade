@@ -1,3 +1,12 @@
+# Changelog
+
+## [0.2.2](https://github.com/AmatoGiulio/react-native-edge-fade/compare/v0.2.1...v0.2.2) (2026-08-20)
+
+
+### Bug Fixes
+
+* **android:** eliminate mask gradient banding ([3723b87](https://github.com/AmatoGiulio/react-native-edge-fade/commit/3723b87c7b11d08dc91a46eb90d378580bec5e34))
+
 ## 0.2.1 (2026-08-02)
 
 ### Bug Fixes
