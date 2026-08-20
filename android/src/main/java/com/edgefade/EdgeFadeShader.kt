@@ -1,24 +1,32 @@
 package com.edgefade
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Color
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.graphics.ColorUtils
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
  * Per-edge gradient shader cache + builder.
  *
- * Each [EdgeShaderSlot] owns one [RuntimeShader] (AGSL, API 33+) or [LinearGradient]
- * (fallback) plus the [GradientKey] that produced it. When the next frame's inputs
+ * Each [EdgeShaderSlot] owns one [RuntimeShader] (AGSL, API 33+) or fallback
+ * shader plus the [GradientKey] that produced it. When the next frame's inputs
  * match the cached key the slot returns the existing shader; otherwise it updates
- * AGSL uniforms in place (no recompilation) or rebuilds the LinearGradient.
+ * AGSL uniforms in place (no recompilation) or rebuilds the fallback shader.
  */
 internal class EdgeShaderSlot {
 
@@ -121,19 +129,84 @@ internal class EdgeShaderSlot {
 
   // ── LinearGradient fallback (API < 33 or unparseable curve) ────────────
 
-  private fun buildFallback(x0: Float, y0: Float, x1: Float, y1: Float, curve: String, color: Int?): LinearGradient {
+  private fun buildFallback(x0: Float, y0: Float, x1: Float, y1: Float, curve: String, color: Int?): Shader {
     val a = EdgeFadeCurves.alphas(curve); val n = a.size
     val stops = EdgeFadeCurves.stops(curve)
     val base = color ?: Color.BLACK
-    val colors = if (color != null) {
-      // Overlay: transparent (inner, i=0) → opaque (outer) — opacity(t) = 1 - alpha(t)
-      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, ((1.0 - a[i]) * 255).roundToInt()) }
-    } else {
-      // Mask: opaque black (inner, i=0) → transparent (outer) — DST_IN preserves
-      // content where alpha is high, i.e. visibility(t) = alpha(t)
-      IntArray(n) { i -> ColorUtils.setAlphaComponent(base, (a[i] * 255).roundToInt()) }
+    // Alpha-only LinearGradients are not consistently dithered by hardware
+    // Skia, so mask mode uses an explicitly dithered cached bitmap texture.
+    if (color == null) return buildDitheredMask(x0, y0, x1, y1, a)
+
+    // Overlay: transparent (inner, i=0) → opaque (outer) — opacity(t) = 1 - alpha(t)
+    val colors = IntArray(n) { i ->
+      ColorUtils.setAlphaComponent(base, ((1.0 - a[i]) * 255).roundToInt())
     }
     return LinearGradient(x0, y0, x1, y1, colors, stops, Shader.TileMode.CLAMP)
+  }
+
+  private fun buildDitheredMask(
+    x0: Float, y0: Float, x1: Float, y1: Float,
+    alphas: DoubleArray,
+  ): BitmapShader {
+    val vertical = abs(y1 - y0) >= abs(x1 - x0)
+    val axisLength = ceil(if (vertical) abs(y1 - y0) else abs(x1 - x0))
+      .toInt()
+      .coerceAtLeast(1)
+    val bitmapWidth = if (vertical) DITHER_TILE_SIZE else axisLength
+    val bitmapHeight = if (vertical) axisLength else DITHER_TILE_SIZE
+    val originX = min(x0, x1)
+    val originY = min(y0, y1)
+    val dx = x1 - x0
+    val dy = y1 - y0
+    val len2 = dx * dx + dy * dy
+    val axisAlphas = FloatArray(axisLength) { axisPixel ->
+      val gx = originX + (if (vertical) 0.5f else axisPixel + 0.5f)
+      val gy = originY + (if (vertical) axisPixel + 0.5f else 0.5f)
+      val t = if (len2 > 0f) {
+        (((gx - x0) * dx + (gy - y0) * dy) / len2).coerceIn(0f, 1f)
+      } else {
+        0f
+      }
+      sampleAlpha(alphas, t)
+    }
+    val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ALPHA_8)
+    // ALPHA_8 rows may include native alignment padding when a horizontal fade
+    // has a non-multiple-of-four width; use rowBytes rather than width here.
+    val pixels = ByteArray(bitmap.rowBytes * bitmapHeight)
+
+    for (py in 0 until bitmapHeight) {
+      for (px in 0 until bitmapWidth) {
+        val alpha = axisAlphas[if (vertical) py else px]
+        val activeDither = alpha > DITHER_EDGE_EPSILON && alpha < 1f - DITHER_EDGE_EPSILON
+        val noise = if (activeDither) lowDiscrepancyNoise(px, py) * DITHER_STRENGTH else 0f
+        val alpha8 = ((alpha + noise).coerceIn(0f, 1f) * 255f).roundToInt()
+        pixels[py * bitmap.rowBytes + px] = alpha8.toByte()
+      }
+    }
+
+    bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(pixels))
+    return BitmapShader(
+      bitmap,
+      if (vertical) Shader.TileMode.REPEAT else Shader.TileMode.CLAMP,
+      if (vertical) Shader.TileMode.CLAMP else Shader.TileMode.REPEAT,
+    ).apply {
+      setLocalMatrix(Matrix().apply { setTranslate(originX, originY) })
+    }
+  }
+
+  private fun sampleAlpha(alphas: DoubleArray, t: Float): Float {
+    if (alphas.size == 1) return alphas[0].toFloat().coerceIn(0f, 1f)
+    val pos = t * (alphas.size - 1)
+    val lo = floor(pos).toInt().coerceIn(0, alphas.size - 2)
+    val fraction = pos - lo
+    return (alphas[lo] * (1f - fraction) + alphas[lo + 1] * fraction)
+      .toFloat()
+      .coerceIn(0f, 1f)
+  }
+
+  private fun lowDiscrepancyNoise(x: Int, y: Int): Float {
+    val phase = x * DITHER_R2_X + y * DITHER_R2_Y
+    return (phase - floor(phase) - 0.5).toFloat()
   }
 
   internal companion object {
@@ -161,10 +234,10 @@ internal class EdgeShaderSlot {
       uniform float4 color;
       uniform float  ditherStrength;
 
-      float hash21(float2 p) {
-        p = fract(p * float2(123.34, 456.21));
-        p += dot(p, p + 45.32);
-        return fract(p.x * p.y);
+      float ditherNoise(float2 p) {
+        // Additive-recurrence (R2) sequence: scanlines share a balanced
+        // distribution but use different phases, avoiding row-average bias.
+        return fract(dot(floor(p), float2(0.754877666, 0.569840291))) - 0.5;
       }
 
       float lutSample(float t) {
@@ -198,7 +271,7 @@ internal class EdgeShaderSlot {
         float a = (isOverlay > 0.5) ? 1.0 - maskAlpha : maskAlpha;
 
         float activeDither = step(0.001, a) * step(a, 0.999);
-        float noise = hash21(fragCoord) - 0.5;
+        float noise = ditherNoise(fragCoord);
         a = clamp(a + noise * ditherStrength * activeDither, 0.0, 1.0);
 
         float ca = color.a * a;
@@ -206,8 +279,12 @@ internal class EdgeShaderSlot {
       }
     """
 
-    /** Dither strength for the AGSL path — balances smoothness and subtlety. */
+    /** Dither strength shared by AGSL and the pre-33 alpha-mask texture. */
     private const val DITHER_STRENGTH = 4.0f / 255f
+    private const val DITHER_EDGE_EPSILON = 0.001f
+    private const val DITHER_TILE_SIZE = 64
+    private const val DITHER_R2_X = 0.7548776662466927
+    private const val DITHER_R2_Y = 0.5698402909980532
 
     // Per-process AGSL fallback log — keeps logcat clean when a device or curve
     // rejects the runtime shader.
