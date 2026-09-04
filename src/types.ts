@@ -24,7 +24,7 @@ export interface StopsCurve {
 
 export type EdgeFadeCurve = CurvePreset | CubicBezierCurve | StopsCurve;
 
-export type EdgeFadeMode = 'mask' | 'overlay' | 'blur';
+export type EdgeFadeMode = 'mask' | 'overlay' | 'blur' | 'lens';
 
 export interface EdgeConfig {
   /** Fade depth in dp. Overrides the component-level `size`. */
@@ -54,6 +54,7 @@ export interface EdgeFadeViewProps extends ViewProps {
    * 'blur'    — fade content into a blurred copy of itself toward the enabled
    *             edges (progressive blur). Sharp at the inner edge, fully blurred
    *             at the outer edge, following the per-edge `size`/`curve`.
+   * 'lens'    — experimental Android 13+ whole-view refraction renderer.
    */
   mode?: EdgeFadeMode;
   /**
