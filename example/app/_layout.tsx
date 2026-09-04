@@ -15,6 +15,7 @@ import { PanelTitle, PanelResetButton } from '@/components/PanelHeader';
 import { useScheme, PALETTES } from '@/theme';
 
 import DiscoverTune from '@expo/material-symbols/discover_tune.xml';
+import Flare from '@expo/material-symbols/flare.xml';
 import Web from '@expo/material-symbols/web.xml';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30 * 60 * 1000 } },
@@ -58,6 +59,11 @@ export default function RootLayout() {
                       }
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
+                    />
+                    <Stack.Toolbar.Button
+                      icon={Platform.OS === 'ios' ? 'sparkles' : Flare}
+                      tintColor={t.headerTint}
+                      onPress={() => router.push('/lens')}
                     />
                     <Stack.Toolbar.Button
                       icon={Platform.OS === 'ios' ? 'safari' : Web}
@@ -112,6 +118,17 @@ export default function RootLayout() {
                     />
                   </Stack.Toolbar>
                 </Stack.Screen>
+                <Stack.Screen
+                  name="lens"
+                  options={{
+                    headerShown: true,
+                    headerTransparent: true,
+                    headerTitle: '',
+                    headerBackButtonDisplayMode: 'minimal',
+                    headerTintColor: t.headerTint,
+                    animation: 'slide_from_right',
+                  }}
+                />
                 <Stack.Screen
                   name="webview"
                   options={{
