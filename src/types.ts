@@ -54,7 +54,9 @@ export interface EdgeFadeViewProps extends ViewProps {
    * 'blur'    — fade content into a blurred copy of itself toward the enabled
    *             edges (progressive blur). Sharp at the inner edge, fully blurred
    *             at the outer edge, following the per-edge `size`/`curve`.
-   * 'lens'    — experimental Android 13+ whole-view refraction renderer.
+   * 'lens'    — experimental Android 13+ edge-local Singularity warp. Each
+   *             enabled edge owns an influence band whose depth is exactly that
+   *             edge's `size`; pixels outside the bands stay unchanged.
    */
   mode?: EdgeFadeMode;
   /**
