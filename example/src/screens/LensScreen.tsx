@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -15,9 +15,9 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 
 import { useCatalog, type CatalogItem } from '@/data/catalog';
 
-const BACKGROUND = '#050505';
-const CARD_RADIUS = 28;
-const CARD_GAP = 14;
+const BACKGROUND = '#000000';
+const CARD_RADIUS = 24;
+const CARD_GAP = 20;
 const EDGE_DEPTH = 112;
 
 function keyExtractor(item: CatalogItem) {
@@ -28,41 +28,41 @@ export function LensScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { catalog, isLoading, isError } = useCatalog();
-  const [enabled, setEnabled] = useState(true);
 
   const items = useMemo(() => {
-    const vertical = catalog.filter((item) => item.ratio < 0.9);
+    const vertical = catalog.filter((item) => item.ratio < 0.78);
     return (vertical.length >= 8 ? vertical : catalog).slice(0, 18);
   }, [catalog]);
 
-  const cardWidth = Math.min(width - 34, 420);
-  const cardHeight = Math.min(height * 0.62, cardWidth * 1.42);
+  const cardWidth = Math.min(width - 58, 360);
+  const cardHeight = Math.min(height * 0.72, cardWidth * 1.86);
 
   const renderItem = ({ item }: { item: CatalogItem }) => (
     <View style={s.slot}>
-      <Image
-        source={item.source}
+      <View
         style={[
-          s.image,
+          s.card,
           {
             width: cardWidth,
             height: cardHeight,
             backgroundColor: item.color + '33',
           },
         ]}
-        contentFit="cover"
-      />
+      >
+        <Image source={item.source} style={s.image} contentFit="cover" />
+        <View pointerEvents="none" style={s.badge}>
+          <Text style={s.badgeGlyph}>✓</Text>
+        </View>
+      </View>
     </View>
   );
-
-  const mode = enabled ? 'lens' : 'mask';
 
   return (
     <View style={s.screen}>
       <EdgeFadeView
-        mode={mode}
-        top={enabled ? EDGE_DEPTH : false}
-        bottom={enabled ? EDGE_DEPTH : false}
+        mode="lens"
+        top={EDGE_DEPTH}
+        bottom={EDGE_DEPTH}
         left={false}
         right={false}
         radius={0}
@@ -80,47 +80,26 @@ export function LensScreen() {
             ItemSeparatorComponent={() => <View style={s.separator} />}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
-              paddingTop: insets.top + 72,
-              paddingBottom: insets.bottom + 72,
+              paddingTop: insets.top + 8,
+              paddingBottom: insets.bottom + 18,
             }}
           />
         )}
       </EdgeFadeView>
 
-      <View
-        pointerEvents="box-none"
-        style={[s.chrome, { top: insets.top + 14 }]}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        hitSlop={12}
+        onPress={() => router.back()}
+        style={({ pressed }) => [
+          s.backButton,
+          { top: insets.top + 8 },
+          pressed && s.backButtonPressed,
+        ]}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={10}
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            s.chromeButton,
-            pressed && s.chromeButtonPressed,
-          ]}
-        >
-          <Text style={s.backGlyph}>‹</Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={enabled ? 'Disable lens' : 'Enable lens'}
-          hitSlop={8}
-          onPress={() => setEnabled((value) => !value)}
-          style={({ pressed }) => [
-            s.modeButton,
-            enabled && s.modeButtonEnabled,
-            pressed && s.chromeButtonPressed,
-          ]}
-        >
-          <View style={[s.modeDot, enabled && s.modeDotEnabled]} />
-          <Text style={[s.modeLabel, enabled && s.modeLabelEnabled]}>
-            {enabled ? 'lens' : 'plain'}
-          </Text>
-        </Pressable>
-      </View>
+        <Text style={s.backGlyph}>‹</Text>
+      </Pressable>
     </View>
   );
 }
@@ -134,70 +113,53 @@ const s = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
   },
-  image: {
+  card: {
     borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
+  },
+  image: {
+    flex: 1,
   },
   separator: {
     height: CARD_GAP,
   },
-  chrome: {
+  badge: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  chromeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    right: 10,
+    bottom: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(16,16,16,0.72)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: '#FFFFFF',
   },
-  chromeButtonPressed: {
+  badgeGlyph: {
+    color: '#171717',
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,20,20,0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  backButtonPressed: {
     opacity: 0.62,
   },
   backGlyph: {
     color: '#FFFFFF',
-    fontSize: 29,
-    lineHeight: 30,
+    fontSize: 27,
+    lineHeight: 28,
     marginTop: -3,
-  },
-  modeButton: {
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(16,16,16,0.72)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  modeButtonEnabled: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-  },
-  modeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#777777',
-  },
-  modeDotEnabled: {
-    backgroundColor: '#111111',
-  },
-  modeLabel: {
-    color: '#A6A6A6',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  modeLabelEnabled: {
-    color: '#111111',
   },
   empty: {
     flex: 1,
