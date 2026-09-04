@@ -8,7 +8,7 @@ import type { Float } from 'react-native/Libraries/Types/CodegenTypesNamespace';
 // Flat native props produced by the JS normalization layer.
 // Sizes are in dp (0 = edge disabled). Curves are preset names or
 // comma-separated alpha stop strings (from cubicBezier / stops serialization).
-// mode: "mask" | "overlay" | "blur"
+// mode: "mask" | "overlay" | "blur" | "lens"
 interface NativeProps extends ViewProps {
   fadeTop?: Float;
   fadeBottom?: Float;
@@ -18,7 +18,7 @@ interface NativeProps extends ViewProps {
   curveBottom?: string;
   curveLeft?: string;
   curveRight?: string;
-  /** "mask" | "overlay" | "blur" */
+  /** "mask" | "overlay" | "blur" | experimental "lens" */
   mode?: string;
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: Float;
