@@ -27,22 +27,31 @@ class EdgeFadeViewManager :
   // so coalescing here keeps per-setter code free of bookkeeping.
   override fun onAfterUpdateTransaction(view: EdgeFadeView) {
     super.onAfterUpdateTransaction(view)
+    EdgeLensEffect.sync(view)
     view.invalidate()
   }
 
   // ── Edge sizes ─────────────────────────────────────────────────────────────
 
   @ReactProp(name = "fadeTop")
-  override fun setFadeTop(view: EdgeFadeView, value: Float) { view.fadeTop = dp(view, value) }
+  override fun setFadeTop(view: EdgeFadeView, value: Float) {
+    EdgeLensEffect.setTop(view, dp(view, value))
+  }
 
   @ReactProp(name = "fadeBottom")
-  override fun setFadeBottom(view: EdgeFadeView, value: Float) { view.fadeBottom = dp(view, value) }
+  override fun setFadeBottom(view: EdgeFadeView, value: Float) {
+    EdgeLensEffect.setBottom(view, dp(view, value))
+  }
 
   @ReactProp(name = "fadeLeft")
-  override fun setFadeLeft(view: EdgeFadeView, value: Float) { view.fadeLeft = dp(view, value) }
+  override fun setFadeLeft(view: EdgeFadeView, value: Float) {
+    EdgeLensEffect.setLeft(view, dp(view, value))
+  }
 
   @ReactProp(name = "fadeRight")
-  override fun setFadeRight(view: EdgeFadeView, value: Float) { view.fadeRight = dp(view, value) }
+  override fun setFadeRight(view: EdgeFadeView, value: Float) {
+    EdgeLensEffect.setRight(view, dp(view, value))
+  }
 
   // ── Curves ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +70,9 @@ class EdgeFadeViewManager :
   // ── Mode ───────────────────────────────────────────────────────────────────
 
   @ReactProp(name = "mode")
-  override fun setMode(view: EdgeFadeView, value: String?) { view.mode = value ?: "mask" }
+  override fun setMode(view: EdgeFadeView, value: String?) {
+    EdgeLensEffect.setMode(view, value ?: "mask")
+  }
 
   // ── Colors ─────────────────────────────────────────────────────────────────
 
