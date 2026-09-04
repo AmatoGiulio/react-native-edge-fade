@@ -121,12 +121,9 @@ export default function RootLayout() {
                 <Stack.Screen
                   name="lens"
                   options={{
-                    headerShown: true,
-                    headerTransparent: true,
-                    headerTitle: '',
-                    headerBackButtonDisplayMode: 'minimal',
-                    headerTintColor: t.headerTint,
+                    headerShown: false,
                     animation: 'slide_from_right',
+                    contentStyle: { backgroundColor: '#050505' },
                   }}
                 />
                 <Stack.Screen
