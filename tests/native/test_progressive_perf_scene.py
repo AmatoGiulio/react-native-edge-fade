@@ -50,6 +50,21 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("'dumpsys', 'meminfo', $Package", script)
         self.assertIn("edgefade://progressive-blur-perf", script)
 
+    def test_benchmark_quotes_deep_link_for_remote_android_shell(self):
+        script = read(ROOT / "scripts/benchmark-progressive-blur.ps1")
+        self.assertIn("function Quote-AdbShellArgument", script)
+        self.assertIn("$quotedUri = Quote-AdbShellArgument -Value $uri", script)
+        self.assertIn("'-d', $quotedUri", script)
+        self.assertIn("Query-string '&' is therefore a shell metacharacter", script)
+
+    def test_benchmark_does_not_treat_emulator_numbers_as_device_evidence(self):
+        script = read(ROOT / "scripts/benchmark-progressive-blur.ps1")
+        self.assertIn("[switch]$AllowEmulator", script)
+        self.assertIn("ro.kernel.qemu", script)
+        self.assertIn("GPU/frame numbers from an emulator are not a valid renderer comparison", script)
+        self.assertIn("[string]$Serial = ''", script)
+        self.assertIn("@('-s', $Serial)", script)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
