@@ -33,9 +33,10 @@ apply plugin: "com.facebook.react"
 // Compose UI 1.13.0-alpha03 requires AGP 9.1+ and compileSdk 37.1.
 // Expo SDK 57 currently evaluates its Gradle modules against the AGP 8.x DSL,
 // so pulling that alpha into a React Native/Expo consumer makes the whole app
-// toolchain incompatible before Edge Fade even compiles. Keep the official
-// binary in the isolated androidx-reference harness and ship/test the AGSL port
-// here without adding Compose or raising the consumer toolchain.
+// toolchain incompatible before Edge Fade even compiles. The official binary
+// stays in the isolated androidx-reference harness. The API 33+ public candidate
+// uses the dependency-free, attributed AGSL port and does not raise consumer
+// SDK/AGP requirements.
 def staleAndroidxOptIn = (findProperty("edgeFadeAndroidxBlur") ?: "false").toString().toBoolean()
 if (staleAndroidxOptIn) {
   logger.warn("[react-native-edge-fade] edgeFadeAndroidxBlur is ignored in RN/Expo builds; the official AndroidX alpha is validated in androidx-reference. Using the dependency-free AGSL backend instead.")
