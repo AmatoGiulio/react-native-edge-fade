@@ -24,7 +24,7 @@ def read(path):
 
 def public_mask_source():
     source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-    match = re.search(r'private const val MASK_SHADER = """(.*?)"""', source, re.S)
+    match = re.search(r'(?:private|internal) const val MASK_SHADER = """(.*?)"""', source, re.S)
     if match is None:
         raise AssertionError("Public progressive mask literal changed; update extractor")
     return textwrap.dedent(match[1]).strip()
@@ -64,15 +64,43 @@ class ProgressivePublicBackend(unittest.TestCase):
             self.assertIn(contract, source)
         self.assertNotIn("hasNeutralColorGrade", source)
 
+    def test_public_progressive_is_edge_local_not_full_view_render_effect(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+
+        self.assertIn("EdgeFadeProgressiveStripRenderer(view)", selector)
+        self.assertIn("view.overlay.add(renderer)", selector)
+        self.assertIn("view.overlay.remove(renderer)", selector)
+        self.assertNotIn("view.setRenderEffect(blur)", selector)
+
+        self.assertIn("class EdgeFadeProgressiveStripRenderer", renderer)
+        self.assertIn("val content = RenderNode", renderer)
+        self.assertIn("val node = RenderNode", renderer)
+        self.assertIn("canvas.clipRect(", renderer)
+        self.assertIn("top/bottom own the full-width corners", renderer)
+        self.assertIn("val centerTop = top", renderer)
+        self.assertIn("val centerBottom = (height - bottom).coerceAtLeast(centerTop)", renderer)
+        self.assertIn("val rightLeft = (width - right).coerceAtLeast(left)", renderer)
+
+    def test_strip_sources_are_radius_padded_and_map_mask_to_global_coordinates(self):
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        mask = public_mask_source()
+
+        self.assertIn("val pad = ceil(key.radius).toInt() + 1", renderer)
+        self.assertIn('setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())', renderer)
+        self.assertIn('setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())', renderer)
+        self.assertIn("uniform float2 origin", mask)
+        self.assertIn("float2 p = local + origin", mask)
+
     def test_color_grade_is_mask_aware_and_matches_legacy_at_outer_edge(self):
-        public = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
         shaders = read(NATIVE / "BlurLabShaders.kt")
-        self.assertIn('setFloatUniform("frostSaturation"', public)
-        self.assertIn('setFloatUniform("frostLift"', public)
+        self.assertIn('setFloatUniform("frostSaturation"', renderer)
+        self.assertIn('setFloatUniform("frostLift"', renderer)
         self.assertIn("mix(1.0, frostSaturation, intensity)", shaders)
         self.assertIn("mix(1.0, frostLift, intensity)", shaders)
         self.assertIn("float3(0.213, 0.715, 0.072)", shaders)
-        self.assertNotIn("RenderEffect.createColorFilterEffect", public)
+        self.assertNotIn("RenderEffect.createColorFilterEffect", renderer)
 
         colors = (
             (0.0, 0.0, 0.0),
@@ -83,10 +111,8 @@ class ProgressivePublicBackend(unittest.TestCase):
         saturation = 0.9
         lift = 1.03
         for rgb in colors:
-            # The center is mathematically identity even with the public frost defaults.
             for actual, expected in zip(progressive_grade(rgb, saturation, lift, 0), rgb):
                 self.assertAlmostEqual(actual, expected, places=12)
-            # At the outer edge the shader reaches the exact legacy ColorMatrix grade.
             expected_outer = legacy_grade(rgb, saturation, lift)
             actual_outer = progressive_grade(rgb, saturation, lift, 1)
             for actual, expected in zip(actual_outer, expected_outer):
