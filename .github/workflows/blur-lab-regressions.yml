@@ -5,6 +5,7 @@ on:
     paths:
       - 'android/src/**/BlurLab*.kt'
       - 'android/src/**/EdgeFadeProgressiveBlurEffect.kt'
+      - 'android/src/**/EdgeFadeProgressiveStripRenderer.kt'
       - 'android/src/**/EdgeFadeViewManager.kt'
       - 'android/build.gradle'
       - 'src/BlurLabNativeComponent.ts'
