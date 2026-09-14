@@ -6,8 +6,13 @@ param(
   [ValidateSet('vertical', 'four')]
   [string]$Edges = 'vertical',
 
+  [ValidateRange(1.0, 150.0)]
+  [double]$TargetRadiusPx = 144.0,
+
   [int]$Swipes = 14,
   [int]$SwipeDurationMs = 180,
+  [int]$WarmupSwipes = 4,
+  [int]$Blocks = 1,
   [int]$CooldownSeconds = 2,
   [string]$Serial = '',
   [switch]$AllowEmulator
@@ -16,8 +21,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $Package = 'com.edgefadeexample'
 $ResultsDir = Join-Path $PSScriptRoot '..\benchmark-results'
-$TargetRadiusPx = 144.0
-$MaxRadiusDp = 48.0
 New-Item -ItemType Directory -Force -Path $ResultsDir | Out-Null
 
 function Invoke-Adb {
@@ -40,10 +43,6 @@ function Invoke-Adb {
 function Quote-AdbShellArgument {
   param([string]$Value)
 
-  # `adb shell` joins COMMAND arguments and sends the resulting command through
-  # the device shell. Query-string '&' is therefore a shell metacharacter unless
-  # the URI itself is quoted on the remote side. Quotes stored in this variable
-  # are literal argv characters on Windows and survive until /system/bin/sh.
   if ($Value.Contains("'")) {
     throw "Cannot safely quote adb shell argument containing a single quote: $Value"
   }
@@ -100,11 +99,8 @@ function Parse-FrameStats {
 
     if ($null -eq $indices) { continue }
     $parts = $line.Split(',')
-    $required = @(
-      $indices.Flags,
-      $indices.IntendedVsync,
-      $indices.FrameCompleted
-    ) | Where-Object { $_ -ge 0 }
+    $required = @($indices.Flags, $indices.IntendedVsync, $indices.FrameCompleted) |
+      Where-Object { $_ -ge 0 }
     if ($required.Count -lt 3) { continue }
     if (($required | Measure-Object -Maximum).Maximum -ge $parts.Count) { continue }
 
@@ -169,9 +165,19 @@ function Get-TotalPssMb {
   return [double]::NaN
 }
 
+function Get-RadiusLabel {
+  param([double]$Radius)
+  return $Radius.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture).Replace('.', 'p')
+}
+
 $packagePath = Invoke-Adb @('shell', 'pm', 'path', $Package)
 if (-not (($packagePath -join "`n") -match '^package:')) {
   throw "$Package is not installed. Install the release example first."
+}
+
+$packageDump = (Invoke-Adb @('shell', 'dumpsys', 'package', $Package)) -join "`n"
+if ($packageDump -match '(?m)pkgFlags=\[[^\]]*DEBUGGABLE') {
+  throw "$Package is debuggable. Install the release variant before benchmarking."
 }
 
 $sizeText = (Invoke-Adb @('shell', 'wm', 'size')) -join "`n"
@@ -195,8 +201,10 @@ if ($overrideDensity.Success) {
   throw "Could not parse device density from: $densityText"
 }
 $densityScale = $densityDpi / 160.0
-$radiusDp = [Math]::Min($MaxRadiusDp, $TargetRadiusPx / $densityScale)
+$radiusDp = $TargetRadiusPx / $densityScale
 $radiusPx = $radiusDp * $densityScale
+$radiusInvariant = $TargetRadiusPx.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture)
+$radiusLabel = Get-RadiusLabel -Radius $TargetRadiusPx
 
 $model = ((Invoke-Adb @('shell', 'getprop', 'ro.product.model')) -join '').Trim()
 $sdk = ((Invoke-Adb @('shell', 'getprop', 'ro.build.version.sdk')) -join '').Trim()
@@ -204,7 +212,8 @@ $qemu = ((Invoke-Adb @('shell', 'getprop', 'ro.kernel.qemu')) -join '').Trim()
 $isEmulator = ($qemu -eq '1') -or ($model -match '(?i)(sdk_gphone|emulator)')
 
 Write-Host "Device: $model / API $sdk / ${width}x${height} / ${densityDpi}dpi ($([Math]::Round($densityScale, 3))x)"
-Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp / ~$([Math]::Round($radiusPx))px / Smooth / $Edges / neutral pure Gaussian"
+Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp / ~$([Math]::Round($radiusPx, 1))px / Smooth / $Edges / neutral pure Gaussian"
+Write-Host "Method: discarded warm-up per renderer + $Blocks balanced ABBA/BAAB block(s)"
 
 if ($isEmulator -and -not $AllowEmulator) {
   throw "Detected an Android emulator ($model). GPU/frame numbers from an emulator are not a valid renderer comparison. Connect a physical device and optionally pass -Serial <adb-serial>. Use -AllowEmulator only to smoke-test the script."
@@ -213,11 +222,11 @@ if ($isEmulator) {
   Write-Warning "EMULATOR SMOKE TEST ONLY: do not use these frame/GPU numbers for Legacy vs Progressive decisions."
 }
 
-function Run-One {
-  param([string]$Name, [int]$Run)
+function Start-Renderer {
+  param([string]$Name)
 
   $edgeParam = if ($Edges -eq 'four') { 'four' } else { 'vertical' }
-  $uri = "edgefade://progressive-blur-perf?backend=$Name&edges=$edgeParam"
+  $uri = "edgefade://progressive-blur-perf?backend=$Name&edges=$edgeParam&radiusPx=$radiusInvariant"
   $quotedUri = Quote-AdbShellArgument -Value $uri
 
   Invoke-Adb @('shell', 'am', 'force-stop', $Package) | Out-Null
@@ -229,11 +238,11 @@ function Run-One {
     '-p', $Package
   ) | Out-Null
   Start-Sleep -Seconds 2
+}
 
-  # Reset after startup so the sample contains only the steady-state scroll test.
-  Invoke-Adb @('shell', 'dumpsys', 'gfxinfo', $Package, 'reset') | Out-Null
-
-  for ($i = 0; $i -lt $Swipes; $i++) {
+function Drive-Swipes {
+  param([int]$Count)
+  for ($i = 0; $i -lt $Count; $i++) {
     if (($i % 2) -eq 0) {
       Invoke-Adb @('shell', 'input', 'swipe', "$x", "$yBottom", "$x", "$yTop", "$SwipeDurationMs") | Out-Null
     } else {
@@ -241,6 +250,29 @@ function Run-One {
     }
     Start-Sleep -Milliseconds 90
   }
+}
+
+if ($WarmupSwipes -gt 0) {
+  Write-Host "`nWarm-up (discarded):" -ForegroundColor DarkCyan
+  $warmupNames = switch ($Backend) {
+    'progressive' { @('progressive') }
+    'legacy' { @('legacy') }
+    default { @('progressive', 'legacy') }
+  }
+  foreach ($name in $warmupNames) {
+    Write-Host "  $name"
+    Start-Renderer -Name $name
+    Drive-Swipes -Count $WarmupSwipes
+    Start-Sleep -Milliseconds 500
+  }
+}
+
+function Run-One {
+  param([string]$Name, [int]$Run)
+
+  Start-Renderer -Name $Name
+  Invoke-Adb @('shell', 'dumpsys', 'gfxinfo', $Package, 'reset') | Out-Null
+  Drive-Swipes -Count $Swipes
   Start-Sleep -Seconds 1
 
   $frames = Invoke-Adb @('shell', 'dumpsys', 'gfxinfo', $Package, 'framestats')
@@ -249,7 +281,7 @@ function Run-One {
   $pss = Get-TotalPssMb -Lines $memory
 
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $prefix = Join-Path $ResultsDir "$stamp-$Name-$Edges-r$Run"
+  $prefix = Join-Path $ResultsDir "$stamp-$Name-$Edges-${radiusLabel}px-r$Run"
   $frames | Set-Content -Encoding utf8 "$prefix-framestats.txt"
   $memory | Set-Content -Encoding utf8 "$prefix-meminfo.txt"
 
@@ -274,10 +306,17 @@ function Run-One {
   $summary
 }
 
-$sequence = switch ($Backend) {
-  'progressive' { @('progressive') }
-  'legacy' { @('legacy') }
-  default { @('progressive', 'legacy', 'legacy', 'progressive') }
+$sequence = New-Object System.Collections.Generic.List[string]
+if ($Backend -eq 'both') {
+  for ($block = 0; $block -lt $Blocks; $block++) {
+    if (($block % 2) -eq 0) {
+      @('progressive', 'legacy', 'legacy', 'progressive') | ForEach-Object { $sequence.Add($_) }
+    } else {
+      @('legacy', 'progressive', 'progressive', 'legacy') | ForEach-Object { $sequence.Add($_) }
+    }
+  }
+} else {
+  $sequence.Add($Backend)
 }
 
 $runs = @()
@@ -295,7 +334,11 @@ if ($Backend -eq 'both') {
     $items = @($group.Group)
     [PSCustomObject]@{
       Backend = $group.Name
+      Edges = $Edges
+      RadiusDp = [Math]::Round($radiusDp, 3)
+      RadiusPx = [Math]::Round($radiusPx, 1)
       Runs = $items.Count
+      FrameIntervalMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.FrameIntervalMs })), 3)
       P50MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P50Ms })), 3)
       P95MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P95Ms })), 3)
       P99MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P99Ms })), 3)
@@ -304,11 +347,11 @@ if ($Backend -eq 'both') {
     }
   }
 
-  Write-Host "`nAggregate (ABBA order):" -ForegroundColor Green
+  Write-Host "`nAggregate (balanced ABBA/BAAB):" -ForegroundColor Green
   $aggregate | Sort-Object Backend | Format-Table -AutoSize
 
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $aggregate | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ResultsDir "$stamp-$Edges-aggregate.json")
+  $aggregate | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ResultsDir "$stamp-$Edges-${radiusLabel}px-aggregate.json")
 }
 
 Write-Host "`nRaw framestats, meminfo and JSON summaries: $ResultsDir"
