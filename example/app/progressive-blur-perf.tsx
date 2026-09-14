@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import {
   PixelRatio,
   Platform,
@@ -8,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { EdgeFadeView, type StopsCurve } from 'react-native-edge-fade';
+import { EdgeFadeView } from 'react-native-edge-fade';
 
 const ALBUMS = [
   '#37b9a7',
@@ -38,21 +37,6 @@ const PERF_DEFAULT_TARGET_RADIUS_PX = 144;
 const PERF_MAX_RADIUS_PX = 150;
 const PERF_DENSITY = PixelRatio.get();
 
-// Native EdgeFadeCurves samples the public `smooth` preset at 64 positions as
-// alpha=(1-t)^3 for its LinearGradient fallback. Supplying those exact samples
-// as a custom stops curve keeps the visual curve equivalent while deliberately
-// making agslPresetParams() return null. That forces the public EdgeFadeView to
-// stay on Legacy without adding a benchmark-only public prop or manager.
-const LEGACY_SMOOTH_CURVE: StopsCurve = {
-  type: 'stops',
-  values: Array.from({ length: 64 }, (_, i) => {
-    const t = i / 63;
-    return Math.pow(1 - t, 3);
-  }) as StopsCurve['values'],
-};
-
-type PerfBackend = 'progressive' | 'legacy';
-
 function resolveRadiusPx(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number.parseFloat(raw ?? '');
@@ -62,33 +46,26 @@ function resolveRadiusPx(value: string | string[] | undefined) {
 
 export default function ProgressiveBlurPerfRoute() {
   const params = useLocalSearchParams<{
-    backend?: string;
     edges?: string;
     radiusPx?: string;
   }>();
-  const backend: PerfBackend =
-    params.backend === 'legacy' ? 'legacy' : 'progressive';
   const fourEdges = params.edges === 'four';
   const targetRadiusPx = resolveRadiusPx(params.radiusPx);
   const radiusDp = targetRadiusPx / PERF_DENSITY;
   const actualRadiusPx = radiusDp * PERF_DENSITY;
-  const curve = useMemo(
-    () => (backend === 'legacy' ? LEGACY_SMOOTH_CURVE : 'smooth'),
-    [backend]
-  );
 
   if (Platform.OS !== 'android') {
     return <View />;
   }
 
   return (
-    <View style={s.page} testID={`perf-${backend}`}>
+    <View style={s.page} testID="perf-public-progressive">
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.header} pointerEvents="none">
         <Text style={s.eyebrow}>EDGE FADE / PERF</Text>
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
-          {backend === 'progressive' ? 'Public progressive' : 'Public Legacy'} ·
+          Public Progressive ·
           {` ${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
         </Text>
@@ -103,7 +80,7 @@ export default function ProgressiveBlurPerfRoute() {
           bottom={112}
           left={fourEdges ? 48 : 0}
           right={fourEdges ? 48 : 0}
-          curve={curve}
+          curve="smooth"
           blurRadius={radiusDp}
           frostSaturation={1}
           frostLift={1}
