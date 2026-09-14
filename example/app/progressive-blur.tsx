@@ -213,8 +213,6 @@ function PlaylistLab({
             right={allEdges ? 48 : 0}
             curve={linear ? 'linear' : 'smooth'}
             blurRadius={radius}
-            frostSaturation={1}
-            frostLift={1}
             frostProgression={1}
           >
             <Playlist />
@@ -268,7 +266,7 @@ function PlaylistLab({
         </View>
         <Text style={s.footnote}>
           {publicCandidate
-            ? 'Public RC uses the actual exported EdgeFadeView. No Compose dependency is present in this Expo build.'
+            ? 'Public RC uses the exported EdgeFadeView with the public frost defaults (0.9 saturation / 1.03 lift).'
             : status.requested && !status.androidxAvailable
               ? 'AndroidX is not compiled in this binary. AGSL is the dependency-free implementation.'
               : 'AndroidX official is validated in the separate native reference APK.'}
