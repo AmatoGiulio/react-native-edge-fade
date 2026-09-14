@@ -17,17 +17,26 @@ class EdgeFadeViewManager :
 
   override fun getDelegate(): ViewManagerDelegate<EdgeFadeView> = delegate
   override fun getName(): String = NAME
-  override fun createViewInstance(context: ThemedReactContext): EdgeFadeView = EdgeFadeView(context)
+  override fun createViewInstance(context: ThemedReactContext): EdgeFadeView =
+    EdgeFadeView(context).also(EdgeFadeProgressiveBlurEffect::register)
 
   // JS sends sizes in dp. Fabric Float props arrive unscaled, so we convert here.
   private fun dp(view: EdgeFadeView, dp: Float): Float =
     dp * view.resources.displayMetrics.density
 
-  // Single redraw per prop transaction — Fabric applies all props in one batch,
-  // so coalescing here keeps per-setter code free of bookkeeping.
+  // Single redraw per prop transaction — Fabric applies all props in one batch.
+  // The progressive backend is also configured here, after every related prop
+  // has reached the native view, so no intermediate radius/curve combination is
+  // ever exposed to RuntimeShader.
   override fun onAfterUpdateTransaction(view: EdgeFadeView) {
     super.onAfterUpdateTransaction(view)
+    EdgeFadeProgressiveBlurEffect.apply(view)
     view.invalidate()
+  }
+
+  override fun onDropViewInstance(view: EdgeFadeView) {
+    EdgeFadeProgressiveBlurEffect.unregister(view)
+    super.onDropViewInstance(view)
   }
 
   // ── Edge sizes ─────────────────────────────────────────────────────────────
@@ -61,7 +70,9 @@ class EdgeFadeViewManager :
   // ── Mode ───────────────────────────────────────────────────────────────────
 
   @ReactProp(name = "mode")
-  override fun setMode(view: EdgeFadeView, value: String?) { view.mode = value ?: "mask" }
+  override fun setMode(view: EdgeFadeView, value: String?) {
+    EdgeFadeProgressiveBlurEffect.setRequestedMode(view, value ?: "mask")
+  }
 
   // ── Colors ─────────────────────────────────────────────────────────────────
 
