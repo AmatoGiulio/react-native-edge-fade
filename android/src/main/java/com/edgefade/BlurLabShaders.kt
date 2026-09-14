@@ -46,9 +46,9 @@ internal object BlurLabShaders {
         """
           float sat = mix(1.0, frostSaturation, intensity);
           float lift = mix(1.0, frostLift, intensity);
-          float3 rgb = output.rgb;
+          float3 rgb = sampled.rgb;
           float luminance = dot(rgb, float3(0.213, 0.715, 0.072));
-          output.rgb = mix(float3(luminance), rgb, sat) * lift;
+          sampled.rgb = mix(float3(luminance), rgb, sat) * lift;
         """.trimIndent()
       } else {
         ""
@@ -71,11 +71,11 @@ internal object BlurLabShaders {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
         float radius = blurRadius * intensity;
         float r = floor(radius);
-        float4 output = float4(content.eval(coord));
+        float4 sampled = float4(content.eval(coord));
         if (r >= 1.0) {
           float sigma = max(radius / 2.0, 1.0);
           float weightSum = 1.0;
-          float4 result = output;
+          float4 result = sampled;
           for (float i = 1.0; i < maxRadius; i += 2.0) {
             if (i >= r) break;
             float low = gaussian(i, sigma);
@@ -98,10 +98,10 @@ internal object BlurLabShaders {
             if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
             if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
           }
-          output = result / weightSum;
+          sampled = result / weightSum;
         }
         $gradeCode
-        return half4(output);
+        return half4(sampled);
       }
     """.trimIndent()
   }
