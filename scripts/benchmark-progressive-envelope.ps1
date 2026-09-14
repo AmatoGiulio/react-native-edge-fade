@@ -83,27 +83,27 @@ foreach ($edge in $edgeModes) {
   foreach ($radius in $normalizedRadii) {
     Write-Host "`n=== $edge / ${radius}px ===" -ForegroundColor Cyan
 
-    $benchmarkArgs = @(
-      '-Backend', 'both',
-      '-Edges', $edge,
-      '-TargetRadiusPx', $radius,
-      '-Swipes', $Swipes,
-      '-SwipeDurationMs', $SwipeDurationMs,
-      '-WarmupSwipes', $WarmupSwipes,
-      '-Blocks', $Blocks,
-      '-CooldownSeconds', $CooldownSeconds
-    )
+    # Use named hashtable splatting. Array splatting into another PowerShell
+    # script binds values positionally, so a literal '-Backend' can otherwise
+    # become the value of the Backend parameter instead of a parameter name.
+    $benchmarkParams = @{
+      Backend = 'both'
+      Edges = $edge
+      TargetRadiusPx = [double]$radius
+      Swipes = $Swipes
+      SwipeDurationMs = $SwipeDurationMs
+      WarmupSwipes = $WarmupSwipes
+      Blocks = $Blocks
+      CooldownSeconds = $CooldownSeconds
+    }
     if (-not [string]::IsNullOrWhiteSpace($Serial)) {
-      $benchmarkArgs += @('-Serial', $Serial)
+      $benchmarkParams.Serial = $Serial
     }
     if ($AllowEmulator) {
-      $benchmarkArgs += '-AllowEmulator'
+      $benchmarkParams.AllowEmulator = $true
     }
 
-    & $Benchmark @benchmarkArgs
-    if ($LASTEXITCODE -ne 0) {
-      throw "Benchmark failed for $edge / ${radius}px"
-    }
+    & $Benchmark @benchmarkParams
 
     $label = Get-RadiusLabel -Radius $radius
     $aggregateFile = Get-ChildItem -Path $SourceResultsDir -Filter "*-$edge-${label}px-aggregate.json" |
