@@ -25,15 +25,20 @@ requirements.
 
 ## Why the official AndroidX binary is isolated
 
-Compose UI 1.13.0-alpha03 progressive blur compiles and runs successfully in the
-reference app with AGP 9.1.1 / compileSdk 37.1. The official reference was also
-validated on a Pixel 9 Pro: both smooth and linear progressive blur rendered at
-48dp / 144px.
+Compose UI 1.13.0-alpha03 progressive blur compiles successfully in the
+reference app with AGP 9.1.1 / compileSdk 37.1.
 
-Expo SDK 57 cannot currently consume that binary in the same app because moving
-its build to AGP 9.1 breaks the current Expo Gradle plugin before Edge Fade is
-compiled (`LibraryDefaultConfig.setTargetSdk(Integer)`). Therefore the shipping
-candidate ports the blur kernel rather than depending on Compose UI alpha.
+The runtime/visual validation completed so far was performed on the Pixel 9 Pro
+AVD (`sdk_gphone16k_x86_64`, API 37), not on a physical Pixel 9 Pro. Smooth and
+linear progressive blur both rendered correctly at 48dp / 144px in that
+emulator. Those results are accepted as functional/visual smoke tests only, not
+as physical-device performance evidence.
+
+Expo SDK 57 cannot currently consume the AndroidX binary in the same app because
+moving its build to AGP 9.1 breaks the current Expo Gradle plugin before Edge
+Fade is compiled (`LibraryDefaultConfig.setTargetSdk(Integer)`). Therefore the
+shipping candidate ports the blur kernel rather than depending on Compose UI
+alpha.
 
 ## Run the RN comparison
 
@@ -111,7 +116,8 @@ The initial public candidate uses a full-view View RenderEffect, matching the
 architecture used by the official AndroidX reference closely. This simplifies
 fidelity validation, but it may process more pixels than the strip-based Blur
 Lab renderer. It is therefore **not yet assumed faster** than Legacy or the lab
-port; release-build frame measurements are a required release gate.
+port; release-build frame measurements on physical hardware are a required
+release gate.
 
 ## Mask-aware frost grading
 
@@ -164,11 +170,23 @@ blur implementation under test comes from the Compose UI artifact.
 
 ## Validation completed
 
+Host/build gates:
+
 - AndroidX official API compile probe: PASS.
 - Installable AndroidX reference APK: `assembleDebug` PASS.
-- Pixel 9 Pro AndroidX runtime: PASS, smooth + linear at 48dp / 144px.
-- Blur Lab AGSL RuntimeShader on Pixel 9 Pro: PASS per device test.
-- Public RC native activation log on Pixel 9 Pro: PASS.
+- Deterministic Blur Lab geometry: 1,000 cases / 812,900 assertions PASS.
+- Host Skia compile gate for lab shaders: PASS.
+- Public RC analytical-mask host compile/contract gate: PASS.
+- Host Skia compile gate for the mask-aware graded final pass: PASS.
+- Expo Android example: PASS after wiring the public native selector on the
+  previously validated candidate.
+- Library unit tests/build: PASS on the previously validated candidate.
+
+Pixel 9 Pro AVD / API 37 emulator smoke gates:
+
+- AndroidX official runtime: PASS, smooth + linear at 48dp / 144px.
+- Blur Lab AGSL RuntimeShader: PASS.
+- Public RC native activation log: PASS.
 - Public RC 48dp / 144px Top+Bottom Linear: static visual PASS.
 - Public RC 48dp / 144px Four Edges Linear: static visual PASS.
 - Public RC 48dp / 144px Four Edges Smooth: static visual PASS.
@@ -178,20 +196,12 @@ blur implementation under test comes from the Compose UI artifact.
   PASS.
 - Public RC with actual public frost defaults, Four Edges Smooth: static visual
   PASS.
-- Deterministic Blur Lab geometry: 1,000 cases / 812,900 assertions PASS.
-- Host Skia compile gate for lab shaders: PASS.
-- Public RC analytical-mask host compile/contract gate: PASS.
-- Host Skia compile gate for the mask-aware graded final pass: PASS.
-- Expo Android example: PASS after wiring the public native selector on the
-  previously validated candidate.
-- Library unit tests/build: PASS on the previously validated candidate.
 
-At 48dp / 144px the tested Public RC screenshots show no visible discrete blur
+At 48dp / 144px the captured emulator screenshots show no visible discrete blur
 bands or corner seams, including the four-edge case. The center remains visually
 unchanged with the actual public frost defaults.
 
-The latest benchmark-harness commits retrigger CI; their result must be read
-before treating the current head as release-ready.
+Physical-device runtime, performance and lifecycle validation are still open.
 
 ## Apples-to-apples performance harness
 
@@ -225,11 +235,24 @@ edgefade://progressive-blur-perf?backend=legacy&edges=vertical
 - reports frame p50/p95/p99/max, deadline misses and total PSS;
 - stores raw captures plus JSON summaries under `benchmark-results/`;
 - defaults to ABBA order (`progressive, legacy, legacy, progressive`) to reduce
-  simple warm-up / thermal ordering bias.
+  simple warm-up / thermal ordering bias;
+- rejects emulator performance runs unless `-AllowEmulator` is supplied;
+- supports `-Serial` for explicit physical-device selection.
+
+A smoke run on `sdk_gphone16k_x86_64` / API 37 completed end-to-end with:
+
+```text
+legacy:      p50 18.383 ms | p95 36.000 ms | p99 88.915 ms | missed 18.34% | PSS 195.32 MB
+progressive: p50 18.447 ms | p95 38.904 ms | p99 66.344 ms | missed 22.50% | PSS 185.04 MB
+```
+
+The per-run variance was high (for example Progressive p95 ranged from 19.214 to
+58.595 ms), so these numbers are not used to decide which renderer is faster.
+They only prove the benchmark harness runs correctly end-to-end.
 
 This framestats comparison is the fast regression gate. Perfetto / FrameTimeline
 remains the authoritative follow-up for CPU/GPU attribution if the candidate is
-competitive.
+competitive on physical hardware.
 
 ## Release benchmark
 
@@ -240,35 +263,43 @@ git pull --ff-only origin experiment/androidx-progressive-blur
 yarn example android --variant release
 ```
 
+List devices and select a physical serial:
+
+```powershell
+adb devices -l
+```
+
 Then run Top+Bottom:
 
 ```powershell
-.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges vertical
+.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges vertical -Serial <PHYSICAL_SERIAL>
 ```
 
 and Four Edges:
 
 ```powershell
-.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges four
+.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges four -Serial <PHYSICAL_SERIAL>
 ```
 
-Do not compare a Debug progressive run against a Release Legacy run. The same
-installed APK, device state and scene must be used for both sides.
+Use `-AllowEmulator` only for smoke testing. Do not compare a Debug progressive
+run against a Release Legacy run. The same installed APK, device state and scene
+must be used for both sides.
 
 ## Remaining release gates
 
-1. Latest full CI green on the benchmark-harness head.
-2. Run the release-build ABBA benchmark on Pixel 9 Pro for Top+Bottom and Four
-   Edges; the full-view progressive renderer must be competitive with Legacy.
-3. If the fast frame gate passes, capture Perfetto / FrameTimeline for p50/p95,
-   missed frames, CPU/GPU attribution, memory, cold shader creation and warm
-   scrolling.
+1. Latest full CI green on the current head.
+2. Run the release-build ABBA benchmark on at least one physical API 33+ Android
+   device for Top+Bottom and Four Edges; the full-view progressive renderer must
+   be competitive with Legacy.
+3. If the fast frame gate passes, capture Perfetto / FrameTimeline on physical
+   hardware for p50/p95, missed frames, CPU/GPU attribution, memory, cold shader
+   creation and warm scrolling.
 4. Scroll/fling rapidly, drag radius `0 -> 48 -> 0`, resize/rotate and exercise
-   lifecycle transitions.
+   lifecycle transitions on physical hardware.
 5. Run the existing WebView screen and confirm it stays on Legacy without a
    regression.
-6. Validate API 31/32 Legacy fallback and at least one API 33 device besides the
-   Pixel 9 Pro before changing the default in a published release.
+6. Validate API 31/32 Legacy fallback and at least one additional API 33+ physical
+   device before changing the default in a published release.
 7. Only then update README/changelog, version, prerelease npm tag and merge.
 
 ## Provenance
@@ -290,5 +321,5 @@ Sources inspected during the experiment:
 
 No npm publication, release tag, version bump, merge, iOS backend change, Web
 change or lens change. No claim that the public candidate is faster, pixel
-identical to AndroidX, or first in React Native until the remaining device and
-performance evidence exists.
+identical to AndroidX, or first in React Native until the remaining physical-device
+and performance evidence exists.
