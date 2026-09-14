@@ -33,8 +33,16 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           set -o pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+      - name: Install isolated Gradle 9.3.1
+        run: |
+          curl --fail --location --silent --show-error \
+            https://services.gradle.org/distributions/gradle-9.3.1-bin.zip \
+            --output "$RUNNER_TEMP/gradle-9.3.1-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle-9.3.1-bin.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" --version
       - name: Compile official AndroidX progressive blur API
         run: |
-          ./example/android/gradlew -p androidx-reference compileDebugKotlin --no-daemon --stacktrace
+          "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" \
+            -p androidx-reference compileDebugKotlin --no-daemon --stacktrace
       # Deliberately isolated from Expo SDK 57: AGP 9.1 is binary-incompatible
       # with its current Expo Gradle plugin. This validates the official API only.
