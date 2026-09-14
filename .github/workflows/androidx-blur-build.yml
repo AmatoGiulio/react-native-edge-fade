@@ -1,12 +1,10 @@
-name: AndroidX blur build profile
+name: AndroidX blur reference
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'android/build.gradle'
-      - 'android/src/**'
-      - 'scripts/configure-androidx-blur.cjs'
-      - 'tests/native/androidx-toolchain.test.cjs'
+      - 'androidx-reference/**'
+      - 'android/src/androidxBlur/**'
       - '.github/workflows/androidx-blur-build.yml'
   workflow_dispatch:
 
@@ -14,20 +12,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: androidx-blur-build-${{ github.ref }}
+  group: androidx-blur-reference-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   official-binary-compile:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - name: Setup
-        uses: ./.github/actions/setup
-      - name: Toolchain helper regression tests
-        run: node --test tests/native/androidx-toolchain.test.cjs
       - name: Install JDK
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
@@ -38,15 +32,9 @@ jobs:
           set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           set -o pipefail
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1' 'build-tools;36.0.0'
-      - name: Generate example and apply official-binary profile
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+      - name: Compile official AndroidX progressive blur API
         run: |
-          yarn example expo prebuild --platform android --no-install
-          node scripts/configure-androidx-blur.cjs
-          node scripts/configure-androidx-blur.cjs --check
-      - name: Validate real AAR metadata and compile official adapter
-        working-directory: example/android
-        run: |
-          ./gradlew :app:checkDebugAarMetadata :react-native-edge-fade:compileDebugKotlin \
-            --no-daemon --stacktrace -PreactNativeArchitectures=x86_64
-      # This is a metadata/Kotlin gate, not an APK assembly or device/GPU test.
+          ./example/android/gradlew -p androidx-reference compileDebugKotlin --no-daemon --stacktrace
+      # Deliberately isolated from Expo SDK 57: AGP 9.1 is binary-incompatible
+      # with its current Expo Gradle plugin. This validates the official API only.
