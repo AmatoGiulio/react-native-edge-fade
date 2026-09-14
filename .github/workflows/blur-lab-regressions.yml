@@ -11,8 +11,10 @@ on:
       - 'src/BlurLabNativeComponent.ts'
       - 'example/app/progressive-blur.tsx'
       - 'example/app/progressive-blur-perf.tsx'
-      - 'scripts/benchmark-progressive-blur.ps1'
-      - 'scripts/benchmark-progressive-envelope.ps1'
+      - 'scripts/benchmark-progressive-vs-androidx.ps1'
+      - 'scripts/benchmark-progressive-androidx-envelope.ps1'
+      - 'scripts/benchmark-progressive-vs-androidx.mjs'
+      - 'scripts/benchmark-progressive-androidx-envelope.mjs'
       - 'tests/native/test_blur_lab_regressions.py'
       - 'tests/native/test_progressive_public_backend.py'
       - 'tests/native/test_progressive_perf_scene.py'
@@ -49,6 +51,8 @@ jobs:
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
       - name: Check public performance harness contracts
         run: |
+          node --check scripts/benchmark-progressive-vs-androidx.mjs
+          node --check scripts/benchmark-progressive-androidx-envelope.mjs
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_perf_scene.py
       # These jobs do NOT validate Android RuntimeShader/GPU execution,
       # Fabric layout, visual fidelity or frame time. The separate AndroidX
