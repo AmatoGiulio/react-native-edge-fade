@@ -32,9 +32,12 @@ import kotlin.math.ceil
  * (with a recursion guard) and REPLACES the edge regions with filtered strips.
  * Replacement is important: ordinary SRC_OVER would leave the already-rendered
  * sharp content visible through transparent/partially covered filtered pixels,
- * producing a much weaker result than the Blur Lab renderer. A bounded SRC
- * saveLayer gives the overlay the same edge-ownership semantics as Blur Lab
- * without returning to a full-view RenderEffect.
+ * producing a much weaker result than the Blur Lab renderer.
+ *
+ * The destination is clipped BEFORE saveLayer. Android treats saveLayer bounds
+ * as an allocation hint, not a guaranteed clip; clipping only inside the layer
+ * lets a SRC restore clear pixels outside the intended band. The pre-layer clip
+ * makes each restore own exactly its visible strip.
  *
  * No public JS prop or Android-only backend switch is introduced.
  */
@@ -165,18 +168,13 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
 
         val visible = strip.band.visible
-        // ViewOverlay normally composites with SRC_OVER, which is wrong for a
-        // blur replacement: the sharp host has already been painted underneath.
-        // A bounded saveLayer restored with SRC atomically replaces only this
-        // strip, including transparent pixels, so the parent/background can show
-        // through exactly as it does when Blur Lab clips the sharp band out.
-        val layer = canvas.saveLayer(
-          visible.left.toFloat(),
-          visible.top.toFloat(),
-          visible.right.toFloat(),
-          visible.bottom.toFloat(),
-          replacementPaint,
-        )
+
+        // IMPORTANT: clip the destination BEFORE creating the SRC layer.
+        // saveLayer bounds are only a hint and do not constrain the restore
+        // operation. If the clip is applied after saveLayer, restoring with SRC
+        // can clear sharp pixels outside the visible band. On an isolated host
+        // layer that appears as a large white/transparent viewport.
+        val destinationClip = canvas.save()
         try {
           canvas.clipRect(
             visible.left.toFloat(),
@@ -184,10 +182,21 @@ internal class EdgeFadeProgressiveStripRenderer(
             visible.right.toFloat(),
             visible.bottom.toFloat(),
           )
-          canvas.translate(src.left.toFloat(), src.top.toFloat())
-          canvas.drawRenderNode(strip.node)
+          val layer = canvas.saveLayer(
+            visible.left.toFloat(),
+            visible.top.toFloat(),
+            visible.right.toFloat(),
+            visible.bottom.toFloat(),
+            replacementPaint,
+          )
+          try {
+            canvas.translate(src.left.toFloat(), src.top.toFloat())
+            canvas.drawRenderNode(strip.node)
+          } finally {
+            canvas.restoreToCount(layer)
+          }
         } finally {
-          canvas.restoreToCount(layer)
+          canvas.restoreToCount(destinationClip)
         }
       }
     } finally {
