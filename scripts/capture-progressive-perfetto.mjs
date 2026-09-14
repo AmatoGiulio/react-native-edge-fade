@@ -2,7 +2,6 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -230,25 +229,26 @@ async function capture(renderer) {
   sleep(500);
 
   const id = `${process.pid}-${Date.now()}`;
-  const localConfig = path.join(os.tmpdir(), `edgefade-perfetto-${id}.pbtxt`);
-  const remoteConfig = `/data/local/tmp/edgefade-perfetto-${id}.pbtxt`;
-  const remoteTrace = `/data/local/tmp/edgefade-${renderer}-${id}.perfetto-trace`;
+  // Android 14+ SELinux can deny perfetto's domain access to configs placed in
+  // /data/local/tmp even when adb shell itself can read them. Feed the text
+  // config through stdin instead, and write the trace to Perfetto's sanctioned
+  // device directory so the same harness works on production physical devices.
+  const remoteTrace = `/data/misc/perfetto-traces/edgefade-${renderer}-${id}.perfetto-trace`;
   const localTrace = path.join(
     options.outDir,
     `${timestamp()}-${renderer}-${options.edges}-${String(options.radiusPx).replace('.', 'p')}px.perfetto-trace`,
   );
 
-  fs.writeFileSync(localConfig, perfettoConfig(pkg), 'utf8');
   try {
-    adb(['push', localConfig, remoteConfig]);
-    adb(['shell', 'rm', '-f', remoteTrace]);
+    try { adb(['shell', 'rm', '-f', remoteTrace]); } catch {}
 
     const perfetto = spawn(
       'adb',
-      adbArgs(['shell', 'perfetto', '--txt', '-c', remoteConfig, '-o', remoteTrace]),
-      { stdio: ['ignore', 'inherit', 'inherit'] },
+      adbArgs(['shell', 'perfetto', '--txt', '-c', '-', '-o', remoteTrace]),
+      { stdio: ['pipe', 'inherit', 'inherit'] },
     );
     const perfettoDone = waitForChild(perfetto);
+    perfetto.stdin.end(perfettoConfig(pkg));
 
     sleep(900);
     driveSwipes(options.swipes);
@@ -261,8 +261,7 @@ async function capture(renderer) {
     }
     return localTrace;
   } finally {
-    fs.rmSync(localConfig, { force: true });
-    try { adb(['shell', 'rm', '-f', remoteConfig, remoteTrace]); } catch {}
+    try { adb(['shell', 'rm', '-f', remoteTrace]); } catch {}
   }
 }
 
