@@ -7,6 +7,8 @@ PERF = ROOT / "example/app/progressive-blur-perf.tsx"
 SELECTOR = ROOT / "android/src/main/java/com/edgefade/EdgeFadeProgressiveBlurEffect.kt"
 COMPARATOR = ROOT / "scripts/benchmark-progressive-vs-androidx.ps1"
 ENVELOPE = ROOT / "scripts/benchmark-progressive-androidx-envelope.ps1"
+COMPARATOR_NODE = ROOT / "scripts/benchmark-progressive-vs-androidx.mjs"
+ENVELOPE_NODE = ROOT / "scripts/benchmark-progressive-androidx-envelope.mjs"
 
 
 def read(path):
@@ -83,6 +85,38 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("*-summary.json", script)
         self.assertIn("Where-Object Renderer -eq 'public'", script)
         self.assertIn("Where-Object Renderer -eq 'androidx'", script)
+
+    def test_cross_platform_node_comparator_matches_the_same_gate(self):
+        script = read(COMPARATOR_NODE)
+        for contract in (
+            "com.edgefadeexample",
+            "com.edgefade.androidxref",
+            "com.edgefade.androidxref/.BenchmarkActivity",
+            "radiusPx: 144",
+            "warmupSwipes: 4",
+            "['public', 'androidx', 'androidx', 'public']",
+            "['androidx', 'public', 'public', 'androidx']",
+            "Public / AndroidX median ratios",
+            "edgefade://progressive-blur-perf",
+            "DEBUGGABLE",
+            "ro.kernel.qemu",
+            "--aggregate-out",
+        ):
+            self.assertIn(contract, script)
+        self.assertNotIn("legacy", script.lower())
+
+    def test_cross_platform_node_envelope_is_direct_and_deterministic(self):
+        script = read(ENVELOPE_NODE)
+        self.assertIn("defaultBlurRadiusDp: 28", script)
+        self.assertIn("[64, defaultRadiusPx, 120, 144]", script)
+        self.assertIn("['vertical', 'four']", script)
+        self.assertIn("benchmark-progressive-vs-androidx.mjs", script)
+        self.assertIn("--aggregate-out", script)
+        self.assertIn("P50RatioPublicToAndroidx", script)
+        self.assertIn("PublicMissedPct", script)
+        self.assertIn("AndroidxMissedPct", script)
+        self.assertIn("public-vs-androidx-envelope.csv", script)
+        self.assertNotIn("legacy", script.lower())
 
 
 if __name__ == "__main__":
