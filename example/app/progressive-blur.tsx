@@ -213,6 +213,8 @@ function PlaylistLab({
             right={allEdges ? 48 : 0}
             curve={linear ? 'linear' : 'smooth'}
             blurRadius={radius}
+            frostSaturation={0.9}
+            frostLift={1.03}
             frostProgression={1}
           >
             <Playlist />
