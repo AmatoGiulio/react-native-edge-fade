@@ -17,28 +17,20 @@ import { EdgeFadeView } from 'react-native-edge-fade';
 
 import type NativeBlurLabType from '../../src/BlurLabNativeComponent';
 
-type Backend = 'off' | 'legacy' | 'agsl' | 'public' | 'androidx';
-const BACKENDS: readonly Backend[] = [
-  'off',
-  'legacy',
-  'agsl',
-  'public',
-  'androidx',
-];
+type Backend = 'off' | 'agsl' | 'public' | 'androidx';
+const BACKENDS: readonly Backend[] = ['off', 'agsl', 'public', 'androidx'];
 const LABELS: Record<Backend, string> = {
   off: 'Off',
-  legacy: 'Legacy',
-  agsl: 'AGSL',
-  public: 'Public RC',
-  androidx: 'AndroidX',
+  agsl: 'AGSL reference',
+  public: 'Public Progressive',
+  androidx: 'AndroidX Official',
 };
 
 // Both progressive renderers cap their actual shader radius at 150 px. Keep
 // this interactive A/B scene inside that range in *dp* too: otherwise a dense
-// device can request e.g. 48dp -> 168px, making Public RC correctly fall back to
-// Legacy while the AGSL lab clamps to 150px. That looked like a renderer
-// fidelity difference even though the two buttons were no longer exercising
-// the same backend/radius.
+// device can request e.g. 48dp -> 168px, making Public Progressive correctly
+// fall back to mask while the AGSL lab clamps to 150px. That would no longer be
+// a valid fidelity comparison.
 const MAX_PROGRESSIVE_RADIUS_PX = 150;
 const RADIUS_DENSITY = PixelRatio.get();
 const MAX_PROGRESSIVE_RADIUS_DP =
@@ -114,9 +106,9 @@ function PlaylistLab({
     reason: '',
     androidxAvailable: false,
   });
-  // Switching Public RC <-> Blur Lab swaps the native parent and therefore
-  // remounts the ScrollView. Keep one shared offset so a visual A/B never
-  // compares two different pieces of the playlist after the user has scrolled.
+  // Switching Public Progressive <-> Blur Lab swaps the native parent and
+  // therefore remounts the ScrollView. Keep one shared offset so a visual A/B
+  // never compares two different pieces of the playlist after scrolling.
   const scrollOffsetRef = useRef(0);
   const rememberScrollOffset = (offset: number) => {
     scrollOffsetRef.current = offset;
@@ -128,9 +120,9 @@ function PlaylistLab({
   const androidxEnabled =
     status.androidxAvailable && Number(Platform.Version) >= 33;
 
-  // Fast Refresh can preserve the old 48dp state after this scene's range is
-  // tightened. Clamp at render time as well as in the slider so a stale state
-  // can never silently push Public RC over the native 150px eligibility cap.
+  // Fast Refresh can preserve an old radius after this scene's range changes.
+  // Clamp at render time as well as in the slider so a stale state can never
+  // silently push Public Progressive over the native 150px eligibility cap.
   const effectiveRadius = Math.min(radius, MAX_PROGRESSIVE_RADIUS_DP);
   const effectiveRadiusPx = effectiveRadius * RADIUS_DENSITY;
   const radiusLabel = Number.isInteger(effectiveRadius)
@@ -160,7 +152,7 @@ function PlaylistLab({
         </Pressable>
         <Text style={s.title}>After hours.</Text>
         <Text style={s.description}>
-          One playlist. Compare the active native renderer.
+          One playlist. Compare the progressive renderers.
         </Text>
       </View>
 
@@ -194,7 +186,8 @@ function PlaylistLab({
         {publicCandidate ? (
           <>
             <Text testID="active-blur-backend" style={s.status}>
-              Public EdgeFadeView / mode=blur / API {String(Platform.Version)}
+              Public Progressive / EdgeFadeView mode=blur / API{' '}
+              {String(Platform.Version)}
             </Text>
             <Text style={s.publicHint}>
               Pure progressive Gaussian. Native activation is logged as
@@ -305,10 +298,10 @@ function PlaylistLab({
         </View>
         <Text style={s.footnote}>
           {publicCandidate
-            ? 'Public RC is pure progressive Gaussian: no saturation, lift, tint, opacity cross-fade or material grading. Radius range is density-normalized to <=150 px.'
+            ? 'Public Progressive is the only public blur candidate: pure progressive Gaussian, no saturation, lift, tint, opacity cross-fade or material grading. Unsupported configurations fall back to mask.'
             : status.requested && !status.androidxAvailable
-              ? 'AndroidX is not compiled in this binary. AGSL is the dependency-free implementation. Radius range is density-normalized to <=150 px.'
-              : 'AndroidX official is validated in the separate native reference APK.'}
+              ? 'AndroidX is not compiled in this binary. AGSL reference is the isolated dependency-free implementation.'
+              : 'AndroidX Official is validated in the separate native reference APK.'}
         </Text>
       </View>
     </View>
