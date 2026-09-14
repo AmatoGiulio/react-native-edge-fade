@@ -141,10 +141,10 @@ class BlurLabRegressions(unittest.TestCase):
 
     def test_graded_pass_is_final_vertical_pass_only(self):
         shaders = read(NATIVE / "BlurLabShaders.kt")
-        public = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        public = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
         self.assertIn("fun pass(vertical: Boolean, grade: Boolean = false)", shaders)
-        self.assertIn("BlurLabShaders.pass(false)", public)
-        self.assertIn("BlurLabShaders.pass(true, grade = true)", public)
+        self.assertIn("BlurLabShaders.pass(vertical = false)", public)
+        self.assertIn("BlurLabShaders.pass(vertical = true, grade = true)", public)
         self.assertIn('setFloatUniform("frostSaturation"', public)
         self.assertIn('setFloatUniform("frostLift"', public)
 
