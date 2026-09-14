@@ -4,135 +4,144 @@ Branch: `experiment/androidx-progressive-blur`
 Baseline: `445bcb1caa43e5392d3b55ca298b44b4937ffe61` (`main`, 0.2.2).
 Status: RELEASE-CANDIDATE EXPERIMENT, NOT A RELEASE.
 
-## Summary
+## Goal
 
-This branch now has four separate things on purpose:
+The target is the new AndroidX / Compose UI 1.13 progressive blur behavior, not
+an approximation that merely looks similar.
 
-1. **Blur Lab** — an internal Android Fabric testbed comparing Legacy and the
-   dependency-free AndroidX-derived AGSL renderer on the same React Native
-   playlist.
-2. **AndroidX reference APK** — an isolated native Android app using the actual
-   published `androidx.compose.ui:ui-graphics:1.13.0-alpha03` binary.
-3. **Public RC path** — the exported `EdgeFadeView mode="blur"` automatically
-   selects the progressive AGSL backend on safe API 33+ configurations while
-   keeping the old renderer as an explicit fallback.
-4. **Public perf scene** — an apples-to-apples release-build benchmark that uses
-   the same exported `EdgeFadeView` for both progressive and Legacy.
+For the progressive backend the rendering contract is deliberately narrow:
 
-No new public prop or mode was added. iOS, Web and lens are unchanged. The RN
-consumer build remains Compose-free and keeps its existing Android SDK/AGP
-requirements.
+```text
+intensity(x, y) in [0, 1]
+radius(x, y) = maxRadius * intensity(x, y)
+output = separableGaussian(content, radius(x, y))
+```
+
+There are no discrete blur levels, opacity cross-fades used to fake radius,
+saturation changes, brightness/lift, tint, frost material grading or veil in the
+progressive pipeline. Edge-local strips are only GPU work culling: the radius
+inside every strip remains continuous per pixel.
+
+The historical `frostSaturation` / `frostLift` props remain in the package for
+Legacy compatibility, but the API 33+ progressive renderer does not read them.
+The comparison and performance scenes explicitly use `1 / 1` so the reference
+contract is unambiguous.
+
+## What is in this branch
+
+1. **Blur Lab** — internal Fabric testbed for Legacy, the dependency-free AGSL
+   research renderer and the actual Public RC.
+2. **AndroidX reference APK** — isolated native app using the published
+   `androidx.compose.ui:ui-graphics:1.13.0-alpha03` implementation.
+3. **Public RC** — exported `EdgeFadeView mode="blur"` automatically selects the
+   dependency-free AndroidX-derived renderer on eligible API 33+ configurations.
+4. **Performance scene** — release-build A/B through the same exported
+   `EdgeFadeView`.
+
+No Android-only public backend prop was added. iOS, Web and lens are unchanged.
+The RN consumer remains Compose-free and keeps its existing SDK/AGP requirements.
 
 ## Why the official AndroidX binary is isolated
 
-Compose UI 1.13.0-alpha03 progressive blur compiles successfully in the
-reference app with AGP 9.1.1 / compileSdk 37.1.
+The official Compose UI 1.13.0-alpha03 progressive blur builds successfully in
+the reference application with AGP 9.1.1 / compileSdk 37.1.
 
-The runtime/visual validation completed first was performed on the Pixel 9 Pro
-AVD (`sdk_gphone16k_x86_64`, API 37), not on a physical Pixel 9 Pro. Smooth and
-linear progressive blur both rendered correctly at 48dp / 144px in that
-emulator. Those results remain functional/visual smoke tests only, not physical-
-device performance evidence.
+Expo SDK 57 cannot currently consume that artifact in the same example because
+moving the build to AGP 9.1 breaks the current Expo Gradle plugin during plugin
+evaluation (`LibraryDefaultConfig.setTargetSdk(Integer)`). Therefore the package
+ports the relevant shader/kernel under its AndroidX Apache-2.0 attribution rather
+than taking a Compose runtime dependency.
 
-Expo SDK 57 cannot currently consume the AndroidX binary in the same app because
-moving its build to AGP 9.1 breaks the current Expo Gradle plugin before Edge
-Fade is compiled (`LibraryDefaultConfig.setTargetSdk(Integer)`). Therefore the
-shipping candidate ports the blur kernel rather than depending on Compose UI
-alpha.
+The official binary remains the golden implementation for fidelity checks.
 
-## Run the RN comparison
+## Pure Public RC architecture
 
-From the repository root:
+The first production candidate applied the two RuntimeShader passes to the whole
+`EdgeFadeView` with `View.setRenderEffect()`. Its static fidelity was excellent,
+but physical-device performance rejected that placement.
 
-```sh
-git fetch origin
-git switch experiment/androidx-progressive-blur
-yarn install
-yarn example android
-```
+A second candidate moved work to edge-local strips through a `ViewOverlay` and
+SRC replacement. Although its output became visually close to the research AGSL
+renderer, that integration introduced unnecessary replacement/layer semantics.
+It is no longer the target architecture.
 
-Open **Progressive Blur Lab**. The controls are:
-
-- **Off** — no filter.
-- **Legacy** — current Edge Fade Android blur renderer.
-- **AGSL** — isolated strip-based AndroidX-derived renderer used during research.
-- **Public RC** — the actual exported `EdgeFadeView mode="blur"` path that would
-  ship if the remaining device/performance gates pass.
-- **AndroidX** — deliberately disabled in Expo; use the reference APK instead.
-
-Public RC is the default selection. On API 33+, radius 1..150px, named preset
-curves, no tint/rounded native clip and ordinary View content, the native manager
-selects the progressive backend without changing JS API. Activation is logged:
+The current renderer is owned directly by `EdgeFadeView.dispatchDraw()`:
 
 ```text
-EdgeFadeProgressive: Using progressive AGSL blur backend on API 33+ (edge-local strips).
+EdgeFadeView.dispatchDraw()
+        |
+        +-- record React children once into one RenderNode
+        |
+        +-- draw sharp recording with active edge bands clipped OUT
+        |
+        +-- for each disjoint edge band:
+              padded source rectangle
+                    |
+              horizontal progressive Gaussian
+                    |
+              vertical progressive Gaussian
+                    |
+              draw only into that empty band
 ```
 
-On Windows you can verify after opening Public RC with:
+Important properties:
 
-```powershell
-adb logcat -d -s EdgeFadeProgressive:I *:S
-```
+- the sharp source does not remain underneath filtered edge pixels;
+- no `ViewOverlay` is used;
+- no `BlendMode.SRC` replacement layer is used;
+- no forced host `LAYER_TYPE_HARDWARE` is used;
+- no full-view progressive RenderEffect is used;
+- no color-grade RenderEffect exists in the progressive path;
+- each source strip grows by `ceil(maxRadius) + 1` so its Gaussian can sample
+  real neighboring content at the inner boundary;
+- top/bottom own the corners; left/right own only the remaining vertical center,
+  so output ownership is disjoint before effects are allocated;
+- strip-local coordinates are mapped back into global view coordinates via the
+  mask `origin` uniform;
+- corners combine edge intensity with `max()`, not stacked blur/opacity.
 
-## Public RC fallback matrix
+The expensive shader work is therefore restricted to pixels for which the
+radius can be non-zero, while the radius field itself remains continuous.
 
-The existing Legacy renderer remains active for:
+## Progressive shader contract
 
-- Android API 31/32;
-- API 33+ with radius above the AndroidX spatial-blur cap of 150px;
-- zero/subpixel radius (retaining current behavior);
-- custom serialized curve LUTs;
-- WebView or SurfaceView descendants;
-- native `fadeRadius` clipping;
-- blur tint / per-edge overlay colors;
-- software rendering or a RuntimeShader creation/configuration failure.
-
-Those cases are intentionally conservative. They must be promoted individually
-only after fidelity and lifecycle tests; the goal is not to claim coverage by
-silently changing existing semantics.
-
-## Public RC architecture
-
-`EdgeFadeViewManager` stores the JS-requested mode separately. After each Fabric
-prop transaction it configures the internal backend selector once all related
-props have landed.
-
-The first production candidate applied the two separable RuntimeShader passes as
-one full-view `View.setRenderEffect()` chain. Static visual fidelity was very
-good, but physical-device performance rejected that architecture (measurements
-below).
-
-The current candidate keeps the same analytical mask, paired-tap kernel and
-mask-aware frost grading but runs them on **edge-local padded source strips**:
-
-- the normal `EdgeFadeView` first draws sharp children through its no-color
-  overlay branch;
-- a `ViewOverlay` drawable records the same host into one reusable `RenderNode`;
-- top and bottom own the full-width corner output;
-- left and right own only the remaining center span, so output ownership is
-  disjoint before any RenderEffect is allocated;
-- each visible strip is expanded by `ceil(maxRadius) + 1` source pixels so the
-  separable kernel has the same neighbourhood as the full-view result;
-- each strip mask receives a global-coordinate `origin`, preserving the exact
-  max-combined four-edge mask from the visually validated full-view candidate;
-- the final vertical pass applies the same mask-aware frost grade.
-
-This keeps the public API exactly `mode="blur"`. There is no `progressive` mode
-or Android-only JS backend prop.
-
-## Mask-aware frost grading
-
-The current public Android defaults are:
+Both horizontal and vertical passes use the same mask. For each fragment:
 
 ```text
-frostSaturation: 0.9
-frostLift: 1.03
+intensity = clamp(mask(coord).a, 0, 1)
+radius = blurRadius * intensity
+sigma = max(radius / 2, 1)
 ```
 
-The final vertical RuntimeShader uses the same per-pixel edge intensity that
-drives blur radius to interpolate saturation and lift from neutral in the sharp
-center to the requested grade at the outer edge. At full intensity the math
-matches the existing Legacy ColorMatrix saturation/brightness transform.
+The AndroidX-derived paired Gaussian taps are then evaluated for that radius.
+The second pass does not apply saturation, lift, luminance conversion, tint or
+any other material operation.
+
+The public preset mask is analytical. For example:
+
+```text
+linear: presence(t) = t
+smooth: presence(t) = 1 - (1 - t)^3
+```
+
+`frostProgression` is retained only as the existing spatial envelope-span
+control; it does not perform a color/material grade.
+
+## Public RC eligibility and fallback
+
+Progressive is attempted only when the current configuration can use the pure
+renderer safely:
+
+- Android API 33+;
+- hardware rendering;
+- blur radius in `1..150` physical pixels;
+- named preset curve on every active edge;
+- no native `fadeRadius` clip;
+- no global/per-edge overlay color;
+- no WebView or SurfaceView descendant.
+
+Other configurations stay on Legacy. RuntimeShader creation/configuration errors
+also fall back to Legacy.
 
 ## Official AndroidX reference APK
 
@@ -144,13 +153,7 @@ git pull --ff-only origin experiment/androidx-progressive-blur
 adb shell am start -n com.edgefade.androidxref/.MainActivity
 ```
 
-The status line must read:
-
-```text
-AndroidX official / Active: androidx
-```
-
-The reference uses ordinary platform Views and realizes the actual public API:
+The reference realizes the published API through the actual AndroidX artifact:
 
 ```text
 BlurRadiusSpec.shader(maxRadius) { radiusMask }
@@ -159,153 +162,134 @@ BlurRadiusSpec.shader(maxRadius) { radiusMask }
   -> View.setRenderEffect()
 ```
 
-It intentionally does not use ComposeView or composable UI; only the progressive
-blur implementation under test comes from the Compose UI artifact.
+The initial AndroidX runtime/visual validation was performed on a Pixel 9 Pro
+AVD (`sdk_gphone16k_x86_64`, API 37), not physical Pixel hardware. Smooth and
+Linear both rendered correctly at 48dp / 144px. Those results are functional
+smoke evidence only.
 
-## Validation completed
+## Physical test device
 
-Host/build gates completed on previously validated candidates:
+The current physical device is:
 
-- AndroidX official API compile probe: PASS.
-- Installable AndroidX reference APK: `assembleDebug` PASS.
-- Deterministic Blur Lab geometry: 1,000 cases / 812,900 assertions PASS.
-- Host Skia compile gate for lab shaders: PASS.
-- Host Skia compile gate for analytical public mask: PASS.
-- Host Skia compile gate for mask-aware graded final pass: PASS.
+```text
+serial: 8d9bf753
+product: CPH2709EEA
+model: CPH2709
+API: 36
+size: 1272x2800
+density: 560dpi / 3.5x
+```
 
-Pixel 9 Pro AVD / API 37 emulator smoke gates for the visually validated
-full-view candidate:
+At 3.5x, 48dp is about 168px and exceeds the AndroidX progressive cap. The Blur
+Lab therefore density-normalizes its slider to `150 / density`, approximately
+42.85dp on this device. Both Public RC and AGSL consequently receive the same
+actual radius during visual A/B.
 
-- AndroidX official runtime: PASS, smooth + linear at 48dp / 144px.
-- Blur Lab AGSL RuntimeShader: PASS.
-- Public RC native activation log: PASS.
-- Public RC 48dp / 144px Top+Bottom Linear: static visual PASS.
-- Public RC 48dp / 144px Four Edges Linear: static visual PASS.
-- Public RC 48dp / 144px Four Edges Smooth: static visual PASS.
-- Public RC with actual public frost defaults (`0.9 / 1.03`), Top+Bottom Smooth:
-  static visual PASS.
-- Public RC with actual public frost defaults, Top+Bottom Linear: static visual
-  PASS.
-- Public RC with actual public frost defaults, Four Edges Smooth: static visual
-  PASS.
+The lab also preserves one shared scroll offset and fixed viewport geometry when
+switching backend, preventing false visual differences caused by remount/layout
+movement.
 
-At 48dp / 144px the captured emulator screenshots showed no visible discrete blur
-bands or corner seams, including the four-edge case. The center remained visually
-unchanged with the actual public frost defaults.
+## Historical full-view physical benchmark: rejected
 
-## Physical-device performance: full-view candidate rejected
+These numbers belong to the earlier full-view renderer and were measured before
+the pure/direct-dispatch architecture. They are retained only as the reason that
+full-view placement was rejected.
 
-Physical release-build testing was performed on `CPH2709`, Android API 36,
-1272x2800, 560dpi (3.5x). The perf scene used a density-normalized target of
-approximately 144px (`41.14dp` on this device), Smooth curve and the public frost
-defaults. The progressive activation log was observed on the physical device.
+Physical release build on `CPH2709`, API 36, approximately 144px, Smooth.
 
-Top + bottom, ABBA aggregate medians:
+Top + bottom, ABBA medians:
 
 ```text
 legacy:      p50 16.573 ms | p95 25.188 ms | p99 26.316 ms | missed 0.46% | PSS 237.77 MB
 progressive: p50 25.778 ms | p95 34.816 ms | p99 41.686 ms | missed 1.12% | PSS 228.27 MB
 ```
 
-Four edges, ABBA aggregate medians:
+Four edges:
 
 ```text
 legacy:      p50 17.202 ms | p95 30.090 ms | p99 30.884 ms | missed 0.46% | PSS 243.81 MB
 progressive: p50 64.978 ms | p95 70.296 ms | p99 71.404 ms | missed 65.12% | PSS 225.20 MB
 ```
 
-The full-view renderer therefore **failed the physical performance gate**. The
-four-edge regression is decisive and is not explained by simple warm-up ordering:
-both progressive samples in the ABBA run were similarly slow. The visual result
-remains the fidelity target, but the full-view RenderEffect architecture is no
-longer a release candidate.
+The full-view architecture is not a shipping candidate.
 
-The branch now tests the edge-local strip candidate described above. Its physical
-visual/performance results must be measured again before any release conclusion.
+## Current visual evidence
 
-## Apples-to-apples performance harness
+Before removing the frost grade and ViewOverlay integration, a controlled
+42.85dp / 150px Top+Bottom A/B on the physical device aligned Public RC and the
+research AGSL renderer very closely for both Smooth and Linear, with the sharp
+center preserved.
 
-`example/app/progressive-blur-perf.tsx` compares the renderers through the same
-exported `EdgeFadeView`, same content, edge sizes and public frost defaults. The
-radius is density-normalized so the stress case stays at approximately 144px on
-different devices instead of accidentally exceeding the AndroidX 150px cap.
+That result does **not** automatically validate the current direct-dispatch
+implementation: the renderer architecture has changed again. Static fidelity
+must be re-run on the current head, now with a neutral pure-Gaussian pipeline.
 
-The `progressive` case uses the named `smooth` preset and therefore activates the
-API 33+ progressive selector. The `legacy` case supplies a custom 64-stop curve
-whose alpha values are exactly the native fallback definition
+The golden target is the AndroidX reference behavior supplied for this experiment,
+not an appearance obtained by adding material/color effects.
+
+## Performance harness
+
+`example/app/progressive-blur-perf.tsx` compares progressive and Legacy through
+the same exported `EdgeFadeView`, with identical content, edges, curve profile and
+neutral grade (`frostSaturation=1`, `frostLift=1`).
+
+The progressive case uses the named `smooth` preset. The Legacy case supplies a
+custom 64-stop curve containing the exact native smooth alpha samples
 `alpha=(1-t)^3`; custom curves deliberately force Legacy while preserving the
-same smooth profile.
+same profile.
 
-`scripts/benchmark-progressive-blur.ps1`:
+The stress radius is density-normalized to approximately 144 physical pixels.
 
-- force-stops and relaunches the example for every sample;
-- resets `dumpsys gfxinfo` after startup;
-- derives swipe coordinates from the connected device size;
-- derives the dp radius from device density for an approximately 144px target;
-- drives repeated ADB swipes;
-- captures `framestats` and `meminfo`;
-- reports frame p50/p95/p99/max, deadline misses and total PSS;
-- stores raw captures plus JSON summaries under `benchmark-results/`;
-- defaults to ABBA order (`progressive, legacy, legacy, progressive`);
-- rejects emulator performance runs unless `-AllowEmulator` is supplied;
-- supports `-Serial` for explicit physical-device selection.
-
-The earlier AVD run remains smoke-test-only and is not used for renderer choice.
-Perfetto / FrameTimeline remains the authoritative follow-up for CPU/GPU
-attribution only after a candidate is competitive in the physical fast gate.
-
-## Release benchmark
-
-Install the current release build first:
+Run on the physical device:
 
 ```powershell
-git pull --ff-only origin experiment/androidx-progressive-blur
-yarn example android --variant release --device <PHYSICAL_SERIAL>
+.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges vertical -Serial 8d9bf753
+.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges four -Serial 8d9bf753
 ```
 
-Then run Top+Bottom:
+The script force-stops/relaunches each sample, resets `gfxinfo`, drives ADB
+swipes, records framestats/meminfo, uses ABBA ordering and refuses to treat an
+emulator as release evidence unless `-AllowEmulator` is explicitly supplied.
 
-```powershell
-.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges vertical -Serial <PHYSICAL_SERIAL>
-```
+Do not run the performance gate until static fidelity of this direct-dispatch
+head has passed.
 
-and Four Edges:
+## Validation gates
 
-```powershell
-.\scripts\benchmark-progressive-blur.ps1 -Backend both -Edges four -Serial <PHYSICAL_SERIAL>
-```
+Already established on earlier candidates:
 
-Use `-AllowEmulator` only for smoke testing. Do not compare Debug against Release.
+- AndroidX official API compile probe: PASS;
+- AndroidX reference APK assemble: PASS;
+- 1,000 deterministic geometry cases / 812,900 assertions: PASS;
+- host shader compiler for the AndroidX-derived Gaussian: PASS on earlier heads;
+- physical API 36 progressive activation: PASS on earlier heads;
+- full-view physical performance: FAIL / architecture rejected.
 
-## Remaining release gates
+Required again for the current pure direct-dispatch head:
 
-1. Latest full CI green on the current strip-renderer head.
-2. Re-run static visual fidelity on physical hardware for Top+Bottom and Four
-   Edges and confirm the strip candidate preserves the validated full-view look.
-3. Re-run release-build ABBA framestats on physical hardware for Top+Bottom and
-   Four Edges; the strip candidate must be competitive with Legacy.
-4. Only if that fast gate passes, capture Perfetto / FrameTimeline for p50/p95,
-   missed frames, CPU/GPU attribution, memory, cold shader creation and warm
-   scrolling.
-5. Scroll/fling rapidly, exercise radius transitions, rotate and test lifecycle
-   transitions on physical hardware.
-6. Run the existing WebView screen and confirm it stays on Legacy without a
-   regression.
-7. Validate API 31/32 Legacy fallback and at least one additional API 33+ physical
-   device before changing the default in a published release.
-8. Only then update README/changelog, version, prerelease npm tag and merge.
+1. CI and host shader/compiler contracts green.
+2. Release build installs on physical API 36 device.
+3. Activation log identifies the direct pure path:
+   `Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).`
+4. Top+Bottom 150px: Smooth and Linear visual comparison against AGSL/reference.
+5. Four Edges 150px: Smooth visual check, especially corners and strip seams.
+6. Physical release ABBA benchmark for vertical and four-edge scenes.
+7. Perfetto / FrameTimeline only if the fast performance gate is competitive.
+8. Rapid fling, radius transitions, rotation and lifecycle on physical hardware.
+9. WebView fallback regression.
+10. API 31/32 Legacy fallback and at least one additional API 33+ physical device.
+11. Only after those: README/changelog/version/prerelease npm/merge.
 
 ## Provenance
 
 The dependency-free paired-tap Gaussian kernel is adapted from AndroidX
 `BlurShaders.kt` under Apache-2.0; attribution is kept in source and
 `android/PROGRESSIVE_BLUR_NOTICE.md`. The public candidate is not the Compose
-binary and should never be presented as such.
+binary and must not be presented as such.
 
 Sources inspected during the experiment:
 
 - https://developer.android.com/jetpack/androidx/releases/compose-ui#1.13.0-alpha03
-- https://developer.android.com/build/releases/agp-9-1-0-release-notes
 - https://github.com/androidx/androidx/blob/androidx-main/compose/ui/ui-graphics/src/commonMain/kotlin/androidx/compose/ui/graphics/blur/ProgressiveBlur.kt
 - AndroidX `ProgressiveBlur.kt` inspected blob: `25552c9cce8039011cda7d29af78c5e8440cb914`
 - AndroidX `BlurShaders.kt` inspected blob: `9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd`
@@ -313,6 +297,5 @@ Sources inspected during the experiment:
 ## Deliberately not done
 
 No npm publication, release tag, version bump, merge, iOS backend change, Web
-change or lens change. No claim that the current strip candidate is faster,
-pixel-identical to the full-view candidate, or release-ready until the new
-physical visual/performance gates pass.
+change or lens change. No claim that the current direct-dispatch candidate is
+release-ready or faster until its new physical gates pass.
