@@ -40,11 +40,10 @@ android {
   namespace "com.edgefade"
 
   if (withAndroidxBlur) {
-    // Minor API DSL requires a compatible AGP. The consuming app must also
-    // opt into compileSdk 37.1; targetSdk/minSdk are deliberately unchanged.
-    compileSdk {
-      version = release(37) { it.minorApiLevel = 1 }
-    }
+    // Published alpha03 AAR metadata requires API 37 and AGP >= 9.1.0.
+    // Do not require 37.1 based only on the moving AndroidX source branch.
+    // The consuming app must also compile against 37 (see the example helper).
+    compileSdkVersion Math.max(37, getExtOrDefault("compileSdkVersion").toString().toInteger())
   } else {
     compileSdkVersion getExtOrDefault("compileSdkVersion")
   }

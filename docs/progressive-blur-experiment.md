@@ -42,7 +42,7 @@ slider, top/bottom or all four edges, smooth/linear curves, and backend controls
 - **AGSL port**: adapted two-pass AndroidX-derived kernel, no Compose dependency.
 - **AndroidX**: official binary, only when compiled with the opt-in below.
 
-Read **Active:** below the controls. On API < 33, a software canvas, an unavailable
+Read **Active:** above the viewport. On API < 33, a software canvas, an unavailable
 reference binary, or a shader-construction failure, the active backend/reason
 shows the fallback rather than claiming the requested effect is running.
 The 150px cap applies to the new engines, not to legacy. The slider displays a
@@ -63,33 +63,37 @@ The native manager has already converted dp to pixels. `Density(1f)` prevents
 converting those pixel values a second time. No ComposeView, composable UI or
 Compose compiler plugin is introduced by this adapter.
 
-Enable with `-PedgeFadeAndroidxBlur=true`, or set `edgeFadeAndroidxBlur=true` in
-the consuming Android project's `gradle.properties`. The library then selects
-`src/androidxBlur/java`, adds `ui-graphics:1.13.0-alpha03`, and sets its compile
-SDK to 37.1 via the minor-API DSL. The default stub source set is excluded.
+**Updated after the AAR metadata failure:** the published alpha03 dependencies
+in the reported build require **compileSdk >= 37 and AGP >= 9.1.0**. The previous
+37.1-only library configuration did not configure the consuming app and has been
+removed. See [the build profile and evidence](androidx-blur-build.md).
 
-**This switch alone is not a toolchain upgrade.** Install SDK 37.1, use a
-compatible AGP/Gradle/Kotlin combination, and set the consuming app's compile
-SDK to 37.1 as well. Do not use metadata-version suppression flags. For a
-compatible AGP, the app's Groovy DSL is:
+For the existing generated Expo example, run from the repository root:
 
-```groovy
-android {
-  compileSdk {
-    version = release(37) { it.minorApiLevel = 1 }
-  }
-}
+```sh
+node scripts/configure-androidx-blur.cjs
+node scripts/configure-androidx-blur.cjs --check
+yarn example android
 ```
 
-Target SDK and minimum SDK do not need to be raised for this experiment. The
-reference configuration has NOT been built here. Dependency resolution,
-Kotlin metadata compatibility and API presence in the published artifact are
-acceptance gates, not assumed successes. The adapter was written against the
-inspected AndroidX source; the default branch's source can differ from alpha03.
+This example-only profile pins AGP 9.1.1 and compileSdk 37 in the root/app,
+requires an existing Gradle >= 9.3.1 wrapper, and enables the documented AGP 9
+legacy Kotlin/DSL opt-outs. It sets `edgeFadeAndroidxBlur=true`, which selects
+`src/androidxBlur/java` and `ui-graphics:1.13.0-alpha03`. The default stub source
+set is excluded. No SDK/metadata checks are suppressed. The helper saves local
+originals, is idempotent, and must be rerun after native files are regenerated
+by Expo prebuild. Do not use `prebuild --clean` just to apply this profile.
+
+Target SDK and minimum SDK are unchanged. Source-transform tests pass, but they
+are not an Android build. The dedicated `AndroidX blur build profile` CI checks
+real AAR metadata and Kotlin compilation; full APK/device validation is separate.
+The adapter was written against inspected AndroidX source; compatibility with
+the published artifact is established only by the actual compile/runtime gates.
 
 Sources:
 - https://developer.android.com/jetpack/androidx/releases/compose-ui#1.13.0-alpha03
-- https://developer.android.com/about/versions/16/qpr2/setup-sdk (minor API DSL)
+- https://developer.android.com/build/releases/agp-9-1-0-release-notes
+- https://developer.android.com/build/migrate-to-built-in-kotlin#opt-out
 - https://github.com/androidx/androidx/blob/androidx-main/compose/ui/ui-graphics/src/commonMain/kotlin/androidx/compose/ui/graphics/blur/ProgressiveBlur.kt
 - Inspected ProgressiveBlur.kt blob: `25552c9cce8039011cda7d29af78c5e8440cb914`
 - Inspected BlurShaders.kt blob: `9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd`
@@ -101,7 +105,8 @@ selection; `BlurLabView`, manager, renderer, geometry and shader; two mutually
 exclusive AndroidxBlurAdapter implementations; demo route and gallery link;
 host tests/runner; this report and Apache notices. Existing renderer sources,
 public TypeScript API, iOS, lens, dependency lockfile and package version remain
-unchanged.
+unchanged. Toolchain follow-up: example configuration helper, regression tests
+and the official-binary CI workflow (see `androidx-blur-build.md`).
 
 ## Why this change
 
@@ -122,7 +127,7 @@ The other three modes are not fixed or refactored by this work.
 
 ## Result after
 
-Host validation executed on 2026-09-14, Kotlin CLI 1.9.0 / JDK 21:
+Initial host validation recorded on 2026-09-14, Kotlin CLI 1.9.0 / JDK 21:
 
 ```text
 PASS: 812900 assertions; 1000 deterministic geometry cases; shader SOURCE contracts
@@ -134,6 +139,7 @@ and tests the actual pure Kotlin geometry/source-generation files, exercises
 radius/edge sanitization, padding, small/resized surfaces, overlaps, zero size,
 progression and pixel ownership. It DOES NOT compile AGSL with RuntimeShader.
 The TypeScript check was syntax-only, not a project typecheck or Codegen run.
+Subsequent shader/layout fixes are documented in `blur-lab-runtime-fix.md`.
 
 ## Delta
 
@@ -150,10 +156,9 @@ conditional WebView-only materialization and may cost more memory/time.
 
 ## Risks remaining
 
-Native/Fabric compilation and mounting are unverified. GPU compilation,
-small-radius stepping from floor(radius), large-radius cost, color-space
-behavior, sharp/blur seams, transparent pixels, native-event delivery and
-multiple simultaneous instances need device tests. The optional binary can
+GPU behavior, small-radius stepping from floor(radius), large-radius cost,
+color-space behavior, sharp/blur seams, transparent pixels, native-event delivery
+and multiple simultaneous instances need device tests. The optional binary can
 have alpha API/toolchain changes. View recording does not guarantee support
 for SurfaceView, camera, protected video or independently composited surfaces.
 No WebView/video compatibility is claimed merely because a layer is recorded.
@@ -161,7 +166,8 @@ No WebView/video compatibility is claimed merely because a layer is recorded.
 ## What I deliberately did not change
 
 No npm publication, release tag, merge, version bump, public API, iOS backend,
-lens implementation, root toolchain upgrade, or replacement of the default blur.
+lens implementation, or replacement of the default blur. The toolchain upgrade
+is an explicit example-only profile, not a default requirement for consumers.
 No "first in React Native", "pixel-identical" or "faster" claim.
 
 ## Tests / measurements still missing
