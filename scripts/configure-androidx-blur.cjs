@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const AGP = '9.1.1';
 const SDK = 37;
+const SDK_MINOR = 1;
 const MIN_GRADLE = [9, 3, 1];
 const BEGIN = '// @generated begin edge-fade-androidx-toolchain';
 const END = '// @generated end edge-fade-androidx-toolchain';
@@ -55,7 +56,22 @@ function configureRoot(source) {
     (_, prefix, quote, suffix) => `${prefix}${quote}com.android.tools.build:gradle:${AGP}${quote}${suffix}`,
     'root AGP dependency'
   );
-  const block = [BEGIN, '// Set before Expo defaults so every module inherits the same compile SDK.', `ext.compileSdkVersion = ${SDK}`, END].join('\n');
+  const block = [
+    BEGIN,
+    '// Expo expects an integer major version. Apply the minor version after each module DSL.',
+    `ext.compileSdkVersion = ${SDK}`,
+    'subprojects { p ->',
+    '  ["com.android.application", "com.android.library"].each { pluginId ->',
+    '    p.plugins.withId(pluginId) {',
+    '      p.extensions.getByName("androidComponents").finalizeDsl { androidDsl ->',
+    `        androidDsl.compileSdk = ${SDK}`,
+    `        androidDsl.compileSdkMinor = ${SDK_MINOR}`,
+    '      }',
+    '    }',
+    '  }',
+    '}',
+    END,
+  ].join('\n');
   if (source.includes(BEGIN) || source.includes(END)) {
     return finish(replaceExactlyOnce(source, /\/\/ @generated begin edge-fade-androidx-toolchain[\s\S]*?\/\/ @generated end edge-fade-androidx-toolchain/g, block, 'managed SDK block'));
   }
@@ -131,7 +147,7 @@ function main(args) {
   }
   const androidDir = path.resolve(__dirname, '../example/android');
   const changes = plan(androidDir);
-  console.log(`AndroidX example profile: AGP ${AGP}, compileSdk ${SDK}, Gradle >= ${MIN_GRADLE.join('.')}.`);
+  console.log(`AndroidX example profile: AGP ${AGP}, compileSdk ${SDK}.${SDK_MINOR}, Gradle >= ${MIN_GRADLE.join('.')}.`);
   if (flags.has('--check')) {
     if (changes.length) throw new Error(`Profile not applied: ${changes.map((entry) => entry.name).join(', ')}`);
     console.log('PASS: source configuration matches. This is not an Android build result.');
@@ -145,7 +161,7 @@ function main(args) {
   console.log('Next: yarn example android. Rerun this helper after regenerating Android with Expo prebuild.');
 }
 
-module.exports = { AGP, SDK, BACKUP_SUFFIX, configureRoot, configureApp, setProperty, plan, applyPlan };
+module.exports = { AGP, SDK, SDK_MINOR, BACKUP_SUFFIX, configureRoot, configureApp, setProperty, plan, applyPlan };
 if (require.main === module) {
   try { main(process.argv.slice(2)); }
   catch (error) { console.error(`AndroidX setup failed: ${error.message}`); process.exitCode = 1; }

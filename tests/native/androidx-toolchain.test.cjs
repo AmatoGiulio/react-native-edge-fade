@@ -125,3 +125,27 @@ test('detects concurrent file edits before writing', (t) => {
   assert.throws(() => config.applyPlan(changes), /changed while planning/);
   assert.equal(fs.readFileSync(path.join(dir, 'build.gradle'), 'utf8'), root);
 });
+
+
+test('applies the SDK minor after every application/library DSL without float properties', () => {
+  const output = config.configureRoot(root);
+  assert.match(output, /"com.android.application", "com.android.library"/);
+  assert.match(output, /finalizeDsl/);
+  assert.match(output, /androidDsl.compileSdk = 37/);
+  assert.match(output, /androidDsl.compileSdkMinor = 1/);
+  assert.doesNotMatch(output, /ext.compileSdkVersion = 37\.1/);
+  assert.equal(config.configureRoot(output), output);
+});
+
+test('upgrades the previous managed major-only block exactly once', () => {
+  const previous = root.replace('apply plugin: "expo-root-project"', [
+    '// @generated begin edge-fade-androidx-toolchain',
+    'ext.compileSdkVersion = 37',
+    '// @generated end edge-fade-androidx-toolchain',
+    'apply plugin: "expo-root-project"',
+  ].join('\n'));
+  const output = config.configureRoot(previous);
+  assert.equal((output.match(/androidDsl.compileSdkMinor/g) || []).length, 1);
+  assert.equal((output.match(/@generated begin/g) || []).length, 1);
+  assert.equal(config.configureRoot(output), output);
+});
