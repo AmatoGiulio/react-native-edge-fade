@@ -122,12 +122,7 @@ function PlaylistLab({
   }
 
   return (
-    <View
-      style={[
-        s.page,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={[s.page, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.heading}>
         <Pressable onPress={() => router.back()} accessibilityRole="button">
@@ -155,12 +150,7 @@ function PlaylistLab({
                 disabled && s.disabled,
               ]}
             >
-              <Text
-                style={[
-                  s.backendLabel,
-                  backend === item && s.selectedLabel,
-                ]}
-              >
+              <Text style={[s.backendLabel, backend === item && s.selectedLabel]}>
                 {LABELS[item]}
               </Text>
             </Pressable>
@@ -249,8 +239,8 @@ function PlaylistLab({
         <View style={s.row}>
           <Text style={s.controlLabel}>Blur radius</Text>
           <Text style={s.value}>
-            {radius} dp /{' '}
-            {Math.min(radius * PixelRatio.get(), 150).toFixed(0)} px
+            {radius} dp / {Math.min(radius * PixelRatio.get(), 150).toFixed(0)}{' '}
+            px
           </Text>
         </View>
         <RadiusSlider value={radius} onChange={setRadius} />
