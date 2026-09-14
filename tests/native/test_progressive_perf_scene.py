@@ -19,9 +19,19 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertEqual(source.count("<EdgeFadeView\n"), 1)
         self.assertNotIn("NativeBlurLab", source)
         self.assertIn("mode=\"blur\"", source)
-        self.assertIn("blurRadius={48}", source)
+        self.assertIn("blurRadius={PERF_RADIUS_DP}", source)
         self.assertIn("frostSaturation={0.9}", source)
         self.assertIn("frostLift={1.03}", source)
+
+    def test_perf_radius_stays_under_androidx_pixel_cap_across_density(self):
+        source = read(PERF)
+        self.assertIn("PixelRatio", source)
+        self.assertIn("const PERF_TARGET_RADIUS_PX = 144", source)
+        self.assertIn("const PERF_MAX_RADIUS_DP = 48", source)
+        self.assertIn("PERF_TARGET_RADIUS_PX / PERF_DENSITY", source)
+
+        selector = read(SELECTOR)
+        self.assertIn("view.blurRadius in 1f..BlurLabGeometry.MAX_RADIUS_PX", selector)
 
     def test_legacy_is_forced_by_equivalent_custom_smooth_curve(self):
         source = read(PERF)
@@ -49,6 +59,9 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("'dumpsys', 'gfxinfo', $Package, 'framestats'", script)
         self.assertIn("'dumpsys', 'meminfo', $Package", script)
         self.assertIn("edgefade://progressive-blur-perf", script)
+        self.assertIn("'wm', 'density'", script)
+        self.assertIn("$TargetRadiusPx = 144.0", script)
+        self.assertIn("$radiusDp = [Math]::Min($MaxRadiusDp, $TargetRadiusPx / $densityScale)", script)
 
     def test_benchmark_quotes_deep_link_for_remote_android_shell(self):
         script = read(ROOT / "scripts/benchmark-progressive-blur.ps1")
