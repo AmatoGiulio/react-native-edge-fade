@@ -251,8 +251,11 @@ class MainActivity : Activity() {
 
       float shape(float value) {
         float x = clamp(value, 0.0, 1.0);
+        // Match EdgeFadeCurves.presenceAt("smooth", t): alpha=(1-t)^3,
+        // therefore blur presence = 1-(1-t)^3. Linear remains x.
         if (smoothCurve > 0.5) {
-          return x * x * (3.0 - 2.0 * x);
+          float inverse = 1.0 - x;
+          return 1.0 - inverse * inverse * inverse;
         }
         return x;
       }
