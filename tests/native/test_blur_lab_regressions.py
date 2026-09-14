@@ -121,6 +121,20 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("effectiveRadius * RADIUS_DENSITY", demo)
         self.assertNotIn("Math.min(radius * PixelRatio.get(), 150)", demo)
 
+    def test_demo_ab_preserves_scroll_and_viewport_geometry(self):
+        demo = read(ROOT / "example/app/progressive-blur.tsx")
+        self.assertIn("const scrollOffsetRef = useRef(0)", demo)
+        self.assertEqual(demo.count("initialOffset={scrollOffsetRef.current}"), 2)
+        self.assertEqual(demo.count("onOffsetChange={rememberScrollOffset}"), 2)
+        self.assertIn("scrollRef.current?.scrollTo({ y: initialOffset, animated: false })", demo)
+        self.assertIn("scrollEventThrottle={16}", demo)
+        status = re.search(r"backendStatus:\s*\{([^}]+)\}", demo, re.S)
+        footnote = re.search(r"footnote:\s*\{([^}]+)\}", demo, re.S)
+        self.assertIsNotNone(status)
+        self.assertIsNotNone(footnote)
+        self.assertIn("minHeight: 52", status[1])
+        self.assertIn("minHeight: 39", footnote[1])
+
     def test_mask_indices_are_only_literals_or_unrollable_loop_indices(self):
         mask = shader_sources()["mask"]
         self.assertIn("for (int i = 0; i < 31; i++)", mask)
