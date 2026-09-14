@@ -46,6 +46,7 @@ class ProgressivePublicBackend(unittest.TestCase):
             "BlurLabGeometry.MAX_RADIUS_PX",
             "supportsPresetCurves(view)",
             "child is WebView || child is SurfaceView",
+            "!view.isAttachedToWindow || view.isHardwareAccelerated",
             'view.mode = "blur"',
             'view.mode = "overlay"',
         ):
