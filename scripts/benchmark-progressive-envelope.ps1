@@ -83,10 +83,10 @@ foreach ($edge in $edgeModes) {
   foreach ($radius in $normalizedRadii) {
     Write-Host "`n=== $edge / ${radius}px ===" -ForegroundColor Cyan
 
-    $args = @(
+    $benchmarkArgs = @(
       '-Backend', 'both',
       '-Edges', $edge,
-      '-TargetRadiusPx', $radius.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture),
+      '-TargetRadiusPx', $radius,
       '-Swipes', $Swipes,
       '-SwipeDurationMs', $SwipeDurationMs,
       '-WarmupSwipes', $WarmupSwipes,
@@ -94,13 +94,13 @@ foreach ($edge in $edgeModes) {
       '-CooldownSeconds', $CooldownSeconds
     )
     if (-not [string]::IsNullOrWhiteSpace($Serial)) {
-      $args += @('-Serial', $Serial)
+      $benchmarkArgs += @('-Serial', $Serial)
     }
     if ($AllowEmulator) {
-      $args += '-AllowEmulator'
+      $benchmarkArgs += '-AllowEmulator'
     }
 
-    & $Benchmark @args
+    & $Benchmark @benchmarkArgs
     if ($LASTEXITCODE -ne 0) {
       throw "Benchmark failed for $edge / ${radius}px"
     }
