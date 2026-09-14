@@ -112,6 +112,15 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("overflow: 'hidden'", frame[1])
         self.assertIn("flex: 1", frame[1])
 
+    def test_demo_radius_range_stays_inside_public_progressive_cap(self):
+        demo = read(ROOT / "example/app/progressive-blur.tsx")
+        self.assertIn("const MAX_PROGRESSIVE_RADIUS_PX = 150", demo)
+        self.assertIn("MAX_PROGRESSIVE_RADIUS_PX / RADIUS_DENSITY", demo)
+        self.assertIn("max={MAX_PROGRESSIVE_RADIUS_DP}", demo)
+        self.assertEqual(demo.count("blurRadius={effectiveRadius}"), 2)
+        self.assertIn("effectiveRadius * RADIUS_DENSITY", demo)
+        self.assertNotIn("Math.min(radius * PixelRatio.get(), 150)", demo)
+
     def test_mask_indices_are_only_literals_or_unrollable_loop_indices(self):
         mask = shader_sources()["mask"]
         self.assertIn("for (int i = 0; i < 31; i++)", mask)
