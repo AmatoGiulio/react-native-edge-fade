@@ -39,20 +39,40 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("EdgeFadeProgressiveBlurEffect.unregister(view)", manager)
         self.assertNotIn('@ReactProp(name = "androidBlurBackend")', manager)
 
-    def test_progressive_candidate_has_explicit_legacy_guards(self):
+    def test_progressive_candidate_uses_mask_fallback_and_surface_guard(self):
         source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         for contract in (
             "Build.VERSION_CODES.TIRAMISU",
             "BlurLabGeometry.MAX_RADIUS_PX",
             "supportsPresetCurves(view)",
-            "child is WebView || child is SurfaceView",
+            "child is SurfaceView",
             "!view.isAttachedToWindow || view.isHardwareAccelerated",
+            'view.mode = "mask"',
             'view.mode = "blur"',
             "view.progressiveBlurActive = true",
+            "using mask fallback",
         ):
             self.assertIn(contract, source)
         self.assertNotIn('view.mode = "overlay"', source)
         self.assertNotIn("hasNeutralColorGrade", source)
+        self.assertNotIn("child is WebView", source)
+        self.assertNotIn("keeping Legacy", source)
+
+    def test_webview_is_eligible_and_materialized_once(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+
+        # Chromium WebView is now intentionally allowed through the public
+        # progressive selector. The child scene is materialized into one
+        # compositing RenderNode before the sharp base/filtered strips reference
+        # it, so the Chromium draw functor is not replayed per blur pass.
+        self.assertNotIn("android.webkit.WebView", selector)
+        self.assertNotIn("child is WebView", selector)
+        self.assertIn("WebView is intentionally eligible", selector)
+        self.assertIn("content.setUseCompositingLayer(true, null)", renderer)
+        self.assertIn("recordChildren(recording)", renderer)
+        self.assertIn("canvas.drawRenderNode(content)", renderer)
+        self.assertIn("rc.drawRenderNode(content)", renderer)
 
     def test_public_progressive_is_edge_local_and_owned_by_dispatch_draw(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
