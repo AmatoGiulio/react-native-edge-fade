@@ -91,11 +91,19 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("[double]$DefaultBlurRadiusDp = 28.0", script)
         self.assertIn("@(64.0, $defaultRadiusPx, 120.0, 144.0)", script)
         self.assertIn("default { @('vertical', 'four') }", script)
-        self.assertIn("-TargetRadiusPx", script)
+        self.assertIn("TargetRadiusPx = [double]$radius", script)
         self.assertIn("ProgressiveP50Ms", script)
         self.assertIn("ProgressiveMissedPct", script)
         self.assertIn("P50Ratio", script)
         self.assertIn("Export-Csv", script)
+
+    def test_envelope_invokes_child_script_with_named_splatting(self):
+        script = read(ENVELOPE)
+        self.assertIn("$benchmarkParams = @{", script)
+        self.assertIn("Backend = 'both'", script)
+        self.assertIn("& $Benchmark @benchmarkParams", script)
+        self.assertNotIn("$benchmarkArgs = @(", script)
+        self.assertIn("Array splatting into another PowerShell", script)
 
 
 if __name__ == "__main__":
