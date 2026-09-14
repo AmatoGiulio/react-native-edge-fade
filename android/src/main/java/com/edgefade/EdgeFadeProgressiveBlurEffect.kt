@@ -6,16 +6,16 @@ import android.util.Log
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebView
 import androidx.annotation.RequiresApi
 import java.util.WeakHashMap
 
 /**
  * Internal backend switch for the public EdgeFadeView.
  *
- * API 33+ ordinary RN content uses the dependency-free AndroidX-derived
- * progressive blur when the current public props can be reproduced exactly.
- * Unsupported configurations stay on the existing Legacy renderer.
+ * `mode="blur"` has one Android meaning: the dependency-free AndroidX-derived
+ * progressive Gaussian implemented by [EdgeFadeProgressiveStripRenderer].
+ * Configurations that cannot run that renderer fall back to `mask`; they never
+ * switch to the older multi-level frost blur.
  *
  * The rejected first candidate attached a two-pass RuntimeShader RenderEffect
  * to the entire EdgeFadeView. Physical-device measurements showed that full-view
@@ -23,13 +23,16 @@ import java.util.WeakHashMap
  *
  * The current candidate keeps the same true per-pixel radius field and Gaussian
  * kernel but executes it only inside padded edge source rectangles. Crucially,
- * it is now part of EdgeFadeView.dispatchDraw() itself: the host records children
+ * it is part of EdgeFadeView.dispatchDraw() itself: the host records children
  * once, draws sharp content outside the bands, then fills those bands with the
  * progressive Gaussian output. No ViewOverlay, SRC replacement or forced host
  * hardware layer participates in the progressive pipeline.
  *
- * Frost saturation/lift props remain part of the established Legacy API for
- * compatibility, but they are intentionally absent from this progressive path.
+ * WebView is intentionally eligible. The renderer materializes the child scene
+ * once into a compositing RenderNode before any filtered strip references it,
+ * which is the ownership model needed to avoid replaying Chromium's draw functor
+ * multiple times per frame. SurfaceView stays excluded because it is independently
+ * composited and cannot be captured by this RenderNode path.
  */
 internal object EdgeFadeProgressiveBlurEffect {
   private class State {
@@ -73,8 +76,9 @@ internal object EdgeFadeProgressiveBlurEffect {
       return
     }
 
-    // Preserve Legacy anywhere the new backend cannot reproduce the requested
-    // geometry/platform behavior exactly. This remains a release candidate.
+    // One public blur backend only. If the AndroidX-style progressive renderer
+    // cannot reproduce the requested configuration, degrade to mask rather than
+    // silently changing the blur algorithm.
     val canTryProgressive =
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         view.width > 0 && view.height > 0 &&
@@ -91,7 +95,7 @@ internal object EdgeFadeProgressiveBlurEffect {
 
     if (!canTryProgressive) {
       clearProgressive(view)
-      view.mode = "blur"
+      view.mode = "mask"
       return
     }
 
@@ -104,7 +108,7 @@ internal object EdgeFadeProgressiveBlurEffect {
       }
     } else {
       clearProgressive(view)
-      view.mode = "blur"
+      view.mode = "mask"
     }
   }
 
@@ -127,9 +131,9 @@ internal object EdgeFadeProgressiveBlurEffect {
   private fun containsUnsupportedSurface(parent: ViewGroup): Boolean {
     for (index in 0 until parent.childCount) {
       val child = parent.getChildAt(index)
-      // WebView has a proven special replay path in Legacy; SurfaceView is
-      // independently composited. Keep both on the established renderer.
-      if (child is WebView || child is SurfaceView) return true
+      // SurfaceView is independently composited and therefore cannot be sampled
+      // from the materialized child RenderNode. WebView is intentionally allowed.
+      if (child is SurfaceView) return true
       if (child is ViewGroup && containsUnsupportedSurface(child)) return true
     }
     return false
@@ -155,7 +159,7 @@ internal object EdgeFadeProgressiveBlurEffect {
       val renderer = existing ?: try {
         EdgeFadeProgressiveStripRenderer(view)
       } catch (error: RuntimeException) {
-        Log.w(TAG, "Progressive strip shader creation failed; keeping Legacy.", error)
+        Log.w(TAG, "Progressive strip shader creation failed; using mask fallback.", error)
         return false
       }
 
@@ -166,7 +170,7 @@ internal object EdgeFadeProgressiveBlurEffect {
       } catch (error: RuntimeException) {
         renderers.remove(view)
         renderer.release()
-        Log.w(TAG, "Progressive strip configuration failed; keeping Legacy.", error)
+        Log.w(TAG, "Progressive strip configuration failed; using mask fallback.", error)
         false
       }
     }
