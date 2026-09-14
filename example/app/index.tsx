@@ -23,6 +23,13 @@ export default function GalleryEntry() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  lab: { position: 'absolute', alignSelf: 'center', borderRadius: 24, backgroundColor: '#202520', paddingHorizontal: 24, paddingVertical: 14 },
+  lab: {
+    position: 'absolute',
+    alignSelf: 'center',
+    borderRadius: 24,
+    backgroundColor: '#202520',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
   label: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
 });
