@@ -388,12 +388,14 @@ function RadiusSlider({
 }) {
   const [width, setWidth] = useState(1);
   const update = (event: GestureResponderEvent) => {
-    const position = Math.max(0, Math.min(1, event.nativeEvent.locationX / width));
+    const position = Math.max(
+      0,
+      Math.min(1, event.nativeEvent.locationX / width)
+    );
     // Keep ordinary movement readable at 0.1dp resolution, but preserve the
     // exact density-derived max at the end stop so both renderers receive the
     // same near-150px value without ever crossing the native cap.
-    const next =
-      position >= 1 ? max : Math.round(position * max * 10) / 10;
+    const next = position >= 1 ? max : Math.round(position * max * 10) / 10;
     onChange(Math.min(max, next));
   };
   const percent = max > 0 ? (value / max) * 100 : 0;
@@ -413,7 +415,9 @@ function RadiusSlider({
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={({ nativeEvent }) => {
         const delta = nativeEvent.actionName === 'increment' ? 1 : -1;
-        onChange(Math.max(0, Math.min(max, Math.round((value + delta) * 10) / 10)));
+        onChange(
+          Math.max(0, Math.min(max, Math.round((value + delta) * 10) / 10))
+        );
       }}
     >
       <View pointerEvents="none" style={s.sliderRail}>
