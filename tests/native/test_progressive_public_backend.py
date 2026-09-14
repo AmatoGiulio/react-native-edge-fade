@@ -93,7 +93,7 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertNotIn("replacementPaint", renderer)
         self.assertNotIn("saveLayer", renderer)
         self.assertNotIn("host.draw(", renderer)
-        self.assertNotIn("ViewOverlay", selector)
+        self.assertNotIn("view.overlay.", selector)
         self.assertNotIn("LAYER_TYPE_HARDWARE", selector)
 
     def test_strip_sources_are_radius_padded_and_map_mask_to_global_coordinates(self):
