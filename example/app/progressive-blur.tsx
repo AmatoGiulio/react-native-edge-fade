@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   PixelRatio,
@@ -114,6 +114,13 @@ function PlaylistLab({
     reason: '',
     androidxAvailable: false,
   });
+  // Switching Public RC <-> Blur Lab swaps the native parent and therefore
+  // remounts the ScrollView. Keep one shared offset so a visual A/B never
+  // compares two different pieces of the playlist after the user has scrolled.
+  const scrollOffsetRef = useRef(0);
+  const rememberScrollOffset = (offset: number) => {
+    scrollOffsetRef.current = offset;
+  };
 
   const publicCandidate = backend === 'public';
   const confirmed = !publicCandidate && status.requested === backend;
@@ -238,7 +245,10 @@ function PlaylistLab({
             frostLift={1.03}
             frostProgression={1}
           >
-            <Playlist />
+            <Playlist
+              initialOffset={scrollOffsetRef.current}
+              onOffsetChange={rememberScrollOffset}
+            />
           </EdgeFadeView>
         ) : (
           <NativeBlurLab
@@ -255,7 +265,10 @@ function PlaylistLab({
             cornerRadius={24}
             onBackendChange={({ nativeEvent }) => setStatus(nativeEvent)}
           >
-            <Playlist />
+            <Playlist
+              initialOffset={scrollOffsetRef.current}
+              onOffsetChange={rememberScrollOffset}
+            />
           </NativeBlurLab>
         )}
       </View>
@@ -302,13 +315,45 @@ function PlaylistLab({
   );
 }
 
-function Playlist() {
+function Playlist({
+  initialOffset,
+  onOffsetChange,
+}: {
+  initialOffset: number;
+  onOffsetChange: (offset: number) => void;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const restorePendingRef = useRef(initialOffset > 0.5);
+
+  const restorePosition = () => {
+    if (initialOffset <= 0.5) {
+      restorePendingRef.current = false;
+      return;
+    }
+    scrollRef.current?.scrollTo({ y: initialOffset, animated: false });
+  };
+
   return (
     <ScrollView
+      ref={scrollRef}
       testID="progressive-playlist"
       style={s.list}
       contentContainerStyle={s.tracks}
       showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onLayout={() => requestAnimationFrame(restorePosition)}
+      onContentSizeChange={restorePosition}
+      onScroll={({ nativeEvent }) => {
+        const offset = nativeEvent.contentOffset.y;
+        if (restorePendingRef.current) {
+          // A freshly mounted ScrollView can emit y=0 before the imperative
+          // restore lands. Ignore that transient event so it cannot erase the
+          // shared offset we are trying to preserve across backend swaps.
+          if (Math.abs(offset - initialOffset) > 1) return;
+          restorePendingRef.current = false;
+        }
+        onOffsetChange(offset);
+      }}
     >
       {TRACKS.map((track, index) => (
         <View key={track.id} style={s.track}>
@@ -438,6 +483,10 @@ const s = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 6,
     paddingVertical: 4,
+    // The public status has an extra two-line hint. Without a common minimum,
+    // switching backend changes the flex viewport height and moves the bottom
+    // fade relative to the playlist, which invalidates visual comparisons.
+    minHeight: 52,
   },
   failure: { backgroundColor: '#fce8e5', borderRadius: 8, padding: 10 },
   failureText: { color: '#9b2620', fontSize: 11, lineHeight: 15 },
@@ -518,7 +567,16 @@ const s = StyleSheet.create({
     paddingVertical: 8,
   },
   status: { color: '#3c413a', fontSize: 11, lineHeight: 15, minHeight: 15 },
-  footnote: { color: '#93978e', fontSize: 9, lineHeight: 13, marginTop: 4 },
+  footnote: {
+    color: '#93978e',
+    fontSize: 9,
+    lineHeight: 13,
+    marginTop: 4,
+    // Public RC currently wraps to three lines while the AGSL note usually
+    // occupies two. Reserve three lines for every backend so the viewport's
+    // bottom edge does not move when the renderer changes.
+    minHeight: 39,
+  },
   message: {
     flex: 1,
     justifyContent: 'center',
