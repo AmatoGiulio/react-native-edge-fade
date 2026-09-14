@@ -19,8 +19,9 @@ import java.util.WeakHashMap
  *
  * On API 33+ ordinary RN content gets the AndroidX-derived spatially varying
  * two-pass blur as a View RenderEffect. API 31/32, radii above AndroidX's 150px
- * cap, WebView/SurfaceView content and material configurations whose semantics
- * are not yet matched keep using EdgeFadeView's existing legacy renderer.
+ * cap, WebView/SurfaceView content, custom serialized curves and material
+ * configurations whose semantics are not yet matched keep using EdgeFadeView's
+ * existing legacy renderer.
  *
  * The manager still exposes exactly the same JS API. `requestedMode` is kept
  * separately because the progressive path makes EdgeFadeView draw its children
@@ -82,6 +83,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         view.overlayColorBottom == null &&
         view.overlayColorLeft == null &&
         view.overlayColorRight == null &&
+        supportsPresetCurves(view) &&
         !containsUnsupportedSurface(view)
 
     if (!canTryProgressive) {
@@ -103,6 +105,12 @@ internal object EdgeFadeProgressiveBlurEffect {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Api33.clear(view)
     else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) view.setRenderEffect(null)
   }
+
+  private fun supportsPresetCurves(view: EdgeFadeView): Boolean =
+    EdgeFadeCurves.agslPresetParams(view.curveTop) != null &&
+      EdgeFadeCurves.agslPresetParams(view.curveBottom) != null &&
+      EdgeFadeCurves.agslPresetParams(view.curveLeft) != null &&
+      EdgeFadeCurves.agslPresetParams(view.curveRight) != null
 
   private fun containsUnsupportedSurface(parent: ViewGroup): Boolean {
     for (index in 0 until parent.childCount) {
@@ -180,6 +188,10 @@ internal object EdgeFadeProgressiveBlurEffect {
         val height = key.height.toFloat()
         val progression = finite(key.progression, 1f).coerceIn(0.05f, 1f)
         val radius = finite(key.radius).coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
+        val topCurve = EdgeFadeCurves.agslPresetParams(key.curveTop)!!
+        val bottomCurve = EdgeFadeCurves.agslPresetParams(key.curveBottom)!!
+        val leftCurve = EdgeFadeCurves.agslPresetParams(key.curveLeft)!!
+        val rightCurve = EdgeFadeCurves.agslPresetParams(key.curveRight)!!
 
         state.mask.setFloatUniform("viewSize", width, height)
         state.mask.setFloatUniform(
@@ -192,10 +204,14 @@ internal object EdgeFadeProgressiveBlurEffect {
           ),
         )
         state.mask.setFloatUniform("progression", progression)
-        state.mask.setFloatUniform("curveTop", curve(key.curveTop))
-        state.mask.setFloatUniform("curveBottom", curve(key.curveBottom))
-        state.mask.setFloatUniform("curveLeft", curve(key.curveLeft))
-        state.mask.setFloatUniform("curveRight", curve(key.curveRight))
+        state.mask.setFloatUniform(
+          "curveExp",
+          floatArrayOf(topCurve.first, bottomCurve.first, leftCurve.first, rightCurve.first),
+        )
+        state.mask.setFloatUniform(
+          "curveMode",
+          floatArrayOf(topCurve.second, bottomCurve.second, leftCurve.second, rightCurve.second),
+        )
 
         for (shader in arrayOf(state.horizontal, state.vertical)) {
           shader.setInputShader("mask", state.mask)
@@ -237,10 +253,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     private fun finite(value: Float, fallback: Float = 0f): Float =
       if (value.isFinite()) value else fallback
 
-    private fun curve(name: String): FloatArray = FloatArray(32) { index ->
-      finite(EdgeFadeCurves.presenceAt(name, index / 31f)).coerceIn(0f, 1f)
-    }
-
     private fun vibrancy(saturation: Float, lift: Float): ColorMatrixColorFilter {
       val sat = finite(saturation, 1f).coerceAtLeast(0f)
       val brightness = finite(lift, 1f).coerceAtLeast(0f)
@@ -263,42 +275,24 @@ internal object EdgeFadeProgressiveBlurEffect {
 
     private const val TAG = "EdgeFadeProgressive"
 
+    // Preset curves are analytical here: no LUT loop runs for every pixel.
+    // `curveMode`: 0 = power family, 1 = soft/cosine, 2 = smootherstep.
     private const val MASK_SHADER = """
       uniform float2 viewSize;
       uniform float4 edges;
       uniform float progression;
-      uniform float curveTop[32];
-      uniform float curveBottom[32];
-      uniform float curveLeft[32];
-      uniform float curveRight[32];
+      uniform float4 curveExp;
+      uniform float4 curveMode;
 
-      float sampleTop(float t) {
-        float x = clamp(t, 0.0, 1.0) * 31.0;
-        for (int i = 0; i < 31; i++) {
-          if (x <= float(i + 1)) return mix(curveTop[i], curveTop[i + 1], x - float(i));
+      float presence(float t, float exponent, float mode) {
+        float x = clamp(t, 0.0, 1.0);
+        if (mode > 1.5) {
+          return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
         }
-        return curveTop[31];
-      }
-      float sampleBottom(float t) {
-        float x = clamp(t, 0.0, 1.0) * 31.0;
-        for (int i = 0; i < 31; i++) {
-          if (x <= float(i + 1)) return mix(curveBottom[i], curveBottom[i + 1], x - float(i));
+        if (mode > 0.5) {
+          return 1.0 - cos(x * 1.5707963);
         }
-        return curveBottom[31];
-      }
-      float sampleLeft(float t) {
-        float x = clamp(t, 0.0, 1.0) * 31.0;
-        for (int i = 0; i < 31; i++) {
-          if (x <= float(i + 1)) return mix(curveLeft[i], curveLeft[i + 1], x - float(i));
-        }
-        return curveLeft[31];
-      }
-      float sampleRight(float t) {
-        float x = clamp(t, 0.0, 1.0) * 31.0;
-        for (int i = 0; i < 31; i++) {
-          if (x <= float(i + 1)) return mix(curveRight[i], curveRight[i + 1], x - float(i));
-        }
-        return curveRight[31];
+        return 1.0 - pow(1.0 - x, exponent);
       }
 
       float position(float distance, float depth) {
@@ -312,10 +306,10 @@ internal object EdgeFadeProgressiveBlurEffect {
         float leftPos = position(p.x, edges.z);
         float rightPos = position(viewSize.x - p.x, edges.w);
 
-        float top = topPos < 0.0 ? 0.0 : sampleTop(topPos);
-        float bottom = bottomPos < 0.0 ? 0.0 : sampleBottom(bottomPos);
-        float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
-        float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
+        float top = topPos < 0.0 ? 0.0 : presence(topPos, curveExp.x, curveMode.x);
+        float bottom = bottomPos < 0.0 ? 0.0 : presence(bottomPos, curveExp.y, curveMode.y);
+        float left = leftPos < 0.0 ? 0.0 : presence(leftPos, curveExp.z, curveMode.z);
+        float right = rightPos < 0.0 ? 0.0 : presence(rightPos, curveExp.w, curveMode.w);
         float intensity = max(max(top, bottom), max(left, right));
         return half4(0.0, 0.0, 0.0, intensity);
       }
