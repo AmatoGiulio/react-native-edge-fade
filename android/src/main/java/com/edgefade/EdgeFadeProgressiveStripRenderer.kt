@@ -117,7 +117,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       // Re-evaluate geometry before inspecting strips. Layout/prop updates can
       // reach draw between selector transactions; never let a stale empty list
       // suppress the child scene for a frame.
-      prepare()
+      tracePhase("EdgeFade.progressive.prepare") {
+        prepare()
+      }
       if (strips.isEmpty()) {
         recordChildren(canvas)
         return
@@ -126,23 +128,27 @@ internal class EdgeFadeProgressiveStripRenderer(
       // Materialize the child scene once. The sharp base and every filtered
       // strip reference this same recording, so the expensive blur work stays
       // edge-local while content identity is identical across all passes.
-      content.setPosition(0, 0, host.width, host.height)
-      content.setUseCompositingLayer(true, null)
-      val recording = content.beginRecording()
-      try {
-        recordChildren(recording)
-      } finally {
-        content.endRecording()
+      tracePhase("EdgeFade.progressive.recordContent") {
+        content.setPosition(0, 0, host.width, host.height)
+        content.setUseCompositingLayer(true, null)
+        val recording = content.beginRecording()
+        try {
+          recordChildren(recording)
+        } finally {
+          content.endRecording()
+        }
       }
 
       // Draw sharp content exactly once, excluding every edge band. Those bands
       // remain empty at this stage; no later replacement blend is necessary.
-      val sharpSave = canvas.save()
-      try {
-        for (strip in strips) clipOut(canvas, strip.band.visible)
-        canvas.drawRenderNode(content)
-      } finally {
-        canvas.restoreToCount(sharpSave)
+      tracePhase("EdgeFade.progressive.drawSharp") {
+        val sharpSave = canvas.save()
+        try {
+          for (strip in strips) clipOut(canvas, strip.band.visible)
+          canvas.drawRenderNode(content)
+        } finally {
+          canvas.restoreToCount(sharpSave)
+        }
       }
 
       // Fill the empty edge bands with their true progressive Gaussian output.
@@ -150,27 +156,31 @@ internal class EdgeFadeProgressiveStripRenderer(
       // expanded by maxRadius + one paired bilinear tap for correct sampling.
       for (strip in strips) {
         val src = strip.band.source
-        val rc = strip.node.beginRecording()
-        try {
-          rc.translate(-src.left.toFloat(), -src.top.toFloat())
-          rc.drawRenderNode(content)
-        } finally {
-          strip.node.endRecording()
+        tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
+          val rc = strip.node.beginRecording()
+          try {
+            rc.translate(-src.left.toFloat(), -src.top.toFloat())
+            rc.drawRenderNode(content)
+          } finally {
+            strip.node.endRecording()
+          }
         }
 
-        val visible = strip.band.visible
-        val save = canvas.save()
-        try {
-          canvas.clipRect(
-            visible.left.toFloat(),
-            visible.top.toFloat(),
-            visible.right.toFloat(),
-            visible.bottom.toFloat(),
-          )
-          canvas.translate(src.left.toFloat(), src.top.toFloat())
-          canvas.drawRenderNode(strip.node)
-        } finally {
-          canvas.restoreToCount(save)
+        tracePhase("EdgeFade.progressive.drawStrip.${edgeName(strip.band.edge)}") {
+          val visible = strip.band.visible
+          val save = canvas.save()
+          try {
+            canvas.clipRect(
+              visible.left.toFloat(),
+              visible.top.toFloat(),
+              visible.right.toFloat(),
+              visible.bottom.toFloat(),
+            )
+            canvas.translate(src.left.toFloat(), src.top.toFloat())
+            canvas.drawRenderNode(strip.node)
+          } finally {
+            canvas.restoreToCount(save)
+          }
         }
       }
     } finally {
@@ -282,6 +292,24 @@ internal class EdgeFadeProgressiveStripRenderer(
     strips = emptyList()
     content.discardDisplayList()
     key = null
+  }
+
+  private inline fun <T> tracePhase(name: String, block: () -> T): T {
+    if (!Trace.isEnabled()) return block()
+    Trace.beginSection(name)
+    return try {
+      block()
+    } finally {
+      Trace.endSection()
+    }
+  }
+
+  private fun edgeName(edge: Int): String = when (edge) {
+    EDGE_TOP -> "top"
+    EDGE_BOTTOM -> "bottom"
+    EDGE_LEFT -> "left"
+    EDGE_RIGHT -> "right"
+    else -> "unknown"
   }
 
   private fun finite(value: Float, fallback: Float = 0f): Float =
