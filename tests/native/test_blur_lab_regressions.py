@@ -126,9 +126,12 @@ class BlurLabRegressions(unittest.TestCase):
         demo = read(ROOT / "example/app/progressive-blur.tsx")
         perf = read(ROOT / "example/app/progressive-blur-perf.tsx")
         for source in (demo, perf):
-            self.assertIn("frostSaturation={1}", source)
-            self.assertIn("frostLift={1}", source)
+            self.assertNotIn("frostSaturation=", source)
+            self.assertNotIn("frostLift=", source)
+            self.assertNotIn("frostProgression=", source)
         self.assertIn("Pure progressive Gaussian", demo)
+        self.assertIn("Public Progressive", demo)
+        self.assertNotIn("Legacy", demo)
 
     def test_mask_indices_are_only_literals_or_unrollable_loop_indices(self):
         mask = shader_sources()["mask"]
@@ -139,8 +142,6 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("return curve[31]", mask)
 
     def test_curve_lookup_preserves_linear_interpolation(self):
-        # Compare old mathematical lookup and the bounded-loop equivalent.
-        # This checks math, not execution of the shader on a device.
         rng = random.Random(57972)
         tables = [[i / 31 for i in range(32)], [1 - (1 - i / 31) ** 3 for i in range(32)]]
         tables += [[rng.random() for _ in range(32)] for _ in range(12)]
@@ -186,10 +187,11 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("internal var progressiveBlurActive", host)
         self.assertIn("::drawChildrenForProgressive", host)
         self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
+        self.assertNotIn("createBlurEffect", host)
+        self.assertNotIn("drawBlurLayered", host)
 
     @unittest.skipUnless(COMPILE_SHADERS, "requires --compile-shaders and skia-python")
     def test_host_compiler_rejects_original_dynamic_index_regression(self):
-        # Minimal reproducer of the original mask's pixel-dependent index.
         bad = '''uniform float curve[32];
         half4 main(float2 p) {
             float x = clamp(p.x, 0.0, 1.0) * 31.0;
