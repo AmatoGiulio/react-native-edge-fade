@@ -46,33 +46,45 @@ class ProgressivePublicBackend(unittest.TestCase):
             "BlurLabGeometry.MAX_RADIUS_PX",
             "supportsPresetCurves(view)",
             "child is SurfaceView",
-            "!view.isAttachedToWindow || view.isHardwareAccelerated",
+            "view.isAttachedToWindow && !view.isHardwareAccelerated",
             'view.mode = "mask"',
             'view.mode = "blur"',
             "view.progressiveBlurActive = true",
             "using mask fallback",
+            "progressiveFallbackReason(view)",
         ):
             self.assertIn(contract, source)
         self.assertNotIn('view.mode = "overlay"', source)
         self.assertNotIn("hasNeutralColorGrade", source)
-        self.assertNotIn("child is WebView", source)
         self.assertNotIn("keeping Legacy", source)
 
     def test_webview_is_eligible_and_materialized_once(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
 
-        # Chromium WebView is now intentionally allowed through the public
-        # progressive selector. The child scene is materialized into one
-        # compositing RenderNode before the sharp base/filtered strips reference
-        # it, so the Chromium draw functor is not replayed per blur pass.
-        self.assertNotIn("android.webkit.WebView", selector)
-        self.assertNotIn("child is WebView", selector)
+        # WebView is an intentional capture boundary. Do not recursively reject
+        # Chromium's implementation-private SurfaceView descendants before the
+        # materialized draw-functor path can be validated on a device. Direct RN
+        # SurfaceView children remain unsupported.
+        self.assertIn("android.webkit.WebView", selector)
+        self.assertIn("if (child is WebView) continue", selector)
+        self.assertIn("if (child is SurfaceView) return true", selector)
+        self.assertLess(
+            selector.index("if (child is WebView) continue"),
+            selector.index("if (child is SurfaceView) return true"),
+        )
         self.assertIn("WebView is intentionally eligible", selector)
         self.assertIn("content.setUseCompositingLayer(true, null)", renderer)
         self.assertIn("recordChildren(recording)", renderer)
         self.assertIn("canvas.drawRenderNode(content)", renderer)
         self.assertIn("rc.drawRenderNode(content)", renderer)
+
+    def test_fallback_decision_is_observable_on_physical_device(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        self.assertIn("lastFallbackReason", selector)
+        self.assertIn("Progressive unavailable; using mask fallback", selector)
+        self.assertIn("contains a SurfaceView outside a WebView subtree", selector)
+        self.assertIn("view.width > 0 && view.height > 0", selector)
 
     def test_public_progressive_is_edge_local_and_owned_by_dispatch_draw(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
