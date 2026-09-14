@@ -23,6 +23,12 @@ import java.util.WeakHashMap
  * paired-tap blur kernel and mask-aware frost grading while filtering only
  * padded edge source rectangles.
  *
+ * The strip renderer needs replacement, not SRC_OVER, semantics. While it is
+ * active the host is isolated in a hardware layer so transparent pixels written
+ * by a bounded SRC strip reveal the parent/background instead of punching into
+ * the root render target. The previous layer type is restored on every fallback
+ * or detach.
+ *
  * No public JS prop or backend mode is added. `requestedMode` is stored
  * separately because the progressive path makes EdgeFadeView draw ordinary
  * sharp children through its no-color overlay branch; the native overlay then
@@ -33,6 +39,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     var requestedMode: String = "mask"
     var layoutListener: View.OnLayoutChangeListener? = null
     var announced = false
+    var layerTypeBeforeProgressive: Int? = null
   }
 
   private val states = WeakHashMap<EdgeFadeView, State>()
@@ -50,8 +57,9 @@ internal object EdgeFadeProgressiveBlurEffect {
   }
 
   fun unregister(view: EdgeFadeView) {
-    states.remove(view)?.layoutListener?.let(view::removeOnLayoutChangeListener)
-    clearProgressive(view)
+    val state = states.remove(view)
+    state?.layoutListener?.let(view::removeOnLayoutChangeListener)
+    clearProgressive(view, state)
   }
 
   fun setRequestedMode(view: EdgeFadeView, mode: String) {
@@ -64,7 +72,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     val requested = state.requestedMode
 
     if (requested != "blur") {
-      clearProgressive(view)
+      clearProgressive(view, state)
       view.mode = requested
       return
     }
@@ -86,11 +94,12 @@ internal object EdgeFadeProgressiveBlurEffect {
         !containsUnsupportedSurface(view)
 
     if (!canTryProgressive) {
-      clearProgressive(view)
+      clearProgressive(view, state)
       view.mode = "blur"
       return
     }
 
+    isolateForReplacement(view, state)
     if (Api33.apply(view)) {
       // Plain children are drawn once normally. The ViewOverlay drawable then
       // replaces only its disjoint edge regions with filtered source strips.
@@ -100,16 +109,31 @@ internal object EdgeFadeProgressiveBlurEffect {
         Log.i(TAG, "Using progressive AGSL blur backend on API 33+ (edge-local strips).")
       }
     } else {
+      clearProgressive(view, state)
       view.mode = "blur"
     }
   }
 
-  private fun clearProgressive(view: EdgeFadeView) {
+  private fun isolateForReplacement(view: EdgeFadeView, state: State) {
+    if (state.layerTypeBeforeProgressive == null) {
+      state.layerTypeBeforeProgressive = view.layerType
+    }
+    if (view.layerType != View.LAYER_TYPE_HARDWARE) {
+      view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+    }
+  }
+
+  private fun clearProgressive(view: EdgeFadeView, state: State?) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       Api33.clear(view)
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       // Defensive cleanup if a View survives a backend/configuration change.
       view.setRenderEffect(null)
+    }
+
+    state?.layerTypeBeforeProgressive?.let { previous ->
+      if (view.layerType != previous) view.setLayerType(previous, null)
+      state.layerTypeBeforeProgressive = null
     }
   }
 
