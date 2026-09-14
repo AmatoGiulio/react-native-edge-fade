@@ -1,5 +1,6 @@
 package com.edgefade
 
+import android.graphics.Canvas
 import android.os.Build
 import android.util.Log
 import android.view.SurfaceView
@@ -16,30 +17,25 @@ import java.util.WeakHashMap
  * progressive blur when the current public props can be reproduced exactly.
  * Unsupported configurations stay on the existing Legacy renderer.
  *
- * The first public candidate attached a two-pass RuntimeShader RenderEffect to
- * the entire EdgeFadeView. Physical-device measurements showed that architecture
- * was too expensive, especially for four edges. The selector now installs an
- * edge-local overlay renderer that keeps the same analytical radius mask,
- * paired-tap blur kernel and mask-aware frost grading while filtering only
- * padded edge source rectangles.
+ * The rejected first candidate attached a two-pass RuntimeShader RenderEffect
+ * to the entire EdgeFadeView. Physical-device measurements showed that full-view
+ * architecture was too expensive, especially for four edges.
  *
- * The strip renderer needs replacement, not SRC_OVER, semantics. While it is
- * active the host is isolated in a hardware layer so transparent pixels written
- * by a bounded SRC strip reveal the parent/background instead of punching into
- * the root render target. The previous layer type is restored on every fallback
- * or detach.
+ * The current candidate keeps the same true per-pixel radius field and Gaussian
+ * kernel but executes it only inside padded edge source rectangles. Crucially,
+ * it is now part of EdgeFadeView.dispatchDraw() itself: the host records children
+ * once, draws sharp content outside the bands, then fills those bands with the
+ * progressive Gaussian output. No ViewOverlay, SRC replacement or forced host
+ * hardware layer participates in the progressive pipeline.
  *
- * No public JS prop or backend mode is added. `requestedMode` is stored
- * separately because the progressive path makes EdgeFadeView draw ordinary
- * sharp children through its no-color overlay branch; the native overlay then
- * replaces only the edge regions with progressive blur.
+ * Frost saturation/lift props remain part of the established Legacy API for
+ * compatibility, but they are intentionally absent from this progressive path.
  */
 internal object EdgeFadeProgressiveBlurEffect {
   private class State {
     var requestedMode: String = "mask"
     var layoutListener: View.OnLayoutChangeListener? = null
     var announced = false
-    var layerTypeBeforeProgressive: Int? = null
   }
 
   private val states = WeakHashMap<EdgeFadeView, State>()
@@ -59,7 +55,7 @@ internal object EdgeFadeProgressiveBlurEffect {
   fun unregister(view: EdgeFadeView) {
     val state = states.remove(view)
     state?.layoutListener?.let(view::removeOnLayoutChangeListener)
-    clearProgressive(view, state)
+    clearProgressive(view)
   }
 
   fun setRequestedMode(view: EdgeFadeView, mode: String) {
@@ -72,13 +68,13 @@ internal object EdgeFadeProgressiveBlurEffect {
     val requested = state.requestedMode
 
     if (requested != "blur") {
-      clearProgressive(view, state)
+      clearProgressive(view)
       view.mode = requested
       return
     }
 
-    // Preserve Legacy anywhere the new backend cannot match current public
-    // semantics or platform behavior. This is still a release candidate.
+    // Preserve Legacy anywhere the new backend cannot reproduce the requested
+    // geometry/platform behavior exactly. This remains a release candidate.
     val canTryProgressive =
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         view.width > 0 && view.height > 0 &&
@@ -94,46 +90,31 @@ internal object EdgeFadeProgressiveBlurEffect {
         !containsUnsupportedSurface(view)
 
     if (!canTryProgressive) {
-      clearProgressive(view, state)
+      clearProgressive(view)
       view.mode = "blur"
       return
     }
 
-    isolateForReplacement(view, state)
     if (Api33.apply(view)) {
-      // Plain children are drawn once normally. The ViewOverlay drawable then
-      // replaces only its disjoint edge regions with filtered source strips.
-      view.mode = "overlay"
+      view.progressiveBlurActive = true
+      view.mode = "blur"
       if (!state.announced) {
         state.announced = true
-        Log.i(TAG, "Using progressive AGSL blur backend on API 33+ (edge-local strips).")
+        Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
       }
     } else {
-      clearProgressive(view, state)
+      clearProgressive(view)
       view.mode = "blur"
     }
   }
 
-  private fun isolateForReplacement(view: EdgeFadeView, state: State) {
-    if (state.layerTypeBeforeProgressive == null) {
-      state.layerTypeBeforeProgressive = view.layerType
-    }
-    if (view.layerType != View.LAYER_TYPE_HARDWARE) {
-      view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-    }
-  }
-
-  private fun clearProgressive(view: EdgeFadeView, state: State?) {
+  private fun clearProgressive(view: EdgeFadeView) {
+    view.progressiveBlurActive = false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       Api33.clear(view)
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      // Defensive cleanup if a View survives a backend/configuration change.
+      // Defensive cleanup if a View survives an older full-view candidate.
       view.setRenderEffect(null)
-    }
-
-    state?.layerTypeBeforeProgressive?.let { previous ->
-      if (view.layerType != previous) view.setLayerType(previous, null)
-      state.layerTypeBeforeProgressive = null
     }
   }
 
@@ -155,13 +136,19 @@ internal object EdgeFadeProgressiveBlurEffect {
   }
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  fun draw(view: EdgeFadeView, canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
+    val renderer = Api33.rendererFor(view) ?: return false
+    renderer.draw(canvas, recordChildren)
+    return true
+  }
+
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   private object Api33 {
     private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()
 
     fun apply(view: EdgeFadeView): Boolean {
       // The rejected full-view implementation used View.setRenderEffect(). Make
-      // the ownership transition explicit so no stale effect can survive while
-      // iterating on the same native view.
+      // the ownership transition explicit so no stale effect can survive.
       view.setRenderEffect(null)
 
       val existing = renderers[view]
@@ -174,13 +161,9 @@ internal object EdgeFadeProgressiveBlurEffect {
 
       return try {
         renderer.prepare()
-        if (existing == null) {
-          renderers[view] = renderer
-          view.overlay.add(renderer)
-        }
+        if (existing == null) renderers[view] = renderer
         true
       } catch (error: RuntimeException) {
-        if (existing != null) view.overlay.remove(existing)
         renderers.remove(view)
         renderer.release()
         Log.w(TAG, "Progressive strip configuration failed; keeping Legacy.", error)
@@ -188,21 +171,20 @@ internal object EdgeFadeProgressiveBlurEffect {
       }
     }
 
+    fun rendererFor(view: EdgeFadeView): EdgeFadeProgressiveStripRenderer? = renderers[view]
+
     fun clear(view: EdgeFadeView) {
       view.setRenderEffect(null)
-      renderers.remove(view)?.let { renderer ->
-        view.overlay.remove(renderer)
-        renderer.release()
-      }
+      renderers.remove(view)?.release()
     }
   }
 
   private const val TAG = "EdgeFadeProgressive"
 
   // Shared by every edge-local strip. `origin` maps local strip coordinates back
-  // into the EdgeFadeView coordinate space, preserving the exact full-view mask
-  // math (including max-combined corners) from the visually validated candidate.
-  // Preset curves stay analytical: no per-pixel LUT loop.
+  // into the EdgeFadeView coordinate space. The output alpha is the true radius
+  // intensity field: the Gaussian kernel later computes radius = maxRadius * a.
+  // Preset curves stay analytical; there is no material/color term here.
   internal const val MASK_SHADER = """
     uniform float2 origin;
     uniform float2 viewSize;
