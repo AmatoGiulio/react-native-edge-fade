@@ -34,18 +34,9 @@ const TRACKS = Array.from({ length: 64 }, (_, i) => ({
   time: `${3 + (i % 3)}:${String((i * 13) % 60).padStart(2, '0')}`,
 }));
 
-// AndroidX caps the spatial progressive radius at 150 physical pixels. The old
-// benchmark hard-coded 48dp, which is 144px on the 3x AVD but ~168px on a 3.5x
-// device and therefore correctly falls back to Legacy. Keep the stress target at
-// the already-validated 144px while never exceeding the previous 48dp scene.
-const PERF_TARGET_RADIUS_PX = 144;
-const PERF_MAX_RADIUS_DP = 48;
+const PERF_DEFAULT_TARGET_RADIUS_PX = 144;
+const PERF_MAX_RADIUS_PX = 150;
 const PERF_DENSITY = PixelRatio.get();
-const PERF_RADIUS_DP = Math.min(
-  PERF_MAX_RADIUS_DP,
-  PERF_TARGET_RADIUS_PX / PERF_DENSITY
-);
-const PERF_RADIUS_PX = PERF_RADIUS_DP * PERF_DENSITY;
 
 // Native EdgeFadeCurves samples the public `smooth` preset at 64 positions as
 // alpha=(1-t)^3 for its LinearGradient fallback. Supplying those exact samples
@@ -62,14 +53,25 @@ const LEGACY_SMOOTH_CURVE: StopsCurve = {
 
 type PerfBackend = 'progressive' | 'legacy';
 
+function resolveRadiusPx(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseFloat(raw ?? '');
+  if (!Number.isFinite(parsed)) return PERF_DEFAULT_TARGET_RADIUS_PX;
+  return Math.min(PERF_MAX_RADIUS_PX, Math.max(1, parsed));
+}
+
 export default function ProgressiveBlurPerfRoute() {
   const params = useLocalSearchParams<{
     backend?: string;
     edges?: string;
+    radiusPx?: string;
   }>();
   const backend: PerfBackend =
     params.backend === 'legacy' ? 'legacy' : 'progressive';
   const fourEdges = params.edges === 'four';
+  const targetRadiusPx = resolveRadiusPx(params.radiusPx);
+  const radiusDp = targetRadiusPx / PERF_DENSITY;
+  const actualRadiusPx = radiusDp * PERF_DENSITY;
   const curve = useMemo(
     () => (backend === 'legacy' ? LEGACY_SMOOTH_CURVE : 'smooth'),
     [backend]
@@ -87,7 +89,7 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
           {backend === 'progressive' ? 'Public progressive' : 'Public Legacy'} ·
-          {` ${PERF_RADIUS_DP.toFixed(1)}dp / ${Math.round(PERF_RADIUS_PX)}px · Smooth · `}
+          {` ${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
         </Text>
       </View>
@@ -102,7 +104,7 @@ export default function ProgressiveBlurPerfRoute() {
           left={fourEdges ? 48 : 0}
           right={fourEdges ? 48 : 0}
           curve={curve}
-          blurRadius={PERF_RADIUS_DP}
+          blurRadius={radiusDp}
           frostSaturation={1}
           frostLift={1}
           frostProgression={1}
