@@ -197,7 +197,7 @@ function PlaylistLab({
               Public EdgeFadeView / mode=blur / API {String(Platform.Version)}
             </Text>
             <Text style={s.publicHint}>
-              Release-candidate path. Native activation is logged as
+              Pure progressive Gaussian. Native activation is logged as
               {' `EdgeFadeProgressive`'}.
             </Text>
           </>
@@ -241,8 +241,8 @@ function PlaylistLab({
             right={allEdges ? 48 : 0}
             curve={linear ? 'linear' : 'smooth'}
             blurRadius={effectiveRadius}
-            frostSaturation={0.9}
-            frostLift={1.03}
+            frostSaturation={1}
+            frostLift={1}
             frostProgression={1}
           >
             <Playlist
@@ -305,7 +305,7 @@ function PlaylistLab({
         </View>
         <Text style={s.footnote}>
           {publicCandidate
-            ? 'Public RC uses the exported EdgeFadeView with the public frost defaults (0.9 saturation / 1.03 lift). Radius range is density-normalized so the progressive backend stays <=150 px.'
+            ? 'Public RC is pure progressive Gaussian: no saturation, lift, tint, opacity cross-fade or material grading. Radius range is density-normalized to <=150 px.'
             : status.requested && !status.androidxAvailable
               ? 'AndroidX is not compiled in this binary. AGSL is the dependency-free implementation. Radius range is density-normalized to <=150 px.'
               : 'AndroidX official is validated in the separate native reference APK.'}
@@ -572,9 +572,7 @@ const s = StyleSheet.create({
     fontSize: 9,
     lineHeight: 13,
     marginTop: 4,
-    // Public RC currently wraps to three lines while the AGSL note usually
-    // occupies two. Reserve three lines for every backend so the viewport's
-    // bottom edge does not move when the renderer changes.
+    // Keep a fixed note block height so backend swaps never resize the viewport.
     minHeight: 39,
   },
   message: {
