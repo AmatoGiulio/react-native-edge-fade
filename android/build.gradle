@@ -37,10 +37,6 @@ apply plugin: "com.facebook.react"
 // stays in the isolated androidx-reference harness. The API 33+ public candidate
 // uses the dependency-free, attributed AGSL port and does not raise consumer
 // SDK/AGP requirements.
-def staleAndroidxOptIn = (findProperty("edgeFadeAndroidxBlur") ?: "false").toString().toBoolean()
-if (staleAndroidxOptIn) {
-  logger.warn("[react-native-edge-fade] edgeFadeAndroidxBlur is ignored in RN/Expo builds; the official AndroidX alpha is validated in androidx-reference. Using the dependency-free AGSL backend instead.")
-}
 
 android {
   namespace "com.edgefade"
