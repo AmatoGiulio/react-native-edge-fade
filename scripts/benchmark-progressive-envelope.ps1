@@ -39,6 +39,35 @@ function Get-RadiusLabel {
   return $Radius.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture).Replace('.', 'p')
 }
 
+function Get-Median {
+  param([double[]]$Values)
+  if ($Values.Count -eq 0) { return [double]::NaN }
+  $sorted = @($Values | Sort-Object)
+  $middle = [int][Math]::Floor($sorted.Count / 2)
+  if (($sorted.Count % 2) -eq 1) { return [double]$sorted[$middle] }
+  return ([double]$sorted[$middle - 1] + [double]$sorted[$middle]) / 2.0
+}
+
+function New-AggregateRow {
+  param([object[]]$Items)
+  if ($Items.Count -eq 0) {
+    throw 'Cannot aggregate an empty renderer sample set.'
+  }
+
+  [PSCustomObject]@{
+    Backend = [string]$Items[0].Backend
+    Edges = [string]$Items[0].Edges
+    RadiusDp = [double]$Items[0].RadiusDp
+    RadiusPx = [double]$Items[0].RadiusPx
+    Runs = $Items.Count
+    FrameIntervalMs = [Math]::Round((Get-Median -Values @($Items | ForEach-Object { [double]$_.FrameIntervalMs })), 3)
+    P50MedianMs = [Math]::Round((Get-Median -Values @($Items | ForEach-Object { [double]$_.P50Ms })), 3)
+    P95MedianMs = [Math]::Round((Get-Median -Values @($Items | ForEach-Object { [double]$_.P95Ms })), 3)
+    P99MedianMs = [Math]::Round((Get-Median -Values @($Items | ForEach-Object { [double]$_.P99Ms })), 3)
+    MissedPctMedian = [Math]::Round((Get-Median -Values @($Items | ForEach-Object { [double]$_.MissedPct })), 2)
+  }
+}
+
 $densityText = (Invoke-Adb @('shell', 'wm', 'density')) -join "`n"
 $overrideDensity = [regex]::Match($densityText, 'Override density:\s*(\d+)')
 $physicalDensity = [regex]::Match($densityText, 'Physical density:\s*(\d+)')
@@ -103,22 +132,45 @@ foreach ($edge in $edgeModes) {
       $benchmarkParams.AllowEmulator = $true
     }
 
+    # Do not consume the child aggregate JSON here. Windows PowerShell 5.1 and
+    # newer PowerShell releases differ in how top-level JSON arrays are emitted
+    # through the pipeline. Instead, aggregate the current point from the
+    # per-run summary files written by the child benchmark itself.
+    $pointStartedAt = Get-Date
     & $Benchmark @benchmarkParams
 
     $label = Get-RadiusLabel -Radius $radius
-    $aggregateFile = Get-ChildItem -Path $SourceResultsDir -Filter "*-$edge-${label}px-aggregate.json" |
-      Sort-Object LastWriteTime -Descending |
-      Select-Object -First 1
-    if ($null -eq $aggregateFile) {
-      throw "Could not find aggregate output for $edge / ${radius}px"
+    $expectedRuns = 4 * [Math]::Max(1, $Blocks)
+    $summaryFiles = @(
+      Get-ChildItem -Path $SourceResultsDir -Filter "*-$edge-${label}px-r*-summary.json" |
+        Where-Object { $_.LastWriteTime -ge $pointStartedAt.AddSeconds(-2) } |
+        Sort-Object LastWriteTime, Name
+    )
+
+    if ($summaryFiles.Count -lt $expectedRuns) {
+      throw "Expected at least $expectedRuns current summary files for $edge / ${radius}px, found $($summaryFiles.Count)."
     }
 
-    $aggregate = @(Get-Content -Raw $aggregateFile.FullName | ConvertFrom-Json)
-    $progressive = $aggregate | Where-Object Backend -eq 'progressive'
-    $legacy = $aggregate | Where-Object Backend -eq 'legacy'
-    if ($null -eq $progressive -or $null -eq $legacy) {
-      throw "Aggregate output is missing progressive or legacy row: $($aggregateFile.FullName)"
+    # Keep only the newest measured block if a filesystem timestamp boundary
+    # happened to include an older file from immediately before this point.
+    if ($summaryFiles.Count -gt $expectedRuns) {
+      $summaryFiles = @($summaryFiles | Select-Object -Last $expectedRuns)
     }
+
+    $runRows = @(
+      foreach ($summaryFile in $summaryFiles) {
+        ConvertFrom-Json -InputObject (Get-Content -Raw $summaryFile.FullName)
+      }
+    )
+
+    $progressiveRuns = @($runRows | Where-Object { $_.Backend -eq 'progressive' })
+    $legacyRuns = @($runRows | Where-Object { $_.Backend -eq 'legacy' })
+    if ($progressiveRuns.Count -eq 0 -or $legacyRuns.Count -eq 0) {
+      throw "Current run summaries are missing progressive or legacy rows for $edge / ${radius}px."
+    }
+
+    $progressive = New-AggregateRow -Items $progressiveRuns
+    $legacy = New-AggregateRow -Items $legacyRuns
 
     $rows.Add([PSCustomObject]@{
       Edges = $edge
@@ -149,7 +201,7 @@ $rows |
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $jsonPath = Join-Path $ResultsDir "$stamp-progressive-envelope.json"
 $csvPath = Join-Path $ResultsDir "$stamp-progressive-envelope.csv"
-$rows | ConvertTo-Json | Set-Content -Encoding utf8 $jsonPath
+ConvertTo-Json -InputObject @($rows.ToArray()) | Set-Content -Encoding utf8 $jsonPath
 $rows | Export-Csv -NoTypeInformation -Encoding utf8 $csvPath
 
 Write-Host "`nEnvelope JSON: $jsonPath"
