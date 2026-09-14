@@ -75,6 +75,26 @@ test('app follows root SDK without changing runtime SDKs or Kotlin plugin', () =
   assert.equal(output, app);
 });
 
+test('migrates only the AGP 9-incompatible default ProGuard profile', () => {
+  const legacy = app.replace('  defaultConfig {', [
+    '  buildTypes {',
+    '    release {',
+    "      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'",
+    '    }',
+    '  }',
+    '  defaultConfig {',
+  ].join('\n'));
+  const output = config.configureApp(legacy);
+  assert.match(output, /getDefaultProguardFile\('proguard-android-optimize\.txt'\)/);
+  assert.doesNotMatch(output, /getDefaultProguardFile\('proguard-android\.txt'\)/);
+  assert.equal(config.configureApp(output), output);
+
+  const custom = legacy.replace("getDefaultProguardFile('proguard-android.txt')", "'my-proguard.txt'");
+  assert.equal(config.configureApp(custom), custom);
+  const duplicate = legacy.replace("proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'", "proguardFiles getDefaultProguardFile('proguard-android.txt'), getDefaultProguardFile(\"proguard-android.txt\")");
+  assert.throws(() => config.configureApp(duplicate), /Multiple legacy default ProGuard/);
+});
+
 test('properties are exact and idempotent', () => {
   let source = 'android.newDsl=true\r\n# keep this comment\r\n';
   source = config.setProperty(source, 'android.newDsl', 'false');
