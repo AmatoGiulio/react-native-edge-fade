@@ -44,6 +44,7 @@ class ProgressivePublicBackend(unittest.TestCase):
         for contract in (
             "Build.VERSION_CODES.TIRAMISU",
             "BlurLabGeometry.MAX_RADIUS_PX",
+            "hasNeutralColorGrade(view)",
             "supportsPresetCurves(view)",
             "child is WebView || child is SurfaceView",
             "!view.isAttachedToWindow || view.isHardwareAccelerated",
@@ -51,6 +52,12 @@ class ProgressivePublicBackend(unittest.TestCase):
             'view.mode = "overlay"',
         ):
             self.assertIn(contract, source)
+
+    def test_color_grade_does_not_leak_into_sharp_center(self):
+        source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        self.assertIn("abs(view.frostSaturation - 1f)", source)
+        self.assertIn("abs(view.frostLift - 1f)", source)
+        self.assertNotIn("RenderEffect.createColorFilterEffect", source)
 
     def test_consumer_build_remains_compose_free(self):
         gradle = read(ROOT / "android/build.gradle")
