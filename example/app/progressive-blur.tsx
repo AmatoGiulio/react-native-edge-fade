@@ -26,11 +26,6 @@ const LABELS: Record<Backend, string> = {
   androidx: 'AndroidX Official',
 };
 
-// Both progressive renderers cap their actual shader radius at 150 px. Keep
-// this interactive A/B scene inside that range in *dp* too: otherwise a dense
-// device can request e.g. 48dp -> 168px, making Public Progressive correctly
-// fall back to mask while the AGSL lab clamps to 150px. That would no longer be
-// a valid fidelity comparison.
 const MAX_PROGRESSIVE_RADIUS_PX = 150;
 const RADIUS_DENSITY = PixelRatio.get();
 const MAX_PROGRESSIVE_RADIUS_DP =
@@ -71,7 +66,6 @@ export default function ProgressiveBlurRoute() {
       <Message text="Rebuild the Android example to register EdgeFadeBlurLab. A Metro reload alone is not enough." />
     );
   }
-  // Do not load an Android-only host component on iOS/web or an old binary.
   const NativeBlurLab = require('../../src/BlurLabNativeComponent')
     .default as typeof NativeBlurLabType;
   return <PlaylistLab NativeBlurLab={NativeBlurLab} />;
@@ -106,9 +100,6 @@ function PlaylistLab({
     reason: '',
     androidxAvailable: false,
   });
-  // Switching Public Progressive <-> Blur Lab swaps the native parent and
-  // therefore remounts the ScrollView. Keep one shared offset so a visual A/B
-  // never compares two different pieces of the playlist after scrolling.
   const scrollOffsetRef = useRef(0);
   const rememberScrollOffset = (offset: number) => {
     scrollOffsetRef.current = offset;
@@ -120,17 +111,12 @@ function PlaylistLab({
   const androidxEnabled =
     status.androidxAvailable && Number(Platform.Version) >= 33;
 
-  // Fast Refresh can preserve an old radius after this scene's range changes.
-  // Clamp at render time as well as in the slider so a stale state can never
-  // silently push Public Progressive over the native 150px eligibility cap.
   const effectiveRadius = Math.min(radius, MAX_PROGRESSIVE_RADIUS_DP);
   const effectiveRadiusPx = effectiveRadius * RADIUS_DENSITY;
   const radiusLabel = Number.isInteger(effectiveRadius)
     ? effectiveRadius.toFixed(0)
     : effectiveRadius.toFixed(2);
 
-  // Old native binaries still emit the pre-fix event schema. Do not let a
-  // Metro-only reload look like it tested the renamed native props/shader.
   if (
     !publicCandidate &&
     status.requested &&
@@ -234,9 +220,6 @@ function PlaylistLab({
             right={allEdges ? 48 : 0}
             curve={linear ? 'linear' : 'smooth'}
             blurRadius={effectiveRadius}
-            frostSaturation={1}
-            frostLift={1}
-            frostProgression={1}
           >
             <Playlist
               initialOffset={scrollOffsetRef.current}
@@ -339,9 +322,6 @@ function Playlist({
       onScroll={({ nativeEvent }) => {
         const offset = nativeEvent.contentOffset.y;
         if (restorePendingRef.current) {
-          // A freshly mounted ScrollView can emit y=0 before the imperative
-          // restore lands. Ignore that transient event so it cannot erase the
-          // shared offset we are trying to preserve across backend swaps.
           if (Math.abs(offset - initialOffset) > 1) return;
           restorePendingRef.current = false;
         }
@@ -385,9 +365,6 @@ function RadiusSlider({
       0,
       Math.min(1, event.nativeEvent.locationX / width)
     );
-    // Keep ordinary movement readable at 0.1dp resolution, but preserve the
-    // exact density-derived max at the end stop so both renderers receive the
-    // same near-150px value without ever crossing the native cap.
     const next = position >= 1 ? max : Math.round(position * max * 10) / 10;
     onChange(Math.min(max, next));
   };
@@ -469,9 +446,6 @@ const s = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 6,
     paddingVertical: 4,
-    // The public status has an extra two-line hint. Without a common minimum,
-    // switching backend changes the flex viewport height and moves the bottom
-    // fade relative to the playlist, which invalidates visual comparisons.
     minHeight: 52,
   },
   failure: { backgroundColor: '#fce8e5', borderRadius: 8, padding: 10 },
@@ -558,7 +532,6 @@ const s = StyleSheet.create({
     fontSize: 9,
     lineHeight: 13,
     marginTop: 4,
-    // Keep a fixed note block height so backend swaps never resize the viewport.
     minHeight: 39,
   },
   message: {
