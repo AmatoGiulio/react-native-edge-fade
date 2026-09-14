@@ -20,8 +20,8 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertNotIn("NativeBlurLab", source)
         self.assertIn("mode=\"blur\"", source)
         self.assertIn("blurRadius={PERF_RADIUS_DP}", source)
-        self.assertIn("frostSaturation={0.9}", source)
-        self.assertIn("frostLift={1.03}", source)
+        self.assertIn("frostSaturation={1}", source)
+        self.assertIn("frostLift={1}", source)
 
     def test_perf_radius_stays_under_androidx_pixel_cap_across_density(self):
         source = read(PERF)
