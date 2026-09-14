@@ -1,14 +1,9 @@
 package com.edgefade
 
-import android.graphics.BlendMode
 import android.graphics.Canvas
-import android.graphics.ColorFilter
-import android.graphics.Paint
-import android.graphics.PixelFormat
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Trace
 import androidx.annotation.RequiresApi
@@ -17,34 +12,27 @@ import kotlin.math.ceil
 /**
  * Edge-local production candidate for the API 33+ progressive blur path.
  *
- * The rejected full-view candidate applied both separable RuntimeShader passes
- * to the complete EdgeFadeView. That preserved excellent visual fidelity but
- * measured poorly on physical hardware, especially with four active edges.
+ * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
+ * the analytical edge mask, derives its own radius as `maxRadius * intensity`,
+ * then runs the same AndroidX-derived separable Gaussian kernel in H -> V order.
+ * There are no discrete blur levels, opacity cross-fades, frost grading, lift,
+ * tint or material post-processing in this renderer.
  *
- * This renderer keeps the exact same analytical radius mask, paired-tap blur
- * kernel and mask-aware frost grading, but runs the expensive RenderEffects only
- * on padded edge source rectangles. Top/bottom own the corners; left/right own
- * only the remaining center span, so four-edge output is disjoint by geometry
- * instead of paying for overlapping corner strips.
+ * Strips are only a work-culling optimization: they bound GPU work to regions
+ * where the radius can be non-zero. They do not quantize the blur field. Each
+ * strip records padded source pixels so the Gaussian still samples real content
+ * across the inner strip boundary. Top/bottom own the corners; left/right own
+ * only the remaining center span, making four-edge output disjoint by geometry.
  *
- * It is installed as a ViewOverlay Drawable. The host first draws its normal
- * sharp content; this drawable then records that same host into one RenderNode
- * (with a recursion guard) and REPLACES the edge regions with filtered strips.
- * Replacement is important: ordinary SRC_OVER would leave the already-rendered
- * sharp content visible through transparent/partially covered filtered pixels,
- * producing a much weaker result than the Blur Lab renderer.
- *
- * The destination is clipped BEFORE saveLayer. Android treats saveLayer bounds
- * as an allocation hint, not a guaranteed clip; clipping only inside the layer
- * lets a SRC restore clear pixels outside the intended band. The pre-layer clip
- * makes each restore own exactly its visible strip.
- *
- * No public JS prop or Android-only backend switch is introduced.
+ * The renderer is invoked directly from EdgeFadeView.dispatchDraw(). It records
+ * the React children once, draws the sharp content with the edge bands clipped
+ * out, then draws the filtered strips into those empty bands. No ViewOverlay,
+ * SRC replacement layer or forced host hardware layer is involved.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
   private val host: EdgeFadeView,
-) : Drawable() {
+) {
 
   private data class Key(
     val width: Int,
@@ -59,8 +47,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     val curveBottom: String,
     val curveLeft: String,
     val curveRight: String,
-    val saturation: Float,
-    val lift: Float,
   )
 
   private data class Rect(
@@ -84,7 +70,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
     val horizontal = RuntimeShader(BlurLabShaders.pass(vertical = false))
-    val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true, grade = true))
+    val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true))
 
     fun release() {
       node.setRenderEffect(null)
@@ -93,15 +79,8 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private val content = RenderNode("EdgeFade.Progressive.content")
-  private val replacementPaint = Paint().apply {
-    // Composite each bounded offscreen strip with SRC rather than SRC_OVER.
-    // The filtered strip therefore owns its output pixels exactly like the
-    // Blur Lab path, instead of revealing the already-drawn sharp edge below.
-    blendMode = BlendMode.SRC
-  }
   private var key: Key? = null
   private var strips = emptyList<Strip>()
-  private var recordingHost = false
 
   /** Compile/configure shaders before the selector commits to this backend. */
   fun prepare() {
@@ -122,41 +101,47 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
-      saturation = finite(host.frostSaturation, 1f).coerceAtLeast(0f),
-      lift = finite(host.frostLift, 1f).coerceAtLeast(0f),
     )
 
-    if (key == next) {
-      setBounds(0, 0, width, height)
-      return
-    }
+    if (key == next) return
 
     configure(next)
     key = next
-    setBounds(0, 0, width, height)
-    invalidateSelf()
   }
 
-  override fun draw(canvas: Canvas) {
-    // host.draw(recordingCanvas) reaches the ViewOverlay again. Returning here
-    // prevents recursion while still recording background + React children.
-    if (recordingHost || host.width <= 0 || host.height <= 0 || strips.isEmpty()) return
+  fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit) {
+    if (host.width <= 0 || host.height <= 0 || strips.isEmpty()) return
     if (!canvas.isHardwareAccelerated) return
 
     Trace.beginSection("EdgeFade.progressive.strip.draw")
     try {
       prepare()
 
+      // Materialize the child scene once. The sharp base and every filtered
+      // strip reference this same recording, so the expensive blur work stays
+      // edge-local while content identity is identical across all passes.
       content.setPosition(0, 0, host.width, host.height)
+      content.setUseCompositingLayer(true, null)
       val recording = content.beginRecording()
-      recordingHost = true
       try {
-        host.draw(recording)
+        recordChildren(recording)
       } finally {
-        recordingHost = false
         content.endRecording()
       }
 
+      // Draw sharp content exactly once, excluding every edge band. Those bands
+      // remain empty at this stage; no later replacement blend is necessary.
+      val sharpSave = canvas.save()
+      try {
+        for (strip in strips) clipOut(canvas, strip.band.visible)
+        canvas.drawRenderNode(content)
+      } finally {
+        canvas.restoreToCount(sharpSave)
+      }
+
+      // Fill the empty edge bands with their true progressive Gaussian output.
+      // Visible ownership is already disjoint by geometry, while each source is
+      // expanded by maxRadius + one paired bilinear tap for correct sampling.
       for (strip in strips) {
         val src = strip.band.source
         val rc = strip.node.beginRecording()
@@ -168,13 +153,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
 
         val visible = strip.band.visible
-
-        // IMPORTANT: clip the destination BEFORE creating the SRC layer.
-        // saveLayer bounds are only a hint and do not constrain the restore
-        // operation. If the clip is applied after saveLayer, restoring with SRC
-        // can clear sharp pixels outside the visible band. On an isolated host
-        // layer that appears as a large white/transparent viewport.
-        val destinationClip = canvas.save()
+        val save = canvas.save()
         try {
           canvas.clipRect(
             visible.left.toFloat(),
@@ -182,21 +161,10 @@ internal class EdgeFadeProgressiveStripRenderer(
             visible.right.toFloat(),
             visible.bottom.toFloat(),
           )
-          val layer = canvas.saveLayer(
-            visible.left.toFloat(),
-            visible.top.toFloat(),
-            visible.right.toFloat(),
-            visible.bottom.toFloat(),
-            replacementPaint,
-          )
-          try {
-            canvas.translate(src.left.toFloat(), src.top.toFloat())
-            canvas.drawRenderNode(strip.node)
-          } finally {
-            canvas.restoreToCount(layer)
-          }
+          canvas.translate(src.left.toFloat(), src.top.toFloat())
+          canvas.drawRenderNode(strip.node)
         } finally {
-          canvas.restoreToCount(destinationClip)
+          canvas.restoreToCount(save)
         }
       }
     } finally {
@@ -246,8 +214,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       shader.setFloatUniform("blurRadius", key.radius)
       shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
     }
-    strip.vertical.setFloatUniform("frostSaturation", key.saturation)
-    strip.vertical.setFloatUniform("frostLift", key.lift)
 
     strip.node.setRenderEffect(
       RenderEffect.createChainEffect(
@@ -301,21 +267,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     return result
   }
 
+  private fun clipOut(canvas: Canvas, rect: Rect) {
+    canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
+  }
+
   fun release() {
     strips.forEach { it.release() }
     strips = emptyList()
     content.discardDisplayList()
     key = null
   }
-
-  @Deprecated("Drawable alpha is not part of the Edge Fade rendering contract")
-  override fun setAlpha(alpha: Int) = Unit
-
-  @Deprecated("Drawable color filters are not part of the Edge Fade rendering contract")
-  override fun setColorFilter(colorFilter: ColorFilter?) = Unit
-
-  @Deprecated("Deprecated in the Android Drawable API")
-  override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
   private fun finite(value: Float, fallback: Float = 0f): Float =
     if (value.isFinite()) value else fallback
