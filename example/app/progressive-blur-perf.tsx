@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  PixelRatio,
   Platform,
   ScrollView,
   StyleSheet,
@@ -32,6 +33,19 @@ const TRACKS = Array.from({ length: 64 }, (_, i) => ({
   color: ALBUMS[i % ALBUMS.length],
   time: `${3 + (i % 3)}:${String((i * 13) % 60).padStart(2, '0')}`,
 }));
+
+// AndroidX caps the spatial progressive radius at 150 physical pixels. The old
+// benchmark hard-coded 48dp, which is 144px on the 3x AVD but ~168px on a 3.5x
+// device and therefore correctly falls back to Legacy. Keep the stress target at
+// the already-validated 144px while never exceeding the previous 48dp scene.
+const PERF_TARGET_RADIUS_PX = 144;
+const PERF_MAX_RADIUS_DP = 48;
+const PERF_DENSITY = PixelRatio.get();
+const PERF_RADIUS_DP = Math.min(
+  PERF_MAX_RADIUS_DP,
+  PERF_TARGET_RADIUS_PX / PERF_DENSITY
+);
+const PERF_RADIUS_PX = PERF_RADIUS_DP * PERF_DENSITY;
 
 // Native EdgeFadeCurves samples the public `smooth` preset at 64 positions as
 // alpha=(1-t)^3 for its LinearGradient fallback. Supplying those exact samples
@@ -73,7 +87,7 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
           {backend === 'progressive' ? 'Public progressive' : 'Public Legacy'} ·
-          {' 48dp · Smooth · '}
+          {` ${PERF_RADIUS_DP.toFixed(1)}dp / ${Math.round(PERF_RADIUS_PX)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
         </Text>
       </View>
@@ -88,7 +102,7 @@ export default function ProgressiveBlurPerfRoute() {
           left={fourEdges ? 48 : 0}
           right={fourEdges ? 48 : 0}
           curve={curve}
-          blurRadius={48}
+          blurRadius={PERF_RADIUS_DP}
           frostSaturation={0.9}
           frostLift={1.03}
           frostProgression={1}
