@@ -48,13 +48,15 @@ class AndroidxReferencePerfContract(unittest.TestCase):
         self.assertIn('signingConfig = signingConfigs.getByName("debug")', build)
         self.assertIn("isMinifyEnabled = false", build)
 
-    def test_script_runs_balanced_cross_app_comparison(self):
+    def test_script_runs_balanced_cross_app_comparison_at_explicit_radius(self):
         script = read(SCRIPT)
         for contract in (
-            "$TargetRadiusPx = 144.0",
+            "[double]$TargetRadiusPx = 144.0",
             "$PublicPackage = 'com.edgefadeexample'",
             "$AndroidxPackage = 'com.edgefade.androidxref'",
             "$AndroidxActivity = 'com.edgefade.androidxref/.BenchmarkActivity'",
+            "radiusPx=$radiusInvariant",
+            "'--ef', 'radiusPx', $radiusInvariant",
             "Warm-up (discarded)",
             "@('public', 'androidx', 'androidx', 'public')",
             "@('androidx', 'public', 'public', 'androidx')",
