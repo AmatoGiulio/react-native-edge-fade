@@ -75,7 +75,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     val canTryProgressive =
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         view.width > 0 && view.height > 0 &&
-        view.isHardwareAccelerated &&
+        (!view.isAttachedToWindow || view.isHardwareAccelerated) &&
         view.blurRadius in 1f..BlurLabGeometry.MAX_RADIUS_PX &&
         view.fadeRadius <= 0f &&
         view.overlayColor == null &&
