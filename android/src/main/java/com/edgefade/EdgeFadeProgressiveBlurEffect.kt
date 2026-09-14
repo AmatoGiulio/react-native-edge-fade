@@ -1,7 +1,5 @@
 package com.edgefade
 
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
@@ -13,6 +11,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.annotation.RequiresApi
 import java.util.WeakHashMap
+import kotlin.math.abs
 
 /**
  * Internal backend switch for the public EdgeFadeView.
@@ -83,6 +82,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         view.overlayColorBottom == null &&
         view.overlayColorLeft == null &&
         view.overlayColorRight == null &&
+        hasNeutralColorGrade(view) &&
         supportsPresetCurves(view) &&
         !containsUnsupportedSurface(view)
 
@@ -105,6 +105,14 @@ internal object EdgeFadeProgressiveBlurEffect {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Api33.clear(view)
     else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) view.setRenderEffect(null)
   }
+
+  // Legacy applies frost color grading only inside its blurred edge layers.
+  // A ColorFilter chained around the full View RenderEffect would also grade the
+  // sharp center. Until grading is made mask-aware, non-neutral material values
+  // deliberately stay on Legacy instead of changing public rendering semantics.
+  private fun hasNeutralColorGrade(view: EdgeFadeView): Boolean =
+    abs(view.frostSaturation - 1f) <= 0.0001f &&
+      abs(view.frostLift - 1f) <= 0.0001f
 
   private fun supportsPresetCurves(view: EdgeFadeView): Boolean =
     EdgeFadeCurves.agslPresetParams(view.curveTop) != null &&
@@ -139,8 +147,6 @@ internal object EdgeFadeProgressiveBlurEffect {
       val curveBottom: String,
       val curveLeft: String,
       val curveRight: String,
-      val saturation: Float,
-      val lift: Float,
     )
 
     private class RenderState {
@@ -176,8 +182,6 @@ internal object EdgeFadeProgressiveBlurEffect {
         curveBottom = view.curveBottom,
         curveLeft = view.curveLeft,
         curveRight = view.curveRight,
-        saturation = view.frostSaturation,
-        lift = view.frostLift,
       )
 
       if (state.key == key) return true
@@ -223,11 +227,7 @@ internal object EdgeFadeProgressiveBlurEffect {
           RenderEffect.createRuntimeShaderEffect(state.vertical, "content"),
           RenderEffect.createRuntimeShaderEffect(state.horizontal, "content"),
         )
-        val graded = RenderEffect.createColorFilterEffect(
-          vibrancy(key.saturation, key.lift),
-          blur,
-        )
-        view.setRenderEffect(graded)
+        view.setRenderEffect(blur)
         state.key = key
         if (!state.announced) {
           state.announced = true
@@ -252,26 +252,6 @@ internal object EdgeFadeProgressiveBlurEffect {
 
     private fun finite(value: Float, fallback: Float = 0f): Float =
       if (value.isFinite()) value else fallback
-
-    private fun vibrancy(saturation: Float, lift: Float): ColorMatrixColorFilter {
-      val sat = finite(saturation, 1f).coerceAtLeast(0f)
-      val brightness = finite(lift, 1f).coerceAtLeast(0f)
-      return ColorMatrixColorFilter(
-        ColorMatrix().apply {
-          setSaturation(sat)
-          postConcat(
-            ColorMatrix(
-              floatArrayOf(
-                brightness, 0f, 0f, 0f, 0f,
-                0f, brightness, 0f, 0f, 0f,
-                0f, 0f, brightness, 0f, 0f,
-                0f, 0f, 0f, 1f, 0f,
-              ),
-            ),
-          )
-        },
-      )
-    }
 
     private const val TAG = "EdgeFadeProgressive"
 
