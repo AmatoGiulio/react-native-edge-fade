@@ -82,9 +82,22 @@ function configureApp(source) {
   const eol = source.includes('\r\n') ? '\r\n' : '\n';
   source = source.replace(/\r\n/g, '\n');
   // The template inherits this from the root; also handle an explicit integer.
-  return replaceExactlyOnce(source,
+  source = replaceExactlyOnce(source,
     /^([ \t]*)compileSdk(?:Version)?[ \t]+(?:rootProject\.ext\.compileSdkVersion|\d+)[ \t]*;?[ \t]*(?:\/\/[^\r\n]*)?$/gm,
-    '$1compileSdk rootProject.ext.compileSdkVersion', 'app compileSdk').replace(/\n/g, eol);
+    '$1compileSdk rootProject.ext.compileSdkVersion', 'app compileSdk');
+
+  // AGP 9 rejects the old default profile because it embeds -dontoptimize.
+  // Expo-generated projects from the current checkout can still contain it.
+  // Migrate only that exact default file; custom ProGuard files are untouched.
+  const legacyProguard = /getDefaultProguardFile\((["'])proguard-android\.txt\1\)/g;
+  const matches = [...source.matchAll(legacyProguard)];
+  if (matches.length > 1) {
+    throw new Error('Multiple legacy default ProGuard profiles found; review app/build.gradle manually.');
+  }
+  if (matches.length === 1) {
+    source = source.replace(legacyProguard, "getDefaultProguardFile('proguard-android-optimize.txt')");
+  }
+  return source.replace(/\n/g, eol);
 }
 
 function plan(androidDir) {
