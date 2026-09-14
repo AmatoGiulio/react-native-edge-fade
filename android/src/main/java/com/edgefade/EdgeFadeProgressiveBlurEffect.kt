@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.annotation.RequiresApi
 import java.util.WeakHashMap
 
@@ -39,6 +40,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     var requestedMode: String = "mask"
     var layoutListener: View.OnLayoutChangeListener? = null
     var announced = false
+    var lastFallbackReason: String? = null
   }
 
   private val states = WeakHashMap<EdgeFadeView, State>()
@@ -73,35 +75,32 @@ internal object EdgeFadeProgressiveBlurEffect {
     if (requested != "blur") {
       clearProgressive(view)
       view.mode = requested
+      state.lastFallbackReason = null
       return
     }
 
     // One public blur backend only. If the AndroidX-style progressive renderer
     // cannot reproduce the requested configuration, degrade to mask rather than
     // silently changing the blur algorithm.
-    val canTryProgressive =
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-        view.width > 0 && view.height > 0 &&
-        (!view.isAttachedToWindow || view.isHardwareAccelerated) &&
-        view.blurRadius in 1f..BlurLabGeometry.MAX_RADIUS_PX &&
-        view.fadeRadius <= 0f &&
-        view.overlayColor == null &&
-        view.overlayColorTop == null &&
-        view.overlayColorBottom == null &&
-        view.overlayColorLeft == null &&
-        view.overlayColorRight == null &&
-        supportsPresetCurves(view) &&
-        !containsUnsupportedSurface(view)
-
-    if (!canTryProgressive) {
+    val fallbackReason = progressiveFallbackReason(view)
+    if (fallbackReason != null) {
       clearProgressive(view)
       view.mode = "mask"
+      // Width/height == 0 is the normal pre-layout transaction; do not turn it
+      // into a misleading fallback diagnostic. Once laid out, every persistent
+      // mask fallback is named explicitly so device gates cannot silently test
+      // the wrong renderer.
+      if (view.width > 0 && view.height > 0 && state.lastFallbackReason != fallbackReason) {
+        state.lastFallbackReason = fallbackReason
+        Log.i(TAG, "Progressive unavailable; using mask fallback: $fallbackReason")
+      }
       return
     }
 
     if (Api33.apply(view)) {
       view.progressiveBlurActive = true
       view.mode = "blur"
+      state.lastFallbackReason = null
       if (!state.announced) {
         state.announced = true
         Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
@@ -109,7 +108,25 @@ internal object EdgeFadeProgressiveBlurEffect {
     } else {
       clearProgressive(view)
       view.mode = "mask"
+      state.lastFallbackReason = "renderer setup failed"
     }
+  }
+
+  private fun progressiveFallbackReason(view: EdgeFadeView): String? = when {
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "requires API 33+"
+    view.width <= 0 || view.height <= 0 -> "view not laid out yet"
+    view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
+    view.blurRadius !in 1f..BlurLabGeometry.MAX_RADIUS_PX ->
+      "blurRadius ${view.blurRadius}px outside 1..${BlurLabGeometry.MAX_RADIUS_PX}px"
+    view.fadeRadius > 0f -> "fadeRadius is not supported by progressive blur"
+    view.overlayColor != null ||
+      view.overlayColorTop != null ||
+      view.overlayColorBottom != null ||
+      view.overlayColorLeft != null ||
+      view.overlayColorRight != null -> "overlay color is not part of pure progressive blur"
+    !supportsPresetCurves(view) -> "curve is not supported by the analytical progressive mask"
+    containsUnsupportedSurface(view) -> "contains a SurfaceView outside a WebView subtree"
+    else -> null
   }
 
   private fun clearProgressive(view: EdgeFadeView) {
@@ -131,8 +148,13 @@ internal object EdgeFadeProgressiveBlurEffect {
   private fun containsUnsupportedSurface(parent: ViewGroup): Boolean {
     for (index in 0 until parent.childCount) {
       val child = parent.getChildAt(index)
-      // SurfaceView is independently composited and therefore cannot be sampled
-      // from the materialized child RenderNode. WebView is intentionally allowed.
+      // WebView is an intentional capture boundary. Chromium may own internal
+      // surface-backed implementation details (especially around media), but
+      // treating those as ordinary descendants would make every such WebView
+      // silently ineligible before we can validate the materialized draw-functor
+      // path itself. A SurfaceView owned directly by the RN subtree remains an
+      // unsupported independently-composited surface.
+      if (child is WebView) continue
       if (child is SurfaceView) return true
       if (child is ViewGroup && containsUnsupportedSurface(child)) return true
     }
