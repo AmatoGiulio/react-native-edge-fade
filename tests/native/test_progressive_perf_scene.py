@@ -24,8 +24,9 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn('curve="smooth"', source)
         self.assertIn("blurRadius={radiusDp}", source)
         self.assertIn("Public Progressive", source)
-        self.assertIn("frostSaturation={1}", source)
-        self.assertIn("frostLift={1}", source)
+        self.assertNotIn("frostSaturation", source)
+        self.assertNotIn("frostLift", source)
+        self.assertNotIn("frostProgression", source)
 
     def test_perf_radius_is_explicit_physical_px_and_capped_at_androidx_limit(self):
         source = read(PERF)
