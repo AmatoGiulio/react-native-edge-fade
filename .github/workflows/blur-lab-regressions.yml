@@ -12,6 +12,7 @@ on:
       - 'example/app/progressive-blur.tsx'
       - 'example/app/progressive-blur-perf.tsx'
       - 'scripts/benchmark-progressive-blur.ps1'
+      - 'scripts/benchmark-progressive-envelope.ps1'
       - 'tests/native/test_blur_lab_regressions.py'
       - 'tests/native/test_progressive_public_backend.py'
       - 'tests/native/test_progressive_perf_scene.py'
