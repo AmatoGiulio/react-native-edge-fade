@@ -110,12 +110,18 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit) {
-    if (host.width <= 0 || host.height <= 0 || strips.isEmpty()) return
-    if (!canvas.isHardwareAccelerated) return
+    if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return
 
     Trace.beginSection("EdgeFade.progressive.strip.draw")
     try {
+      // Re-evaluate geometry before inspecting strips. Layout/prop updates can
+      // reach draw between selector transactions; never let a stale empty list
+      // suppress the child scene for a frame.
       prepare()
+      if (strips.isEmpty()) {
+        recordChildren(canvas)
+        return
+      }
 
       // Materialize the child scene once. The sharp base and every filtered
       // strip reference this same recording, so the expensive blur work stays
