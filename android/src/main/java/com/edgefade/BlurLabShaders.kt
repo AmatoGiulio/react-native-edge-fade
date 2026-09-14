@@ -17,49 +17,24 @@
  * The paired-tap blur kernel is adapted from AndroidX BlurShaders.kt,
  * inspected Git blob 9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd.
  * Changes: clamp-only bounds, local strip coordinates, per-instance shaders,
- * a four-edge radius mask, and optional mask-aware frost color grading.
- * This is a port, NOT the Compose binary.
+ * and a four-edge radius mask. This is a port, NOT the Compose binary.
  * See android/PROGRESSIVE_BLUR_NOTICE.md.
  */
 package com.edgefade
 
 internal object BlurLabShaders {
-  // Pure source generation: compiled by RuntimeShader only on API 33+.
-  // `grade` is used only by the final vertical pass of the public RC. The
-  // effective saturation/lift are interpolated from neutral by the same
-  // per-pixel mask that drives blur radius, so the sharp center stays exactly
-  // unchanged while the outer edge reaches the public frost material values.
-  fun pass(vertical: Boolean, grade: Boolean = false): String {
+  // Pure progressive Gaussian source generation. There is deliberately no
+  // saturation, lift, tint, opacity cross-fade or material grading in either
+  // pass: the only spatially varying quantity is the Gaussian radius itself.
+  fun pass(vertical: Boolean): String {
     val offset = if (vertical) "float2(0.0, d)" else "float2(d, 0.0)"
     val axis = if (vertical) "y" else "x"
-    val gradeUniforms =
-      if (grade) {
-        """
-          uniform float frostSaturation;
-          uniform float frostLift;
-        """.trimIndent()
-      } else {
-        ""
-      }
-    val gradeCode =
-      if (grade) {
-        """
-          float sat = mix(1.0, frostSaturation, intensity);
-          float lift = mix(1.0, frostLift, intensity);
-          float3 rgb = sampled.rgb;
-          float luminance = dot(rgb, float3(0.213, 0.715, 0.072));
-          sampled.rgb = mix(float3(luminance), rgb, sat) * lift;
-        """.trimIndent()
-      } else {
-        ""
-      }
 
     return """
       uniform shader content;
       uniform shader mask;
       uniform float blurRadius;
       uniform float2 extent;
-      $gradeUniforms
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -100,7 +75,6 @@ internal object BlurLabShaders {
           }
           sampled = result / weightSum;
         }
-        $gradeCode
         return half4(sampled);
       }
     """.trimIndent()
