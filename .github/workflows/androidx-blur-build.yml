@@ -5,6 +5,8 @@ on:
     paths:
       - 'androidx-reference/**'
       - 'android/src/androidxBlur/**'
+      - 'scripts/benchmark-progressive-vs-androidx.ps1'
+      - 'tests/native/test_androidx_reference_perf.py'
       - '.github/workflows/androidx-blur-build.yml'
   workflow_dispatch:
 
@@ -22,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Validate physical benchmark contracts
+        run: python3 tests/native/test_androidx_reference_perf.py
       - name: Install JDK
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
@@ -40,12 +44,12 @@ jobs:
             --output "$RUNNER_TEMP/gradle-9.3.1-bin.zip"
           unzip -q "$RUNNER_TEMP/gradle-9.3.1-bin.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" --version
-      - name: Build installable AndroidX reference APK
+      - name: Build installable release AndroidX reference APK
         run: |
           "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" \
-            -p androidx-reference assembleDebug --no-daemon --stacktrace
-          find androidx-reference/build/outputs/apk -type f -name '*.apk' -print
-          test -n "$(find androidx-reference/build/outputs/apk -type f -name '*.apk' -print -quit)"
+            -p androidx-reference assembleRelease --no-daemon --stacktrace
+          find androidx-reference/build/outputs/apk/release -type f -name '*.apk' -print
+          test -n "$(find androidx-reference/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
       # Deliberately isolated from Expo SDK 57: AGP 9.1 is binary-incompatible
-      # with its current Expo Gradle plugin. This APK exercises the official
-      # Compose UI 1.13.0-alpha03 BlurRadiusSpec on ordinary platform Views.
+      # with its current Expo Gradle plugin. This release APK exercises the
+      # official Compose UI 1.13.0-alpha03 BlurRadiusSpec on ordinary platform Views.
