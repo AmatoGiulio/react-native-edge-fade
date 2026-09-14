@@ -38,7 +38,8 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("Math.min(PERF_MAX_RADIUS_PX, Math.max(1, parsed))", source)
 
         selector = read(SELECTOR)
-        self.assertIn("view.blurRadius in 1f..BlurLabGeometry.MAX_RADIUS_PX", selector)
+        self.assertIn("view.blurRadius !in 1f..BlurLabGeometry.MAX_RADIUS_PX", selector)
+        self.assertIn('"blurRadius ${view.blurRadius}px outside 1..${BlurLabGeometry.MAX_RADIUS_PX}px"', selector)
 
     def test_comparator_is_public_progressive_vs_androidx_official(self):
         script = read(COMPARATOR)
