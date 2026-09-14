@@ -8,7 +8,9 @@ param(
 
   [int]$Swipes = 14,
   [int]$SwipeDurationMs = 180,
-  [int]$CooldownSeconds = 2
+  [int]$CooldownSeconds = 2,
+  [string]$Serial = '',
+  [switch]$AllowEmulator
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,11 +20,32 @@ New-Item -ItemType Directory -Force -Path $ResultsDir | Out-Null
 
 function Invoke-Adb {
   param([string[]]$Arguments)
-  $output = & adb @Arguments 2>&1
+
+  $nativeArgs = @()
+  if (-not [string]::IsNullOrWhiteSpace($Serial)) {
+    $nativeArgs += @('-s', $Serial)
+  }
+  $nativeArgs += $Arguments
+
+  $output = & adb @nativeArgs 2>&1
   if ($LASTEXITCODE -ne 0) {
-    throw "adb $($Arguments -join ' ') failed:`n$($output -join "`n")"
+    $adbPrefix = if ([string]::IsNullOrWhiteSpace($Serial)) { 'adb' } else { "adb -s $Serial" }
+    throw "$adbPrefix $($Arguments -join ' ') failed:`n$($output -join "`n")"
   }
   return @($output)
+}
+
+function Quote-AdbShellArgument {
+  param([string]$Value)
+
+  # `adb shell` joins COMMAND arguments and sends the resulting command through
+  # the device shell. Query-string '&' is therefore a shell metacharacter unless
+  # the URI itself is quoted on the remote side. Quotes stored in this variable
+  # are literal argv characters on Windows and survive until /system/bin/sh.
+  if ($Value.Contains("'")) {
+    throw "Cannot safely quote adb shell argument containing a single quote: $Value"
+  }
+  return "'$Value'"
 }
 
 function Get-Percentile {
@@ -161,21 +184,32 @@ $yBottom = [int]($height * 0.78)
 
 $model = ((Invoke-Adb @('shell', 'getprop', 'ro.product.model')) -join '').Trim()
 $sdk = ((Invoke-Adb @('shell', 'getprop', 'ro.build.version.sdk')) -join '').Trim()
+$qemu = ((Invoke-Adb @('shell', 'getprop', 'ro.kernel.qemu')) -join '').Trim()
+$isEmulator = ($qemu -eq '1') -or ($model -match '(?i)(sdk_gphone|emulator)')
+
 Write-Host "Device: $model / API $sdk / ${width}x${height}"
 Write-Host "Scene: 48dp / Smooth / $Edges / public frost defaults"
+
+if ($isEmulator -and -not $AllowEmulator) {
+  throw "Detected an Android emulator ($model). GPU/frame numbers from an emulator are not a valid renderer comparison. Connect a physical device and optionally pass -Serial <adb-serial>. Use -AllowEmulator only to smoke-test the script."
+}
+if ($isEmulator) {
+  Write-Warning "EMULATOR SMOKE TEST ONLY: do not use these frame/GPU numbers for Legacy vs Progressive decisions."
+}
 
 function Run-One {
   param([string]$Name, [int]$Run)
 
   $edgeParam = if ($Edges -eq 'four') { 'four' } else { 'vertical' }
   $uri = "edgefade://progressive-blur-perf?backend=$Name&edges=$edgeParam"
+  $quotedUri = Quote-AdbShellArgument -Value $uri
 
   Invoke-Adb @('shell', 'am', 'force-stop', $Package) | Out-Null
   Start-Sleep -Milliseconds 400
   Invoke-Adb @(
     'shell', 'am', 'start', '-W',
     '-a', 'android.intent.action.VIEW',
-    '-d', $uri,
+    '-d', $quotedUri,
     '-p', $Package
   ) | Out-Null
   Start-Sleep -Seconds 2
