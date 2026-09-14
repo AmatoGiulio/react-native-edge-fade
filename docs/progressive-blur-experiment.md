@@ -163,9 +163,13 @@ alone.
 - Blur Lab AGSL RuntimeShader on Pixel 9 Pro: PASS per device test.
 - Deterministic Blur Lab geometry: 1,000 cases / 812,900 assertions PASS.
 - Host Skia compile gate for lab shaders: PASS.
-- Public RC analytical mask host compile/contract gate: PASS on its first CI run.
-- Expo Android example compiled successfully after wiring the public native
-  selector on the first candidate build.
+- Public RC analytical-mask host compile/contract gate: PASS on the validated
+  candidate immediately before the Public RC demo wiring.
+- Expo Android example: PASS after wiring the public native selector on the
+  validated candidate immediately before the Public RC demo wiring.
+
+The latest demo/formatting commits trigger those gates again; their result must
+be read before treating the current head as release-ready.
 
 ## Remaining release gates
 
