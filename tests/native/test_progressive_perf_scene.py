@@ -9,6 +9,7 @@ COMPARATOR = ROOT / "scripts/benchmark-progressive-vs-androidx.ps1"
 ENVELOPE = ROOT / "scripts/benchmark-progressive-androidx-envelope.ps1"
 COMPARATOR_NODE = ROOT / "scripts/benchmark-progressive-vs-androidx.mjs"
 ENVELOPE_NODE = ROOT / "scripts/benchmark-progressive-androidx-envelope.mjs"
+PERFETTO_NODE = ROOT / "scripts/capture-progressive-perfetto.mjs"
 
 
 def read(path):
@@ -117,6 +118,15 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("AndroidxMissedPct", script)
         self.assertIn("public-vs-androidx-envelope.csv", script)
         self.assertNotIn("legacy", script.lower())
+
+    def test_perfetto_capture_streams_config_and_uses_supported_trace_directory(self):
+        script = read(PERFETTO_NODE)
+        self.assertIn("'/data/misc/perfetto-traces/edgefade-", script)
+        self.assertIn("'-c', '-'", script)
+        self.assertIn("perfetto.stdin.end(perfettoConfig(pkg))", script)
+        self.assertIn("adb(['pull', remoteTrace, localTrace])", script)
+        self.assertNotIn("/data/local/tmp/edgefade-perfetto", script)
+        self.assertNotIn("adb(['push', localConfig, remoteConfig])", script)
 
 
 if __name__ == "__main__":
