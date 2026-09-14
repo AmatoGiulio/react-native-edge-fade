@@ -26,36 +26,33 @@ buildscript {
   }
 }
 
-
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-
 apply plugin: "com.facebook.react"
 
-// Default remains dependency-free. The official alpha is a separate,
-// opt-in reference requiring the consumer's compatible SDK/AGP/Kotlin setup.
-def withAndroidxBlur = (findProperty("edgeFadeAndroidxBlur") ?: "false").toString().toBoolean()
+// Compose UI 1.13.0-alpha03 requires AGP 9.1+ and compileSdk 37.1.
+// Expo SDK 57 currently evaluates its Gradle modules against the AGP 8.x DSL,
+// so pulling that alpha into a React Native/Expo consumer makes the whole app
+// toolchain incompatible before Edge Fade even compiles. Keep the official
+// binary in the isolated androidx-reference harness and ship/test the AGSL port
+// here without adding Compose or raising the consumer toolchain.
+def staleAndroidxOptIn = (findProperty("edgeFadeAndroidxBlur") ?: "false").toString().toBoolean()
+if (staleAndroidxOptIn) {
+  logger.warn("[react-native-edge-fade] edgeFadeAndroidxBlur is ignored in RN/Expo builds; the official AndroidX alpha is validated in androidx-reference. Using the dependency-free AGSL backend instead.")
+}
 
 android {
   namespace "com.edgefade"
-
-  if (withAndroidxBlur) {
-    // Compose alpha03 release notes specify SDK 37.1 for consumers as well.
-    // Keep default consumers untouched; the example helper aligns root/app/modules.
-    compileSdk {
-      version = release(37) { it.minorApiLevel = 1 }
-    }
-  } else {
-    compileSdkVersion getExtOrDefault("compileSdkVersion")
-  }
+  compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
   }
 
+  // Never compile the Compose-dependent adapter into an RN/Expo consumer.
   sourceSets {
-    main.java.srcDir(withAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")
+    main.java.srcDir("src/noAndroidxBlur/java")
   }
 
   buildFeatures {
@@ -81,7 +78,4 @@ android {
 dependencies {
   implementation "com.facebook.react:react-android"
   implementation "androidx.core:core-ktx:1.13.1"
-  if (withAndroidxBlur) {
-    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"
-  }
 }
