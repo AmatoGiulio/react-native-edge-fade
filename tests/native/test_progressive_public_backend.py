@@ -30,6 +30,17 @@ def public_mask_source():
     return textwrap.dedent(match[1]).strip()
 
 
+def legacy_grade(rgb, saturation, lift):
+    luminance = rgb[0] * 0.213 + rgb[1] * 0.715 + rgb[2] * 0.072
+    return tuple((luminance + (channel - luminance) * saturation) * lift for channel in rgb)
+
+
+def progressive_grade(rgb, saturation, lift, intensity):
+    effective_saturation = 1 + (saturation - 1) * intensity
+    effective_lift = 1 + (lift - 1) * intensity
+    return legacy_grade(rgb, effective_saturation, effective_lift)
+
+
 class ProgressivePublicBackend(unittest.TestCase):
     def test_manager_keeps_js_api_and_selects_backend_after_transaction(self):
         manager = read(NATIVE / "EdgeFadeViewManager.kt")
@@ -44,7 +55,6 @@ class ProgressivePublicBackend(unittest.TestCase):
         for contract in (
             "Build.VERSION_CODES.TIRAMISU",
             "BlurLabGeometry.MAX_RADIUS_PX",
-            "hasNeutralColorGrade(view)",
             "supportsPresetCurves(view)",
             "child is WebView || child is SurfaceView",
             "!view.isAttachedToWindow || view.isHardwareAccelerated",
@@ -52,12 +62,35 @@ class ProgressivePublicBackend(unittest.TestCase):
             'view.mode = "overlay"',
         ):
             self.assertIn(contract, source)
+        self.assertNotIn("hasNeutralColorGrade", source)
 
-    def test_color_grade_does_not_leak_into_sharp_center(self):
-        source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-        self.assertIn("abs(view.frostSaturation - 1f)", source)
-        self.assertIn("abs(view.frostLift - 1f)", source)
-        self.assertNotIn("RenderEffect.createColorFilterEffect", source)
+    def test_color_grade_is_mask_aware_and_matches_legacy_at_outer_edge(self):
+        public = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        shaders = read(NATIVE / "BlurLabShaders.kt")
+        self.assertIn('setFloatUniform("frostSaturation"', public)
+        self.assertIn('setFloatUniform("frostLift"', public)
+        self.assertIn("mix(1.0, frostSaturation, intensity)", shaders)
+        self.assertIn("mix(1.0, frostLift, intensity)", shaders)
+        self.assertIn("float3(0.213, 0.715, 0.072)", shaders)
+        self.assertNotIn("RenderEffect.createColorFilterEffect", public)
+
+        colors = (
+            (0.0, 0.0, 0.0),
+            (1.0, 1.0, 1.0),
+            (0.15, 0.7, 0.4),
+            (0.95, 0.2, 0.1),
+        )
+        saturation = 0.9
+        lift = 1.03
+        for rgb in colors:
+            # The center is mathematically identity even with the public frost defaults.
+            for actual, expected in zip(progressive_grade(rgb, saturation, lift, 0), rgb):
+                self.assertAlmostEqual(actual, expected, places=12)
+            # At the outer edge the shader reaches the exact legacy ColorMatrix grade.
+            expected_outer = legacy_grade(rgb, saturation, lift)
+            actual_outer = progressive_grade(rgb, saturation, lift, 1)
+            for actual, expected in zip(actual_outer, expected_outer):
+                self.assertAlmostEqual(actual, expected, places=12)
 
     def test_consumer_build_remains_compose_free(self):
         gradle = read(ROOT / "android/build.gradle")
