@@ -32,27 +32,14 @@ def shader_sources():
         raise AssertionError("Shader generator changed: update the source extractor")
 
     result = {"mask": textwrap.dedent(mask[1]).strip()}
-    grade_uniforms = """uniform float frostSaturation;
-uniform float frostLift;"""
-    grade_code = """float sat = mix(1.0, frostSaturation, intensity);
-float lift = mix(1.0, frostLift, intensity);
-float3 rgb = sampled.rgb;
-float luminance = dot(rgb, float3(0.213, 0.715, 0.072));
-sampled.rgb = mix(float3(luminance), rgb, sat) * lift;"""
-
-    for vertical, graded in ((False, False), (True, False), (True, True)):
-        if graded:
-            name = "verticalGraded"
-        else:
-            name = "vertical" if vertical else "horizontal"
+    for vertical in (False, True):
+        name = "vertical" if vertical else "horizontal"
         program = textwrap.dedent(passes[1]).strip()
         program = program.replace("$axis", "y" if vertical else "x")
         program = program.replace(
             "$offset",
             "float2(0.0, d)" if vertical else "float2(d, 0.0)",
         )
-        program = program.replace("$gradeUniforms", grade_uniforms if graded else "")
-        program = program.replace("$gradeCode", grade_code if graded else "")
         result[name] = program
 
     for name, program in result.items():
@@ -135,6 +122,14 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("minHeight: 52", status[1])
         self.assertIn("minHeight: 39", footnote[1])
 
+    def test_public_progressive_demo_is_neutral(self):
+        demo = read(ROOT / "example/app/progressive-blur.tsx")
+        perf = read(ROOT / "example/app/progressive-blur-perf.tsx")
+        for source in (demo, perf):
+            self.assertIn("frostSaturation={1}", source)
+            self.assertIn("frostLift={1}", source)
+        self.assertIn("Pure progressive Gaussian", demo)
+
     def test_mask_indices_are_only_literals_or_unrollable_loop_indices(self):
         mask = shader_sources()["mask"]
         self.assertIn("for (int i = 0; i < 31; i++)", mask)
@@ -162,14 +157,35 @@ class BlurLabRegressions(unittest.TestCase):
                         break
                 self.assertAlmostEqual(actual, expected, places=12)
 
-    def test_graded_pass_is_final_vertical_pass_only(self):
+    def test_progressive_path_is_pure_gaussian_and_direct_dispatch(self):
         shaders = read(NATIVE / "BlurLabShaders.kt")
         public = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
-        self.assertIn("fun pass(vertical: Boolean, grade: Boolean = false)", shaders)
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        host = read(NATIVE / "EdgeFadeView.kt")
+
+        self.assertIn("fun pass(vertical: Boolean): String", shaders)
+        self.assertIn("float radius = blurRadius * intensity;", shaders)
+        self.assertNotIn("frostSaturation", shaders)
+        self.assertNotIn("frostLift", shaders)
+        self.assertNotIn("grade", shaders)
+
         self.assertIn("BlurLabShaders.pass(vertical = false)", public)
-        self.assertIn("BlurLabShaders.pass(vertical = true, grade = true)", public)
-        self.assertIn('setFloatUniform("frostSaturation"', public)
-        self.assertIn('setFloatUniform("frostLift"', public)
+        self.assertIn("BlurLabShaders.pass(vertical = true)", public)
+        self.assertNotIn("frostSaturation", public)
+        self.assertNotIn("frostLift", public)
+        self.assertNotIn("Drawable", public)
+        self.assertNotIn("BlendMode", public)
+        self.assertNotIn("saveLayer", public)
+        self.assertIn("clipOut(canvas, strip.band.visible)", public)
+
+        self.assertNotIn("view.overlay.add", selector)
+        self.assertNotIn("setLayerType", selector)
+        self.assertIn("view.progressiveBlurActive = true", selector)
+        self.assertIn("direct edge-local dispatch", selector)
+
+        self.assertIn("internal var progressiveBlurActive", host)
+        self.assertIn("::drawChildrenForProgressive", host)
+        self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
 
     @unittest.skipUnless(COMPILE_SHADERS, "requires --compile-shaders and skia-python")
     def test_host_compiler_rejects_original_dynamic_index_regression(self):
