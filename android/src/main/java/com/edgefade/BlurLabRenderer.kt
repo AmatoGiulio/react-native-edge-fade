@@ -100,9 +100,10 @@ internal class BlurLabRenderer {
       strip.node.setPosition(0, 0, src.width, src.height)
       strip.mask.setFloatUniform("origin", src.left.toFloat(), src.top.toFloat())
       strip.mask.setFloatUniform("viewSize", next.width.toFloat(), next.height.toFloat())
-      strip.mask.setFloatUniform("edges", *edges)
+      // Android takes FloatArray here, not vararg: do not spread the arrays.
+      strip.mask.setFloatUniform("edges", edges)
       strip.mask.setFloatUniform("progression", next.progression)
-      strip.mask.setFloatUniform("curve", *curveSamples)
+      strip.mask.setFloatUniform("curve", curveSamples)
       val effect = if (next.backend == "androidx") {
         AndroidxBlurAdapter.create(src.width, src.height, next.radius, strip.mask)
       } else {
