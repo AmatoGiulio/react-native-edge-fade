@@ -44,7 +44,8 @@ jobs:
         run: |
           "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" \
             -p androidx-reference assembleDebug --no-daemon --stacktrace
-          test -f androidx-reference/build/outputs/apk/debug/androidx-reference-debug.apk
+          find androidx-reference/build/outputs/apk -type f -name '*.apk' -print
+          test -n "$(find androidx-reference/build/outputs/apk -type f -name '*.apk' -print -quit)"
       # Deliberately isolated from Expo SDK 57: AGP 9.1 is binary-incompatible
       # with its current Expo Gradle plugin. This APK exercises the official
       # Compose UI 1.13.0-alpha03 BlurRadiusSpec on ordinary platform Views.
