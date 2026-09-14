@@ -82,16 +82,21 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("val centerBottom = (height - bottom).coerceAtLeast(centerTop)", renderer)
         self.assertIn("val rightLeft = (width - right).coerceAtLeast(left)", renderer)
 
-    def test_strip_output_replaces_sharp_edges_instead_of_alpha_overlaying_them(self):
+    def test_strip_output_replaces_sharp_edges_inside_isolated_host_layer(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
-        # Blur Lab removes the sharp pixels from every owned edge band. The
-        # ViewOverlay production path must therefore restore its bounded layer
-        # with SRC, not the default SRC_OVER, or sharp text/images remain visible
-        # below partially transparent filtered pixels.
+        # Blur Lab removes the sharp pixels from every owned edge band. A
+        # ViewOverlay cannot do that with SRC_OVER. The bounded SRC layer is
+        # therefore rendered inside an isolated host hardware layer so its
+        # transparent pixels reveal the parent/background rather than punching
+        # transparency into the root render target.
         self.assertIn("blendMode = BlendMode.SRC", renderer)
         self.assertIn("val layer = canvas.saveLayer(", renderer)
         self.assertIn("replacementPaint", renderer)
         self.assertIn("canvas.restoreToCount(layer)", renderer)
+        self.assertIn("layerTypeBeforeProgressive", selector)
+        self.assertIn("View.LAYER_TYPE_HARDWARE", selector)
+        self.assertIn("view.setLayerType(previous, null)", selector)
 
     def test_strip_sources_are_radius_padded_and_map_mask_to_global_coordinates(self):
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
