@@ -32,6 +32,18 @@ const LABELS: Record<Backend, string> = {
   public: 'Public RC',
   androidx: 'AndroidX',
 };
+
+// Both progressive renderers cap their actual shader radius at 150 px. Keep
+// this interactive A/B scene inside that range in *dp* too: otherwise a dense
+// device can request e.g. 48dp -> 168px, making Public RC correctly fall back to
+// Legacy while the AGSL lab clamps to 150px. That looked like a renderer
+// fidelity difference even though the two buttons were no longer exercising
+// the same backend/radius.
+const MAX_PROGRESSIVE_RADIUS_PX = 150;
+const RADIUS_DENSITY = PixelRatio.get();
+const MAX_PROGRESSIVE_RADIUS_DP =
+  Math.floor((MAX_PROGRESSIVE_RADIUS_PX / RADIUS_DENSITY) * 100) / 100;
+
 const ALBUMS = [
   '#37b9a7',
   '#5aa7d4',
@@ -108,6 +120,15 @@ function PlaylistLab({
   const fallback = confirmed && status.active !== backend;
   const androidxEnabled =
     status.androidxAvailable && Number(Platform.Version) >= 33;
+
+  // Fast Refresh can preserve the old 48dp state after this scene's range is
+  // tightened. Clamp at render time as well as in the slider so a stale state
+  // can never silently push Public RC over the native 150px eligibility cap.
+  const effectiveRadius = Math.min(radius, MAX_PROGRESSIVE_RADIUS_DP);
+  const effectiveRadiusPx = effectiveRadius * RADIUS_DENSITY;
+  const radiusLabel = Number.isInteger(effectiveRadius)
+    ? effectiveRadius.toFixed(0)
+    : effectiveRadius.toFixed(2);
 
   // Old native binaries still emit the pre-fix event schema. Do not let a
   // Metro-only reload look like it tested the renamed native props/shader.
@@ -212,7 +233,7 @@ function PlaylistLab({
             left={allEdges ? 48 : 0}
             right={allEdges ? 48 : 0}
             curve={linear ? 'linear' : 'smooth'}
-            blurRadius={radius}
+            blurRadius={effectiveRadius}
             frostSaturation={0.9}
             frostLift={1.03}
             frostProgression={1}
@@ -224,7 +245,7 @@ function PlaylistLab({
             testID="progressive-blur-lab"
             style={s.viewport}
             backend={backend}
-            blurRadius={radius}
+            blurRadius={effectiveRadius}
             fadeTop={92}
             fadeBottom={112}
             fadeLeft={allEdges ? 48 : 0}
@@ -243,11 +264,14 @@ function PlaylistLab({
         <View style={s.row}>
           <Text style={s.controlLabel}>Blur radius</Text>
           <Text style={s.value}>
-            {radius} dp / {Math.min(radius * PixelRatio.get(), 150).toFixed(0)}{' '}
-            px
+            {radiusLabel} dp / {effectiveRadiusPx.toFixed(1)} px
           </Text>
         </View>
-        <RadiusSlider value={radius} onChange={setRadius} />
+        <RadiusSlider
+          value={effectiveRadius}
+          max={MAX_PROGRESSIVE_RADIUS_DP}
+          onChange={setRadius}
+        />
         <View style={s.row}>
           <Pressable
             onPress={() => setAllEdges(!allEdges)}
@@ -268,9 +292,9 @@ function PlaylistLab({
         </View>
         <Text style={s.footnote}>
           {publicCandidate
-            ? 'Public RC uses the exported EdgeFadeView with the public frost defaults (0.9 saturation / 1.03 lift).'
+            ? 'Public RC uses the exported EdgeFadeView with the public frost defaults (0.9 saturation / 1.03 lift). Radius range is density-normalized so the progressive backend stays <=150 px.'
             : status.requested && !status.androidxAvailable
-              ? 'AndroidX is not compiled in this binary. AGSL is the dependency-free implementation.'
+              ? 'AndroidX is not compiled in this binary. AGSL is the dependency-free implementation. Radius range is density-normalized to <=150 px.'
               : 'AndroidX official is validated in the separate native reference APK.'}
         </Text>
       </View>
@@ -310,19 +334,27 @@ function Playlist() {
 
 function RadiusSlider({
   value,
+  max,
   onChange,
 }: {
   value: number;
+  max: number;
   onChange: (value: number) => void;
 }) {
   const [width, setWidth] = useState(1);
   const update = (event: GestureResponderEvent) => {
-    onChange(
-      Math.round(
-        Math.max(0, Math.min(1, event.nativeEvent.locationX / width)) * 48
-      )
+    const position = Math.max(
+      0,
+      Math.min(1, event.nativeEvent.locationX / width)
     );
+    // Keep ordinary movement readable at 0.1dp resolution, but preserve the
+    // exact density-derived max at the end stop so both renderers receive the
+    // same near-150px value without ever crossing the native cap.
+    const next =
+      position >= 1 ? max : Math.round(position * max * 10) / 10;
+    onChange(Math.min(max, next));
   };
+  const percent = max > 0 ? (value / max) * 100 : 0;
   return (
     <View
       style={s.slider}
@@ -335,26 +367,32 @@ function RadiusSlider({
       onResponderMove={update}
       accessibilityRole="adjustable"
       accessibilityLabel="Blur radius"
-      accessibilityValue={{ min: 0, max: 48, now: value }}
+      accessibilityValue={{ min: 0, max, now: value }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-      onAccessibilityAction={({ nativeEvent }) =>
+      onAccessibilityAction={({ nativeEvent }) => {
+        const delta = nativeEvent.actionName === 'increment' ? 1 : -1;
         onChange(
           Math.max(
             0,
-            Math.min(
-              48,
-              value + (nativeEvent.actionName === 'increment' ? 1 : -1)
-            )
+            Math.min(max, Math.round((value + delta) * 10) / 10)
           )
-        )
-      }
+        );
+      }}
     >
       <View pointerEvents="none" style={s.sliderRail}>
-        <View style={[s.sliderFill, { width: `${(value / 48) * 100}%` }]} />
+        <View
+          style={[
+            s.sliderFill,
+            { width: `${Math.max(0, Math.min(100, percent))}%` },
+          ]}
+        />
       </View>
       <View
         pointerEvents="none"
-        style={[s.thumb, { left: `${(value / 48) * 100}%` }]}
+        style={[
+          s.thumb,
+          { left: `${Math.max(0, Math.min(100, percent))}%` },
+        ]}
       />
     </View>
   );
