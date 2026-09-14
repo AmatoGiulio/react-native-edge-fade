@@ -103,8 +103,8 @@ export default function ProgressiveBlurPerfRoute() {
           right={fourEdges ? 48 : 0}
           curve={curve}
           blurRadius={PERF_RADIUS_DP}
-          frostSaturation={0.9}
-          frostLift={1.03}
+          frostSaturation={1}
+          frostLift={1}
           frostProgression={1}
         >
           <ScrollView
