@@ -105,6 +105,17 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertNotIn("$benchmarkArgs = @(", script)
         self.assertIn("Array splatting into another PowerShell", script)
 
+    def test_envelope_aggregates_current_per_run_summaries_not_child_json_array(self):
+        script = read(ENVELOPE)
+        self.assertIn("$pointStartedAt = Get-Date", script)
+        self.assertIn("*-summary.json", script)
+        self.assertIn("LastWriteTime -ge $pointStartedAt.AddSeconds(-2)", script)
+        self.assertIn("function New-AggregateRow", script)
+        self.assertIn("$progressiveRuns = @($runRows | Where-Object", script)
+        self.assertIn("$legacyRuns = @($runRows | Where-Object", script)
+        self.assertNotIn("aggregateFile.FullName", script)
+        self.assertIn("ConvertTo-Json -InputObject @($rows.ToArray())", script)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
