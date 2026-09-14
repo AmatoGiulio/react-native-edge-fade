@@ -4,9 +4,13 @@ on:
     branches: [main]
     paths:
       - 'android/src/**/BlurLab*.kt'
+      - 'android/src/**/EdgeFadeProgressiveBlurEffect.kt'
+      - 'android/src/**/EdgeFadeViewManager.kt'
+      - 'android/build.gradle'
       - 'src/BlurLabNativeComponent.ts'
       - 'example/app/progressive-blur.tsx'
       - 'tests/native/test_blur_lab_regressions.py'
+      - 'tests/native/test_progressive_public_backend.py'
       - '.github/workflows/blur-lab-regressions.yml'
   workflow_dispatch:
 
@@ -32,8 +36,12 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/blur-lab-venv"
           "$RUNNER_TEMP/blur-lab-venv/bin/python" -m pip install skia-python==144.0.post2
-      - name: Check contracts and compile actual shader sources
+      - name: Check lab contracts and compile shader sources
         run: |
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_blur_lab_regressions.py --compile-shaders
-      # This job does NOT validate Android RuntimeShader/GPU execution,
-      # Fabric layout, the AndroidX binary, visual fidelity or frame time.
+      - name: Check public backend contracts and compile mask
+        run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
+      # These jobs do NOT validate Android RuntimeShader/GPU execution,
+      # Fabric layout, visual fidelity or frame time. The separate AndroidX
+      # reference APK remains the official-binary comparison gate.
