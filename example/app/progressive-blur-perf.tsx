@@ -140,7 +140,12 @@ export default function ProgressiveBlurPerfRoute() {
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f7f7f5', paddingTop: 52, paddingBottom: 28 },
+  page: {
+    flex: 1,
+    backgroundColor: '#f7f7f5',
+    paddingTop: 52,
+    paddingBottom: 28,
+  },
   header: { paddingHorizontal: 24, paddingBottom: 16 },
   eyebrow: {
     fontSize: 10,
