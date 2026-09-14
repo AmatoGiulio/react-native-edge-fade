@@ -24,19 +24,37 @@ def read(path):
 
 
 def shader_sources():
-    """Extract the actual Kotlin literals; reject unknown interpolation."""
+    """Extract the actual Kotlin literals; expand the small generator inputs."""
     source = read(NATIVE / "BlurLabShaders.kt")
     mask = re.search(r'val mask = """(.*?)"""\.trimIndent\(\)', source, re.S)
     passes = re.search(r'return """(.*?)"""\.trimIndent\(\)', source, re.S)
     if mask is None or passes is None:
         raise AssertionError("Shader generator changed: update the source extractor")
+
     result = {"mask": textwrap.dedent(mask[1]).strip()}
-    for vertical in (False, True):
-        name = "vertical" if vertical else "horizontal"
+    grade_uniforms = """uniform float frostSaturation;
+uniform float frostLift;"""
+    grade_code = """float sat = mix(1.0, frostSaturation, intensity);
+float lift = mix(1.0, frostLift, intensity);
+float3 rgb = output.rgb;
+float luminance = dot(rgb, float3(0.213, 0.715, 0.072));
+output.rgb = mix(float3(luminance), rgb, sat) * lift;"""
+
+    for vertical, graded in ((False, False), (True, False), (True, True)):
+        if graded:
+            name = "verticalGraded"
+        else:
+            name = "vertical" if vertical else "horizontal"
         program = textwrap.dedent(passes[1]).strip()
         program = program.replace("$axis", "y" if vertical else "x")
-        program = program.replace("$offset", "float2(0.0, d)" if vertical else "float2(d, 0.0)")
+        program = program.replace(
+            "$offset",
+            "float2(0.0, d)" if vertical else "float2(d, 0.0)",
+        )
+        program = program.replace("$gradeUniforms", grade_uniforms if graded else "")
+        program = program.replace("$gradeCode", grade_code if graded else "")
         result[name] = program
+
     for name, program in result.items():
         if "$" in program:
             raise AssertionError(f"Unexpanded Kotlin interpolation in {name}")
@@ -121,6 +139,15 @@ class BlurLabRegressions(unittest.TestCase):
                         break
                 self.assertAlmostEqual(actual, expected, places=12)
 
+    def test_graded_pass_is_final_vertical_pass_only(self):
+        shaders = read(NATIVE / "BlurLabShaders.kt")
+        public = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        self.assertIn("fun pass(vertical: Boolean, grade: Boolean = false)", shaders)
+        self.assertIn("BlurLabShaders.pass(false)", public)
+        self.assertIn("BlurLabShaders.pass(true, grade = true)", public)
+        self.assertIn('setFloatUniform("frostSaturation"', public)
+        self.assertIn('setFloatUniform("frostLift"', public)
+
     @unittest.skipUnless(COMPILE_SHADERS, "requires --compile-shaders and skia-python")
     def test_host_compiler_rejects_original_dynamic_index_regression(self):
         # Minimal reproducer of the original mask's pixel-dependent index.
@@ -135,7 +162,7 @@ class BlurLabRegressions(unittest.TestCase):
         self.assertIn("index expression must be constant", str(error.exception))
 
     @unittest.skipUnless(COMPILE_SHADERS, "requires --compile-shaders and skia-python")
-    def test_all_three_programs_compile_with_host_skia(self):
+    def test_all_programs_compile_with_host_skia(self):
         for name, program in shader_sources().items():
             with self.subTest(program=name):
                 self.assertIsNotNone(skia.RuntimeEffect.MakeForShader(program))
