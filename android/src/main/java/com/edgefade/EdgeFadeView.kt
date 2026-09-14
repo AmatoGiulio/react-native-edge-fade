@@ -79,13 +79,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   /** Max blur radius (px) reached at the outer edge in `mode="blur"`. */
   var blurRadius: Float = 0f
 
-  // Frost tuning (blur mode). frostSaturation/frostLift = saturation + brightness
-  // grade applied to the blurred pixels (1 = neutral; sat < 1 desaturates toward
-  // a soft pastel, lift ~1 keeps it light). frostProgression = fraction of the
-  // band over which the fade curve's presence envelope completes; the curve now
-  // shapes the whole blur progression (all three levels), not just level 0's
-  // sharp→frost onset — a shorter fp compresses that envelope toward the inner
-  // edge (default 1 = the curve spans the full band).
+  // Frost tuning (Legacy blur mode only on API 31/32 or explicit fallback).
+  // The API 33+ progressive renderer intentionally ignores saturation/lift:
+  // its output is the content-derived spatial Gaussian and nothing else.
+  // frostProgression still controls how the selected curve spans the edge band.
   var frostSaturation: Float = 0.9f
   var frostLift:       Float = 1.03f
   var frostProgression: Float = 1f
@@ -107,6 +104,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   var overlayColorRight:  Int? = null
 
   var fadeRadius: Float = 0f
+
+  /** Internal selector flag; never exposed as a public backend prop. */
+  internal var progressiveBlurActive: Boolean = false
 
   // ── Per-edge shader cache ─────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // node's rect changed since the last frame.
   private var lastBlurEffectRadius = -1f
 
-  // Last-applied frost grade, to rebuild the blur's colour filter on a change.
+  // Last-applied frost grade, to rebuild the Legacy blur's colour filter on a change.
   private var lastFrostSaturation = -1f
   private var lastFrostLift = -1f
 
@@ -184,11 +184,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   // ── Paints ────────────────────────────────────────────────────────────────
 
-  // Frost "vibrancy": a saturation + brightness grade applied to the blurred
-  // pixels. Apple's frosted-glass material is a smooth heavy Gaussian that is
-  // slightly DESATURATED and near-neutral in brightness (a soft pastel), not a
-  // boosted/darkened wash — so the defaults sit below 1 for saturation and near
-  // 1 for lift. Rebuilt from the live props on change so the panel can tune it.
+  // Legacy-only frost "vibrancy": saturation + brightness grade applied to
+  // the old API 31/32/fallback renderer. The API 33+ progressive path never
+  // calls this filter.
   private var vibSat = FROST_SATURATION
   private var vibLift = FROST_LIFT
   private var frostVibrancyFilter = buildVibrancy(FROST_SATURATION, FROST_LIFT)
@@ -321,6 +319,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   // ── Drawing ───────────────────────────────────────────────────────────────
 
+  /** Record exactly the React children, bypassing EdgeFadeView's own dispatch logic. */
+  internal fun drawChildrenForProgressive(canvas: Canvas) {
+    super.dispatchDraw(canvas)
+  }
+
   override fun dispatchDraw(canvas: Canvas) {
     Trace.beginSection("EdgeFade.dispatchDraw")
     try {
@@ -336,6 +339,16 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
         mode == "lens"    -> drawLens(canvas)
         !hasAnyFade       -> super.dispatchDraw(canvas)
         mode == "overlay" -> { super.dispatchDraw(canvas); drawOverlay(canvas) }
+        mode == "blur" && progressiveBlurActive &&
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+          canvas.isHardwareAccelerated -> {
+          val drawn = EdgeFadeProgressiveBlurEffect.draw(
+            this,
+            canvas,
+            ::drawChildrenForProgressive,
+          )
+          if (!drawn) drawBlur(canvas)
+        }
         mode == "blur"    -> drawBlur(canvas)
         else              -> drawMask(canvas)
       }
@@ -889,9 +902,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       if (BLUR_STYLE == BLUR_STYLE_LAYERED) floatArrayOf(1f, 1f, 1f, 0.5f, 0.5f)
       else floatArrayOf(1f, 0.5f, 0.5f)
 
-    // Frost grade defaults (see the frostSaturation / frostLift props). Below 1
-    // for saturation desaturates toward a soft pastel; lift ~1 keeps it light —
-    // a frosted-glass material, not a boosted or darkened wash.
+    // Legacy frost-grade defaults. The API 33+ progressive path does not use them.
     private const val FROST_SATURATION = 0.9f
     private const val FROST_LIFT = 1.03f
 
