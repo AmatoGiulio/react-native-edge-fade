@@ -14,6 +14,16 @@ android {
     versionCode = 1
     versionName = "1.0"
   }
+
+  buildTypes {
+    getByName("release") {
+      // Benchmark a non-debuggable build while keeping local installation simple.
+      // The debug keystore only signs the APK; it does not make this release
+      // variant debuggable.
+      isMinifyEnabled = false
+      signingConfig = signingConfigs.getByName("debug")
+    }
+  }
 }
 
 dependencies {
