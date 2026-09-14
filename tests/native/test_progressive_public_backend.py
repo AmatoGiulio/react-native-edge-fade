@@ -82,6 +82,17 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("val centerBottom = (height - bottom).coerceAtLeast(centerTop)", renderer)
         self.assertIn("val rightLeft = (width - right).coerceAtLeast(left)", renderer)
 
+    def test_strip_output_replaces_sharp_edges_instead_of_alpha_overlaying_them(self):
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        # Blur Lab removes the sharp pixels from every owned edge band. The
+        # ViewOverlay production path must therefore restore its bounded layer
+        # with SRC, not the default SRC_OVER, or sharp text/images remain visible
+        # below partially transparent filtered pixels.
+        self.assertIn("blendMode = BlendMode.SRC", renderer)
+        self.assertIn("val layer = canvas.saveLayer(", renderer)
+        self.assertIn("replacementPaint", renderer)
+        self.assertIn("canvas.restoreToCount(layer)", renderer)
+
     def test_strip_sources_are_radius_padded_and_map_mask_to_global_coordinates(self):
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
         mask = public_mask_source()
