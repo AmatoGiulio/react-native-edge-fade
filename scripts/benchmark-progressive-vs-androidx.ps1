@@ -3,6 +3,9 @@ param(
   [ValidateSet('vertical', 'four')]
   [string]$Edges = 'vertical',
 
+  [ValidateRange(1.0, 150.0)]
+  [double]$TargetRadiusPx = 144.0,
+
   [int]$Swipes = 14,
   [int]$SwipeDurationMs = 180,
   [int]$WarmupSwipes = 4,
@@ -17,7 +20,6 @@ $PublicPackage = 'com.edgefadeexample'
 $AndroidxPackage = 'com.edgefade.androidxref'
 $AndroidxActivity = 'com.edgefade.androidxref/.BenchmarkActivity'
 $ResultsDir = Join-Path $PSScriptRoot '..\benchmark-results\androidx-official'
-$TargetRadiusPx = 144.0
 New-Item -ItemType Directory -Force -Path $ResultsDir | Out-Null
 
 function Invoke-Adb {
@@ -161,6 +163,11 @@ function Get-TotalPssMb {
   return [double]::NaN
 }
 
+function Get-RadiusLabel {
+  param([double]$Radius)
+  return $Radius.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture).Replace('.', 'p')
+}
+
 function Assert-InstalledReleasePackage {
   param([string]$Package, [string]$Label)
 
@@ -200,6 +207,8 @@ if ($overrideDensity.Success) {
 }
 $densityScale = $densityDpi / 160.0
 $radiusDp = $TargetRadiusPx / $densityScale
+$radiusInvariant = $TargetRadiusPx.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture)
+$radiusLabel = Get-RadiusLabel -Radius $TargetRadiusPx
 
 $model = ((Invoke-Adb @('shell', 'getprop', 'ro.product.model')) -join '').Trim()
 $sdk = [int](((Invoke-Adb @('shell', 'getprop', 'ro.build.version.sdk')) -join '').Trim())
@@ -220,7 +229,6 @@ Write-Host "Device: $model / API $sdk / ${width}x${height} / ${densityDpi}dpi ($
 Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp public = $TargetRadiusPx physical px official / Smooth / $Edges / neutral pure Gaussian"
 Write-Host "Method: discarded warm-up per renderer + $Blocks balanced ABBA/BAAB block(s)"
 
-$radiusInvariant = $TargetRadiusPx.ToString('0.###', [System.Globalization.CultureInfo]::InvariantCulture)
 $edgeParam = if ($Edges -eq 'four') { 'four' } else { 'vertical' }
 
 function Start-Renderer {
@@ -229,7 +237,7 @@ function Start-Renderer {
   if ($Name -eq 'public') {
     Invoke-Adb @('shell', 'am', 'force-stop', $PublicPackage) | Out-Null
     Start-Sleep -Milliseconds 400
-    $uri = "edgefade://progressive-blur-perf?backend=progressive&edges=$edgeParam"
+    $uri = "edgefade://progressive-blur-perf?backend=progressive&edges=$edgeParam&radiusPx=$radiusInvariant"
     $quotedUri = Quote-AdbShellArgument -Value $uri
     Invoke-Adb @(
       'shell', 'am', 'start', '-W',
@@ -288,7 +296,7 @@ function Run-One {
   $pss = Get-TotalPssMb -Lines $memory
 
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $prefix = Join-Path $ResultsDir "$stamp-$Name-$Edges-r$Run"
+  $prefix = Join-Path $ResultsDir "$stamp-$Name-$Edges-${radiusLabel}px-r$Run"
   $frames | Set-Content -Encoding utf8 "$prefix-framestats.txt"
   $memory | Set-Content -Encoding utf8 "$prefix-meminfo.txt"
 
@@ -336,7 +344,11 @@ $aggregate = foreach ($group in ($runs | Group-Object Renderer)) {
   $items = @($group.Group)
   [PSCustomObject]@{
     Renderer = $group.Name
+    Edges = $Edges
+    RadiusDpPublic = [Math]::Round($radiusDp, 3)
+    RadiusPx = $TargetRadiusPx
     Runs = $items.Count
+    FrameIntervalMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.FrameIntervalMs })), 3)
     P50MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P50Ms })), 3)
     P95MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P95Ms })), 3)
     P99MedianMs = [Math]::Round((Get-Median -Values @($items | ForEach-Object { [double]$_.P99Ms })), 3)
@@ -358,5 +370,5 @@ if ($null -ne $public -and $null -ne $androidx -and $androidx.P50MedianMs -gt 0)
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$aggregate | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ResultsDir "$stamp-$Edges-aggregate.json")
+$aggregate | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ResultsDir "$stamp-$Edges-${radiusLabel}px-aggregate.json")
 Write-Host "`nRaw framestats, meminfo and JSON summaries: $ResultsDir"
