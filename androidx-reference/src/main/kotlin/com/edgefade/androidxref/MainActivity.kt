@@ -85,7 +85,7 @@ class MainActivity : Activity() {
     }
     viewport.addView(
       tracks,
-      ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+      FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
     )
     repeat(48) { addTrack(tracks, it) }
 
