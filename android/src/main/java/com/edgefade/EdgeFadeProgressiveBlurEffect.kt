@@ -11,16 +11,15 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.annotation.RequiresApi
 import java.util.WeakHashMap
-import kotlin.math.abs
 
 /**
  * Internal backend switch for the public EdgeFadeView.
  *
  * On API 33+ ordinary RN content gets the AndroidX-derived spatially varying
  * two-pass blur as a View RenderEffect. API 31/32, radii above AndroidX's 150px
- * cap, WebView/SurfaceView content, custom serialized curves and material
- * configurations whose semantics are not yet matched keep using EdgeFadeView's
- * existing legacy renderer.
+ * cap, WebView/SurfaceView content, custom serialized curves and configurations
+ * whose semantics are not yet matched keep using EdgeFadeView's existing
+ * legacy renderer.
  *
  * The manager still exposes exactly the same JS API. `requestedMode` is kept
  * separately because the progressive path makes EdgeFadeView draw its children
@@ -82,7 +81,6 @@ internal object EdgeFadeProgressiveBlurEffect {
         view.overlayColorBottom == null &&
         view.overlayColorLeft == null &&
         view.overlayColorRight == null &&
-        hasNeutralColorGrade(view) &&
         supportsPresetCurves(view) &&
         !containsUnsupportedSurface(view)
 
@@ -105,14 +103,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Api33.clear(view)
     else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) view.setRenderEffect(null)
   }
-
-  // Legacy applies frost color grading only inside its blurred edge layers.
-  // A ColorFilter chained around the full View RenderEffect would also grade the
-  // sharp center. Until grading is made mask-aware, non-neutral material values
-  // deliberately stay on Legacy instead of changing public rendering semantics.
-  private fun hasNeutralColorGrade(view: EdgeFadeView): Boolean =
-    abs(view.frostSaturation - 1f) <= 0.0001f &&
-      abs(view.frostLift - 1f) <= 0.0001f
 
   private fun supportsPresetCurves(view: EdgeFadeView): Boolean =
     EdgeFadeCurves.agslPresetParams(view.curveTop) != null &&
@@ -147,12 +137,14 @@ internal object EdgeFadeProgressiveBlurEffect {
       val curveBottom: String,
       val curveLeft: String,
       val curveRight: String,
+      val saturation: Float,
+      val lift: Float,
     )
 
     private class RenderState {
       val mask = RuntimeShader(MASK_SHADER)
       val horizontal = RuntimeShader(BlurLabShaders.pass(false))
-      val vertical = RuntimeShader(BlurLabShaders.pass(true))
+      val vertical = RuntimeShader(BlurLabShaders.pass(true, grade = true))
       var key: Key? = null
       var failed = false
       var announced = false
@@ -182,6 +174,8 @@ internal object EdgeFadeProgressiveBlurEffect {
         curveBottom = view.curveBottom,
         curveLeft = view.curveLeft,
         curveRight = view.curveRight,
+        saturation = view.frostSaturation,
+        lift = view.frostLift,
       )
 
       if (state.key == key) return true
@@ -192,6 +186,8 @@ internal object EdgeFadeProgressiveBlurEffect {
         val height = key.height.toFloat()
         val progression = finite(key.progression, 1f).coerceIn(0.05f, 1f)
         val radius = finite(key.radius).coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
+        val saturation = finite(key.saturation, 1f).coerceAtLeast(0f)
+        val lift = finite(key.lift, 1f).coerceAtLeast(0f)
         val topCurve = EdgeFadeCurves.agslPresetParams(key.curveTop)!!
         val bottomCurve = EdgeFadeCurves.agslPresetParams(key.curveBottom)!!
         val leftCurve = EdgeFadeCurves.agslPresetParams(key.curveLeft)!!
@@ -222,6 +218,8 @@ internal object EdgeFadeProgressiveBlurEffect {
           shader.setFloatUniform("blurRadius", radius)
           shader.setFloatUniform("extent", width, height)
         }
+        state.vertical.setFloatUniform("frostSaturation", saturation)
+        state.vertical.setFloatUniform("frostLift", lift)
 
         val blur = RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(state.vertical, "content"),
