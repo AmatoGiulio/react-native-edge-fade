@@ -47,7 +47,7 @@ internal class BlurLabViewManager : ViewGroupManager<BlurLabView>(),
     BlurLabGeometry.finite(value).coerceAtLeast(0f) * view.resources.displayMetrics.density
 
   @ReactProp(name = "backend")
-  override fun setBackend(view: BlurLabView, value: String?) { view.backend = value ?: "legacy" }
+  override fun setBackend(view: BlurLabView, value: String?) { view.backend = value ?: "agsl" }
   @ReactProp(name = "blurRadius")
   override fun setBlurRadius(view: BlurLabView, value: Float) { view.radiusPx = px(view, value) }
   @ReactProp(name = "fadeTop")
