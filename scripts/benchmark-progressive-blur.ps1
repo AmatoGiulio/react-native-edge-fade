@@ -16,6 +16,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Package = 'com.edgefadeexample'
 $ResultsDir = Join-Path $PSScriptRoot '..\benchmark-results'
+$TargetRadiusPx = 144.0
+$MaxRadiusDp = 48.0
 New-Item -ItemType Directory -Force -Path $ResultsDir | Out-Null
 
 function Invoke-Adb {
@@ -182,13 +184,27 @@ $x = [int]($width * 0.50)
 $yTop = [int]($height * 0.34)
 $yBottom = [int]($height * 0.78)
 
+$densityText = (Invoke-Adb @('shell', 'wm', 'density')) -join "`n"
+$overrideDensity = [regex]::Match($densityText, 'Override density:\s*(\d+)')
+$physicalDensity = [regex]::Match($densityText, 'Physical density:\s*(\d+)')
+if ($overrideDensity.Success) {
+  $densityDpi = [int]$overrideDensity.Groups[1].Value
+} elseif ($physicalDensity.Success) {
+  $densityDpi = [int]$physicalDensity.Groups[1].Value
+} else {
+  throw "Could not parse device density from: $densityText"
+}
+$densityScale = $densityDpi / 160.0
+$radiusDp = [Math]::Min($MaxRadiusDp, $TargetRadiusPx / $densityScale)
+$radiusPx = $radiusDp * $densityScale
+
 $model = ((Invoke-Adb @('shell', 'getprop', 'ro.product.model')) -join '').Trim()
 $sdk = ((Invoke-Adb @('shell', 'getprop', 'ro.build.version.sdk')) -join '').Trim()
 $qemu = ((Invoke-Adb @('shell', 'getprop', 'ro.kernel.qemu')) -join '').Trim()
 $isEmulator = ($qemu -eq '1') -or ($model -match '(?i)(sdk_gphone|emulator)')
 
-Write-Host "Device: $model / API $sdk / ${width}x${height}"
-Write-Host "Scene: 48dp / Smooth / $Edges / public frost defaults"
+Write-Host "Device: $model / API $sdk / ${width}x${height} / ${densityDpi}dpi ($([Math]::Round($densityScale, 3))x)"
+Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp / ~$([Math]::Round($radiusPx))px / Smooth / $Edges / public frost defaults"
 
 if ($isEmulator -and -not $AllowEmulator) {
   throw "Detected an Android emulator ($model). GPU/frame numbers from an emulator are not a valid renderer comparison. Connect a physical device and optionally pass -Serial <adb-serial>. Use -AllowEmulator only to smoke-test the script."
@@ -241,6 +257,9 @@ function Run-One {
     Backend = $Name
     Edges = $Edges
     Run = $Run
+    DensityDpi = $densityDpi
+    RadiusDp = [Math]::Round($radiusDp, 3)
+    RadiusPx = [Math]::Round($radiusPx, 1)
     Frames = $stats.Frames
     FrameIntervalMs = $stats.FrameIntervalMs
     P50Ms = $stats.P50Ms
