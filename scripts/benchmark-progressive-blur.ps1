@@ -204,7 +204,7 @@ $qemu = ((Invoke-Adb @('shell', 'getprop', 'ro.kernel.qemu')) -join '').Trim()
 $isEmulator = ($qemu -eq '1') -or ($model -match '(?i)(sdk_gphone|emulator)')
 
 Write-Host "Device: $model / API $sdk / ${width}x${height} / ${densityDpi}dpi ($([Math]::Round($densityScale, 3))x)"
-Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp / ~$([Math]::Round($radiusPx))px / Smooth / $Edges / public frost defaults"
+Write-Host "Scene: $([Math]::Round($radiusDp, 2))dp / ~$([Math]::Round($radiusPx))px / Smooth / $Edges / neutral pure Gaussian"
 
 if ($isEmulator -and -not $AllowEmulator) {
   throw "Detected an Android emulator ($model). GPU/frame numbers from an emulator are not a valid renderer comparison. Connect a physical device and optionally pass -Serial <adb-serial>. Use -AllowEmulator only to smoke-test the script."
