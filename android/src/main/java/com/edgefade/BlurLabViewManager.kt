@@ -22,10 +22,10 @@ internal class BlurLabViewManager : ViewGroupManager<BlurLabView>(),
   override fun getName() = NAME
 
   override fun createViewInstance(context: ThemedReactContext) = BlurLabView(context).also { view ->
-    view.onBackendChange = { requested, active, reason ->
+    view.onBackendChange = { requested, active, reason, androidxAvailable ->
       val reactContext = view.context as ReactContext
       UIManagerHelper.getEventDispatcherForReactTag(reactContext, view.id)?.dispatchEvent(
-        BackendEvent(UIManagerHelper.getSurfaceId(view), view.id, requested, active, reason),
+        BackendEvent(UIManagerHelper.getSurfaceId(view), view.id, requested, active, reason, androidxAvailable),
       )
     }
   }
@@ -50,14 +50,14 @@ internal class BlurLabViewManager : ViewGroupManager<BlurLabView>(),
   override fun setBackend(view: BlurLabView, value: String?) { view.backend = value ?: "legacy" }
   @ReactProp(name = "blurRadius")
   override fun setBlurRadius(view: BlurLabView, value: Float) { view.radiusPx = px(view, value) }
-  @ReactProp(name = "top")
-  override fun setTop(view: BlurLabView, value: Float) { view.topDepth = px(view, value) }
-  @ReactProp(name = "bottom")
-  override fun setBottom(view: BlurLabView, value: Float) { view.bottomDepth = px(view, value) }
-  @ReactProp(name = "left")
-  override fun setLeft(view: BlurLabView, value: Float) { view.leftDepth = px(view, value) }
-  @ReactProp(name = "right")
-  override fun setRight(view: BlurLabView, value: Float) { view.rightDepth = px(view, value) }
+  @ReactProp(name = "fadeTop")
+  override fun setFadeTop(view: BlurLabView, value: Float) { view.topDepth = px(view, value) }
+  @ReactProp(name = "fadeBottom")
+  override fun setFadeBottom(view: BlurLabView, value: Float) { view.bottomDepth = px(view, value) }
+  @ReactProp(name = "fadeLeft")
+  override fun setFadeLeft(view: BlurLabView, value: Float) { view.leftDepth = px(view, value) }
+  @ReactProp(name = "fadeRight")
+  override fun setFadeRight(view: BlurLabView, value: Float) { view.rightDepth = px(view, value) }
   @ReactProp(name = "curve")
   override fun setCurve(view: BlurLabView, value: String?) { view.curve = value ?: "smooth" }
   @ReactProp(name = "progression", defaultFloat = 1f)
@@ -77,6 +77,7 @@ internal class BlurLabViewManager : ViewGroupManager<BlurLabView>(),
 private class BackendEvent(
   surfaceId: Int, viewId: Int,
   private val requested: String, private val active: String, private val reason: String,
+  private val androidxAvailable: Boolean,
 ) : Event<BackendEvent>(surfaceId, viewId) {
   override fun getEventName() = "topBackendChange"
   override fun canCoalesce() = false
@@ -84,5 +85,6 @@ private class BackendEvent(
     putString("requested", requested)
     putString("active", active)
     putString("reason", reason)
+    putBoolean("androidxAvailable", androidxAvailable)
   }
 }

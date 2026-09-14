@@ -1,0 +1,35 @@
+name: Blur Lab regressions
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/src/**/BlurLab*.kt'
+      - 'src/BlurLabNativeComponent.ts'
+      - 'example/app/progressive-blur.tsx'
+      - 'tests/native/test_blur_lab_regressions.py'
+      - '.github/workflows/blur-lab-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blur-lab-regressions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-shader-compiler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Install isolated host compiler
+        run: |
+          python3 -m venv "$RUNNER_TEMP/blur-lab-venv"
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" -m pip install skia-python==144.0.post2
+      - name: Check contracts and compile actual shader sources
+        run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_blur_lab_regressions.py --compile-shaders
+      # This job does NOT validate Android RuntimeShader/GPU execution,
+      # Fabric layout, the AndroidX binary, visual fidelity or frame time.

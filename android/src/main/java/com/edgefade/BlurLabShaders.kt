@@ -81,12 +81,21 @@ internal object BlurLabShaders {
     uniform float4 edges;
     uniform float progression;
     uniform float curve[32];
+    float sampleCurve(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      // AGSL only permits constant or unrollable-loop array indices.
+      // A per-pixel int(floor(x)) index fails RuntimeShader compilation.
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) {
+          return mix(curve[i], curve[i + 1], x - float(i));
+        }
+      }
+      return curve[31];
+    }
     float presence(float distance, float depth) {
       if (depth <= 0.0 || distance >= depth) return 0.0;
       float t = clamp((1.0 - distance / depth) / progression, 0.0, 1.0);
-      float x = t * 31.0;
-      int i = int(min(floor(x), 30.0));
-      return clamp(mix(curve[i], curve[i + 1], x - float(i)), 0.0, 1.0);
+      return clamp(sampleCurve(t), 0.0, 1.0);
     }
     half4 main(float2 local) {
       float2 p = local + origin;

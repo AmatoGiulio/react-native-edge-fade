@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   PixelRatio,
   Platform,
   Pressable,
@@ -65,8 +66,18 @@ function PlaylistLab({ NativeBlurLab }: { NativeBlurLab: typeof NativeBlurLabTyp
   const [radius, setRadius] = useState(24);
   const [allEdges, setAllEdges] = useState(false);
   const [linear, setLinear] = useState(false);
-  const [status, setStatus] = useState({ requested: '', active: '', reason: '' });
+  const [status, setStatus] = useState({
+    requested: '', active: '', reason: '', androidxAvailable: false,
+  });
   const confirmed = status.requested === backend;
+  const fallback = confirmed && status.active !== backend;
+  const androidxEnabled = status.androidxAvailable && Number(Platform.Version) >= 33;
+
+  // Old native binaries still emit the pre-fix event schema. Do not let a
+  // Metro-only reload look like it tested the renamed native props/shader.
+  if (status.requested && typeof status.androidxAvailable !== 'boolean') {
+    return <Message text="The native Blur Lab binary is outdated. Rebuild Android; a Metro reload does not include this fix." />;
+  }
 
   return (
     <View style={[s.page, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -76,56 +87,80 @@ function PlaylistLab({ NativeBlurLab }: { NativeBlurLab: typeof NativeBlurLabTyp
           <Text style={s.eyebrow}>EDGE FADE / BLUR LAB</Text>
         </Pressable>
         <Text style={s.title}>After hours.</Text>
-        <Text style={s.description}>One live playlist. Three renderers. No remounts.</Text>
+        <Text style={s.description}>One playlist. Compare the active native renderer.</Text>
       </View>
       <View style={s.backends}>
-        {BACKENDS.map((item) => (
-          <Pressable
-            key={item}
-            accessibilityRole="button"
-            accessibilityState={{ selected: backend === item }}
-            onPress={() => setBackend(item)}
-            style={[s.backend, backend === item && s.selected]}
-          >
-            <Text style={[s.backendLabel, backend === item && s.selectedLabel]}>{LABELS[item]}</Text>
-          </Pressable>
-        ))}
+        {BACKENDS.map((item) => {
+          const disabled = item === 'androidx' && !androidxEnabled;
+          return (
+            <Pressable
+              key={item}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityState={{ selected: backend === item, disabled }}
+              onPress={() => setBackend(item)}
+              style={[s.backend, backend === item && s.selected, disabled && s.disabled]}
+            >
+              <Text style={[s.backendLabel, backend === item && s.selectedLabel]}>{LABELS[item]}</Text>
+            </Pressable>
+          );
+        })}
       </View>
-      <NativeBlurLab
-        testID="progressive-blur-lab"
-        style={s.viewport}
-        backend={backend}
-        blurRadius={radius}
-        top={92}
-        bottom={112}
-        left={allEdges ? 48 : 0}
-        right={allEdges ? 48 : 0}
-        curve={linear ? 'linear' : 'smooth'}
-        progression={1}
-        cornerRadius={24}
-        onBackendChange={({ nativeEvent }) => setStatus(nativeEvent)}
-      >
-        <ScrollView
-          testID="progressive-playlist"
-          style={s.list}
-          contentContainerStyle={s.tracks}
-          showsVerticalScrollIndicator={false}
+      <View style={[s.backendStatus, fallback && s.failure]}>
+        <Text testID="active-blur-backend" style={[s.status, fallback && s.failureText]}>
+          {confirmed
+            ? `Requested: ${LABELS[backend]} / Active: ${status.active}`
+            : 'Waiting for native confirmation...'}
+        </Text>
+        {fallback && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show renderer error"
+            onPress={() => Alert.alert('Renderer error', status.reason)}
+          >
+            <Text numberOfLines={3} style={s.failureText}>{status.reason}</Text>
+            <Text style={s.failureLink}>Not a valid comparison. Tap for the full diagnostic.</Text>
+          </Pressable>
+        )}
+      </View>
+      {/* Native effect and controls have separate, non-overlapping layout boxes. */}
+      <View style={s.viewportFrame} collapsable={false}>
+        <NativeBlurLab
+          testID="progressive-blur-lab"
+          style={s.viewport}
+          backend={backend}
+          blurRadius={radius}
+          fadeTop={92}
+          fadeBottom={112}
+          fadeLeft={allEdges ? 48 : 0}
+          fadeRight={allEdges ? 48 : 0}
+          curve={linear ? 'linear' : 'smooth'}
+          progression={1}
+          cornerRadius={24}
+          onBackendChange={({ nativeEvent }) => setStatus(nativeEvent)}
         >
-          {TRACKS.map((track, index) => (
-            <View key={track.id} style={s.track}>
-              <View pointerEvents="none" style={[s.cover, { backgroundColor: track.color }]}>
-                <View style={s.coverDisc} />
-                <Text style={s.coverNumber}>{String(index + 1).padStart(2, '0')}</Text>
+          <ScrollView
+            testID="progressive-playlist"
+            style={s.list}
+            contentContainerStyle={s.tracks}
+            showsVerticalScrollIndicator={false}
+          >
+            {TRACKS.map((track, index) => (
+              <View key={track.id} style={s.track}>
+                <View pointerEvents="none" style={[s.cover, { backgroundColor: track.color }]}>
+                  <View style={s.coverDisc} />
+                  <Text style={s.coverNumber}>{String(index + 1).padStart(2, '0')}</Text>
+                </View>
+                <View style={s.trackText}>
+                  <Text style={s.trackTitle}>{track.title}</Text>
+                  <Text style={s.artist}>{track.artist}</Text>
+                </View>
+                <Text style={s.duration}>{track.time}</Text>
               </View>
-              <View style={s.trackText}>
-                <Text style={s.trackTitle}>{track.title}</Text>
-                <Text style={s.artist}>{track.artist}</Text>
-              </View>
-              <Text style={s.duration}>{track.time}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </NativeBlurLab>
+            ))}
+          </ScrollView>
+        </NativeBlurLab>
+      </View>
       <View style={s.controls}>
         <View style={s.row}>
           <Text style={s.controlLabel}>Blur radius</Text>
@@ -140,11 +175,11 @@ function PlaylistLab({ NativeBlurLab }: { NativeBlurLab: typeof NativeBlurLabTyp
             <Text style={s.link}>{linear ? 'Linear curve' : 'Smooth curve'}</Text>
           </Pressable>
         </View>
-        <Text testID="active-blur-backend" style={s.status}>
-          {confirmed ? `Active: ${status.active}` : 'Waiting for native confirmation...'}
-          {confirmed && status.reason ? `\n${status.reason}` : ''}
+        <Text style={s.footnote}>
+          {status.requested && !status.androidxAvailable
+            ? 'AndroidX is not compiled in this binary. AGSL port is a separate implementation.'
+            : 'AGSL port is not the Compose binary. AndroidX requires an opt-in rebuild.'}
         </Text>
-        <Text style={s.footnote}>AGSL port is not the Compose binary. AndroidX requires an opt-in rebuild.</Text>
       </View>
     </View>
   );
@@ -185,12 +220,18 @@ const s = StyleSheet.create({
   eyebrow: { fontSize: 10, letterSpacing: 2, fontWeight: '700', color: '#656560', marginBottom: 12 },
   title: { fontSize: 34, letterSpacing: -1.2, fontWeight: '700', color: '#181918' },
   description: { fontSize: 12, lineHeight: 19, color: '#74756f', marginTop: 6 },
-  backends: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 14, backgroundColor: '#e9e9e5', borderRadius: 12, padding: 4 },
+  backends: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 8, backgroundColor: '#e9e9e5', borderRadius: 12, padding: 4 },
   backend: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 9 },
   selected: { backgroundColor: '#202520' },
   backendLabel: { color: '#63665e', fontSize: 11, fontWeight: '600' },
   selectedLabel: { color: '#ffffff' },
-  viewport: { flex: 1, marginHorizontal: 16, backgroundColor: '#ffffff' },
+  disabled: { opacity: 0.35 },
+  backendStatus: { marginHorizontal: 20, marginBottom: 10, paddingHorizontal: 6, paddingVertical: 4 },
+  failure: { backgroundColor: '#fce8e5', borderRadius: 8, padding: 10 },
+  failureText: { color: '#9b2620', fontSize: 11, lineHeight: 15 },
+  failureLink: { color: '#9b2620', fontSize: 10, fontWeight: '600', marginTop: 4 },
+  viewportFrame: { flex: 1, minHeight: 0, marginHorizontal: 16, backgroundColor: '#ffffff', borderRadius: 24, overflow: 'hidden' },
+  viewport: { flex: 1 },
   list: { flex: 1 },
   tracks: { paddingHorizontal: 18, paddingVertical: 16 },
   track: { flexDirection: 'row', alignItems: 'center', height: 64, gap: 13 },
@@ -210,7 +251,7 @@ const s = StyleSheet.create({
   sliderFill: { height: 5, backgroundColor: '#4d6743' },
   thumb: { position: 'absolute', width: 20, height: 20, borderRadius: 10, marginLeft: -10, backgroundColor: '#4d6743' },
   link: { color: '#4d6743', fontWeight: '600', fontSize: 12, paddingVertical: 8 },
-  status: { color: '#777e71', fontSize: 10, lineHeight: 14, marginTop: 4, minHeight: 14 },
+  status: { color: '#3c413a', fontSize: 11, lineHeight: 15, minHeight: 15 },
   footnote: { color: '#93978e', fontSize: 9, lineHeight: 13, marginTop: 4 },
   message: { flex: 1, justifyContent: 'center', padding: 28, backgroundColor: '#f7f7f5' },
 });

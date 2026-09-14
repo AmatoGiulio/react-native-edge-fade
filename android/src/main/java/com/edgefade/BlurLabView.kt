@@ -23,12 +23,13 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   var progression = 1f
   var curve = "smooth"
   var cornerPx = 0f
-  var onBackendChange: ((String, String, String) -> Unit)? = null
+  var onBackendChange: ((String, String, String, Boolean) -> Unit)? = null
 
   private var renderer: BlurLabRenderer? = null
   private var lastRequested = ""
   private var configuredActive = ""
   private var failedBackend: String? = null
+  private var failureMessage = ""
   private var reportedRequested = ""
   private var reportedActive = ""
   private var reportedReason = ""
@@ -63,7 +64,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   private fun report(active: String, hardware: Boolean) {
     val reason = when {
       active == backend -> ""
-      failedBackend == backend -> "Shader creation failed; using legacy"
+      failedBackend == backend -> "Shader creation failed; using legacy.\n$failureMessage"
       Build.VERSION.SDK_INT < 33 -> "Progressive backend requires Android 13+"
       !hardware -> "Software canvas; using legacy fallback"
       backend == "androidx" && !AndroidxBlurAdapter.available ->
@@ -74,13 +75,14 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
       reportedRequested = backend
       reportedActive = active
       reportedReason = reason
-      onBackendChange?.invoke(backend, active, reason)
+      onBackendChange?.invoke(backend, active, reason, AndroidxBlurAdapter.available)
     }
   }
 
   fun applyConfig() {
     if (backend != lastRequested) {
       failedBackend = null
+      failureMessage = ""
       lastRequested = backend
     }
     configureHost(activeBackend(true))
@@ -161,6 +163,9 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
         } catch (error: IllegalArgumentException) {
           Log.w("EdgeFade.BlurLab", "Progressive shader unavailable", error)
           failedBackend = active
+          // Preserve the compiler diagnostic in the native event. The complete
+          // exception remains in logcat; bound UI payload size on shader errors.
+          failureMessage = (error.message ?: error.javaClass.simpleName).take(2000)
           active = "legacy"
           configureHost(active)
         }

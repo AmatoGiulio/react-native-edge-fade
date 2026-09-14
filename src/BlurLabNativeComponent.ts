@@ -8,15 +8,22 @@ import type {
 interface NativeProps extends ViewProps {
   backend?: string;
   blurRadius?: Float;
-  top?: Float;
-  bottom?: Float;
-  left?: Float;
-  right?: Float;
+  // Never use top/bottom/left/right: Fabric's ViewProps also reads those keys
+  // as Yoga offsets, moving the viewport instead of only changing the blur.
+  fadeTop?: Float;
+  fadeBottom?: Float;
+  fadeLeft?: Float;
+  fadeRight?: Float;
   curve?: string;
   progression?: Float;
   cornerRadius?: Float;
   onBackendChange?: DirectEventHandler<
-    Readonly<{ requested: string; active: string; reason: string }>
+    Readonly<{
+      requested: string;
+      active: string;
+      reason: string;
+      androidxAvailable: boolean;
+    }>
   >;
 }
 
