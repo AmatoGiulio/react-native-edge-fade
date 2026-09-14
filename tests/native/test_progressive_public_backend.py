@@ -58,6 +58,36 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertNotIn("hasNeutralColorGrade", source)
         self.assertNotIn("keeping Legacy", source)
 
+    def test_old_multilevel_blur_is_physically_absent_from_public_host(self):
+        host = read(NATIVE / "EdgeFadeView.kt")
+
+        # mode="blur" may only dispatch the new renderer or mask fallback.
+        self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
+        self.assertIn("if (!drawn) drawMask(canvas)", host)
+        self.assertIn('mode == "blur" -> drawMask(canvas)', host)
+
+        # 0.2.2 renderer internals must not survive as a hidden fallback.
+        for forbidden in (
+            "drawBlurLayered",
+            "drawEdgeLevels",
+            "createBlurEffect",
+            "createColorFilterEffect",
+            "LEVEL_FRACTIONS",
+            "LEVEL_BOUNDS",
+            "LEVEL_DOWNSCALE",
+            "BLUR_STYLE",
+            "FROST_SATURATION",
+            "FROST_LIFT",
+            "drawFrostVeil",
+            "veilGradient",
+            "frostGradient",
+            "levelGradient",
+            "blurNode",
+            "levelNodes",
+            "hasWebViewDescendant",
+        ):
+            self.assertNotIn(forbidden, host)
+
     def test_webview_is_eligible_and_materialized_once(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
