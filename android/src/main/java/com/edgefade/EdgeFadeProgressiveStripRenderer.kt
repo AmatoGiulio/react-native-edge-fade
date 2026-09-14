@@ -1,7 +1,9 @@
 package com.edgefade
 
+import android.graphics.BlendMode
 import android.graphics.Canvas
 import android.graphics.ColorFilter
+import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
@@ -27,8 +29,14 @@ import kotlin.math.ceil
  *
  * It is installed as a ViewOverlay Drawable. The host first draws its normal
  * sharp content; this drawable then records that same host into one RenderNode
- * (with a recursion guard) and replaces only the edge regions with filtered
- * strips. No public JS prop or Android-only backend switch is introduced.
+ * (with a recursion guard) and REPLACES the edge regions with filtered strips.
+ * Replacement is important: ordinary SRC_OVER would leave the already-rendered
+ * sharp content visible through transparent/partially covered filtered pixels,
+ * producing a much weaker result than the Blur Lab renderer. A bounded SRC
+ * saveLayer gives the overlay the same edge-ownership semantics as Blur Lab
+ * without returning to a full-view RenderEffect.
+ *
+ * No public JS prop or Android-only backend switch is introduced.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
@@ -82,6 +90,12 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private val content = RenderNode("EdgeFade.Progressive.content")
+  private val replacementPaint = Paint().apply {
+    // Composite each bounded offscreen strip with SRC rather than SRC_OVER.
+    // The filtered strip therefore owns its output pixels exactly like the
+    // Blur Lab path, instead of revealing the already-drawn sharp edge below.
+    blendMode = BlendMode.SRC
+  }
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var recordingHost = false
@@ -151,7 +165,18 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
 
         val visible = strip.band.visible
-        val save = canvas.save()
+        // ViewOverlay normally composites with SRC_OVER, which is wrong for a
+        // blur replacement: the sharp host has already been painted underneath.
+        // A bounded saveLayer restored with SRC atomically replaces only this
+        // strip, including transparent pixels, so the parent/background can show
+        // through exactly as it does when Blur Lab clips the sharp band out.
+        val layer = canvas.saveLayer(
+          visible.left.toFloat(),
+          visible.top.toFloat(),
+          visible.right.toFloat(),
+          visible.bottom.toFloat(),
+          replacementPaint,
+        )
         try {
           canvas.clipRect(
             visible.left.toFloat(),
@@ -162,7 +187,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           canvas.translate(src.left.toFloat(), src.top.toFloat())
           canvas.drawRenderNode(strip.node)
         } finally {
-          canvas.restoreToCount(save)
+          canvas.restoreToCount(layer)
         }
       }
     } finally {
