@@ -91,9 +91,18 @@ class ProgressivePublicBackend(unittest.TestCase):
         # transparent pixels reveal the parent/background rather than punching
         # transparency into the root render target.
         self.assertIn("blendMode = BlendMode.SRC", renderer)
+        self.assertIn("val destinationClip = canvas.save()", renderer)
         self.assertIn("val layer = canvas.saveLayer(", renderer)
         self.assertIn("replacementPaint", renderer)
         self.assertIn("canvas.restoreToCount(layer)", renderer)
+        self.assertIn("canvas.restoreToCount(destinationClip)", renderer)
+        # saveLayer bounds are not a guaranteed clip. The destination clip must
+        # already be active when the SRC layer is created, otherwise restore can
+        # clear the host outside the intended strip.
+        draw_loop = renderer.index("val visible = strip.band.visible")
+        clip_index = renderer.index("canvas.clipRect(", draw_loop)
+        layer_index = renderer.index("val layer = canvas.saveLayer(", draw_loop)
+        self.assertLess(clip_index, layer_index)
         self.assertIn("layerTypeBeforeProgressive", selector)
         self.assertIn("View.LAYER_TYPE_HARDWARE", selector)
         self.assertIn("view.setLayerType(previous, null)", selector)
