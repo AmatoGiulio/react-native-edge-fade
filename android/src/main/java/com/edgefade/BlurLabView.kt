@@ -11,10 +11,10 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 
-/** Internal A/B testbed. The same legacy host owns the same React children in every backend. */
+/** Internal progressive-blur testbed. It compares only AGSL and AndroidX-style engines. */
 internal class BlurLabView(context: Context) : FrameLayout(context) {
   val contentHost = EdgeFadeView(context)
-  var backend = "legacy"
+  var backend = "agsl"
   var radiusPx = 0f
   var topDepth = 0f
   var bottomDepth = 0f
@@ -54,22 +54,21 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
 
   private fun activeBackend(hardware: Boolean): String = when {
     backend == "off" -> "off"
-    backend == "legacy" -> "legacy"
-    backend != "agsl" && backend != "androidx" -> "legacy"
-    Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "legacy"
-    backend == "androidx" && !AndroidxBlurAdapter.available -> "legacy"
+    backend != "agsl" && backend != "androidx" -> "off"
+    Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "off"
+    backend == "androidx" && !AndroidxBlurAdapter.available -> "off"
     else -> backend
   }
 
   private fun report(active: String, hardware: Boolean) {
     val reason = when {
       active == backend -> ""
-      failedBackend == backend -> "Shader creation failed; using legacy.\n$failureMessage"
+      failedBackend == backend -> "Shader creation failed; renderer disabled.\n$failureMessage"
       Build.VERSION.SDK_INT < 33 -> "Progressive backend requires Android 13+"
-      !hardware -> "Software canvas; using legacy fallback"
+      !hardware -> "Software canvas; renderer disabled"
       backend == "androidx" && !AndroidxBlurAdapter.available ->
         "AndroidX not compiled: rebuild with -PedgeFadeAndroidxBlur=true"
-      else -> "Unknown backend; using legacy"
+      else -> "Unknown backend; renderer disabled"
     }
     if (backend != reportedRequested || active != reportedActive || reason != reportedReason) {
       reportedRequested = backend
@@ -91,13 +90,13 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
 
   private fun configureHost(active: String) {
     configuredActive = active
-    val legacy = active == "legacy"
-    // Legacy's zero-radius mask fallback is intentionally left unchanged.
-    contentHost.mode = if (legacy) "blur" else "mask"
-    contentHost.fadeTop = if (legacy) topDepth else 0f
-    contentHost.fadeBottom = if (legacy) bottomDepth else 0f
-    contentHost.fadeLeft = if (legacy) leftDepth else 0f
-    contentHost.fadeRight = if (legacy) rightDepth else 0f
+    // The lab host is always visually neutral. Progressive output is drawn by
+    // BlurLabRenderer; when disabled we show the unmodified child scene.
+    contentHost.mode = "mask"
+    contentHost.fadeTop = 0f
+    contentHost.fadeBottom = 0f
+    contentHost.fadeLeft = 0f
+    contentHost.fadeRight = 0f
     contentHost.curveTop = curve
     contentHost.curveBottom = curve
     contentHost.curveLeft = curve
@@ -156,23 +155,21 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
       if (Build.VERSION.SDK_INT >= 33 && isProgressive(active) &&
           width > 0 && height > 0 && hasBands() && radiusPx > 0f) {
         val engine = renderer ?: BlurLabRenderer().also { renderer = it }
-        // Prepare before drawing anything: failed shader compilation can fall
-        // back without leaving a partially composited frame behind.
+        // Prepare before drawing anything: failed shader compilation disables
+        // this research backend without substituting a different blur algorithm.
         try {
           engine.prepare(this, active)
         } catch (error: IllegalArgumentException) {
           Log.w("EdgeFade.BlurLab", "Progressive shader unavailable", error)
           failedBackend = active
-          // Preserve the compiler diagnostic in the native event. The complete
-          // exception remains in logcat; bound UI payload size on shader errors.
           failureMessage = (error.message ?: error.javaClass.simpleName).take(2000)
-          active = "legacy"
+          active = "off"
           configureHost(active)
         }
         if (isProgressive(active)) engine.draw(canvas, this, recordContent)
         else drawChildren(canvas)
       } else {
-        // In new engines zero radius / no edges is a genuine unmodified draw.
+        // Zero radius / no edges / disabled backend is a genuine unmodified draw.
         drawChildren(canvas)
       }
       report(active, canvas.isHardwareAccelerated)
