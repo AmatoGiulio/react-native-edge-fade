@@ -122,7 +122,9 @@ function PlaylistLab({
   }
 
   return (
-    <View style={[s.page, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[s.page, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+    >
       <Stack.Screen options={{ headerShown: false }} />
       <View style={s.heading}>
         <Pressable onPress={() => router.back()} accessibilityRole="button">
@@ -150,7 +152,9 @@ function PlaylistLab({
                 disabled && s.disabled,
               ]}
             >
-              <Text style={[s.backendLabel, backend === item && s.selectedLabel]}>
+              <Text
+                style={[s.backendLabel, backend === item && s.selectedLabel]}
+              >
                 {LABELS[item]}
               </Text>
             </Pressable>
