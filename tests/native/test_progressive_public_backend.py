@@ -30,17 +30,6 @@ def public_mask_source():
     return textwrap.dedent(match[1]).strip()
 
 
-def legacy_grade(rgb, saturation, lift):
-    luminance = rgb[0] * 0.213 + rgb[1] * 0.715 + rgb[2] * 0.072
-    return tuple((luminance + (channel - luminance) * saturation) * lift for channel in rgb)
-
-
-def progressive_grade(rgb, saturation, lift, intensity):
-    effective_saturation = 1 + (saturation - 1) * intensity
-    effective_lift = 1 + (lift - 1) * intensity
-    return legacy_grade(rgb, effective_saturation, effective_lift)
-
-
 class ProgressivePublicBackend(unittest.TestCase):
     def test_manager_keeps_js_api_and_selects_backend_after_transaction(self):
         manager = read(NATIVE / "EdgeFadeViewManager.kt")
@@ -59,53 +48,53 @@ class ProgressivePublicBackend(unittest.TestCase):
             "child is WebView || child is SurfaceView",
             "!view.isAttachedToWindow || view.isHardwareAccelerated",
             'view.mode = "blur"',
-            'view.mode = "overlay"',
+            "view.progressiveBlurActive = true",
         ):
             self.assertIn(contract, source)
+        self.assertNotIn('view.mode = "overlay"', source)
         self.assertNotIn("hasNeutralColorGrade", source)
 
-    def test_public_progressive_is_edge_local_not_full_view_render_effect(self):
+    def test_public_progressive_is_edge_local_and_owned_by_dispatch_draw(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        host = read(NATIVE / "EdgeFadeView.kt")
 
         self.assertIn("EdgeFadeProgressiveStripRenderer(view)", selector)
-        self.assertIn("view.overlay.add(renderer)", selector)
-        self.assertIn("view.overlay.remove(renderer)", selector)
+        self.assertNotIn("view.overlay.add(renderer)", selector)
+        self.assertNotIn("view.overlay.remove(renderer)", selector)
+        self.assertNotIn("setLayerType", selector)
         self.assertNotIn("view.setRenderEffect(blur)", selector)
 
         self.assertIn("class EdgeFadeProgressiveStripRenderer", renderer)
         self.assertIn("val content = RenderNode", renderer)
         self.assertIn("val node = RenderNode", renderer)
-        self.assertIn("canvas.clipRect(", renderer)
+        self.assertIn("clipOut(canvas, strip.band.visible)", renderer)
         self.assertIn("top/bottom own the full-width corners", renderer)
         self.assertIn("val centerTop = top", renderer)
         self.assertIn("val centerBottom = (height - bottom).coerceAtLeast(centerTop)", renderer)
         self.assertIn("val rightLeft = (width - right).coerceAtLeast(left)", renderer)
 
-    def test_strip_output_replaces_sharp_edges_inside_isolated_host_layer(self):
+        self.assertIn("internal var progressiveBlurActive", host)
+        self.assertIn("::drawChildrenForProgressive", host)
+        self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
+
+    def test_direct_dispatch_replaces_edge_bands_without_blend_hacks(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
-        # Blur Lab removes the sharp pixels from every owned edge band. A
-        # ViewOverlay cannot do that with SRC_OVER. The bounded SRC layer is
-        # therefore rendered inside an isolated host hardware layer so its
-        # transparent pixels reveal the parent/background rather than punching
-        # transparency into the root render target.
-        self.assertIn("blendMode = BlendMode.SRC", renderer)
-        self.assertIn("val destinationClip = canvas.save()", renderer)
-        self.assertIn("val layer = canvas.saveLayer(", renderer)
-        self.assertIn("replacementPaint", renderer)
-        self.assertIn("canvas.restoreToCount(layer)", renderer)
-        self.assertIn("canvas.restoreToCount(destinationClip)", renderer)
-        # saveLayer bounds are not a guaranteed clip. The destination clip must
-        # already be active when the SRC layer is created, otherwise restore can
-        # clear the host outside the intended strip.
-        draw_loop = renderer.index("val visible = strip.band.visible")
-        clip_index = renderer.index("canvas.clipRect(", draw_loop)
-        layer_index = renderer.index("val layer = canvas.saveLayer(", draw_loop)
-        self.assertLess(clip_index, layer_index)
-        self.assertIn("layerTypeBeforeProgressive", selector)
-        self.assertIn("View.LAYER_TYPE_HARDWARE", selector)
-        self.assertIn("view.setLayerType(previous, null)", selector)
+
+        # Direct ownership: draw sharp content with the progressive bands clipped
+        # out, then draw the filtered strips into those empty regions. No second
+        # sharp image exists under the blur, so replacement blending is unnecessary.
+        self.assertIn("for (strip in strips) clipOut(canvas, strip.band.visible)", renderer)
+        self.assertIn("canvas.drawRenderNode(content)", renderer)
+        self.assertIn("canvas.drawRenderNode(strip.node)", renderer)
+        self.assertNotIn("BlendMode", renderer)
+        self.assertNotIn("Drawable", renderer)
+        self.assertNotIn("replacementPaint", renderer)
+        self.assertNotIn("saveLayer", renderer)
+        self.assertNotIn("host.draw(", renderer)
+        self.assertNotIn("ViewOverlay", selector)
+        self.assertNotIn("LAYER_TYPE_HARDWARE", selector)
 
     def test_strip_sources_are_radius_padded_and_map_mask_to_global_coordinates(self):
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
@@ -117,31 +106,25 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("uniform float2 origin", mask)
         self.assertIn("float2 p = local + origin", mask)
 
-    def test_color_grade_is_mask_aware_and_matches_legacy_at_outer_edge(self):
+    def test_progressive_pipeline_contains_only_radius_varying_gaussian(self):
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
         shaders = read(NATIVE / "BlurLabShaders.kt")
-        self.assertIn('setFloatUniform("frostSaturation"', renderer)
-        self.assertIn('setFloatUniform("frostLift"', renderer)
-        self.assertIn("mix(1.0, frostSaturation, intensity)", shaders)
-        self.assertIn("mix(1.0, frostLift, intensity)", shaders)
-        self.assertIn("float3(0.213, 0.715, 0.072)", shaders)
-        self.assertNotIn("RenderEffect.createColorFilterEffect", renderer)
 
-        colors = (
-            (0.0, 0.0, 0.0),
-            (1.0, 1.0, 1.0),
-            (0.15, 0.7, 0.4),
-            (0.95, 0.2, 0.1),
-        )
-        saturation = 0.9
-        lift = 1.03
-        for rgb in colors:
-            for actual, expected in zip(progressive_grade(rgb, saturation, lift, 0), rgb):
-                self.assertAlmostEqual(actual, expected, places=12)
-            expected_outer = legacy_grade(rgb, saturation, lift)
-            actual_outer = progressive_grade(rgb, saturation, lift, 1)
-            for actual, expected in zip(actual_outer, expected_outer):
-                self.assertAlmostEqual(actual, expected, places=12)
+        self.assertIn("float radius = blurRadius * intensity;", shaders)
+        self.assertIn("float gaussian(float x, float sigma)", shaders)
+        self.assertIn("BlurLabShaders.pass(vertical = false)", renderer)
+        self.assertIn("BlurLabShaders.pass(vertical = true)", renderer)
+
+        for forbidden in (
+            "frostSaturation",
+            "frostLift",
+            "luminance",
+            "createColorFilterEffect",
+            "overlayColor",
+            "BlendMode",
+        ):
+            self.assertNotIn(forbidden, shaders)
+            self.assertNotIn(forbidden, renderer)
 
     def test_consumer_build_remains_compose_free(self):
         gradle = read(ROOT / "android/build.gradle")
