@@ -9,8 +9,11 @@ on:
       - 'android/build.gradle'
       - 'src/BlurLabNativeComponent.ts'
       - 'example/app/progressive-blur.tsx'
+      - 'example/app/progressive-blur-perf.tsx'
+      - 'scripts/benchmark-progressive-blur.ps1'
       - 'tests/native/test_blur_lab_regressions.py'
       - 'tests/native/test_progressive_public_backend.py'
+      - 'tests/native/test_progressive_perf_scene.py'
       - '.github/workflows/blur-lab-regressions.yml'
   workflow_dispatch:
 
@@ -42,6 +45,9 @@ jobs:
       - name: Check public backend contracts and compile mask
         run: |
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
+      - name: Check public performance harness contracts
+        run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_perf_scene.py
       # These jobs do NOT validate Android RuntimeShader/GPU execution,
       # Fabric layout, visual fidelity or frame time. The separate AndroidX
       # reference APK remains the official-binary comparison gate.
