@@ -1,5 +1,5 @@
 plugins {
-  id("com.android.library") version "9.1.1"
+  id("com.android.application") version "9.1.1"
 }
 
 android {
@@ -8,7 +8,11 @@ android {
   compileSdkMinor = 1
 
   defaultConfig {
-    minSdk = 24
+    applicationId = "com.edgefade.androidxref"
+    minSdk = 33
+    targetSdk = 36
+    versionCode = 1
+    versionName = "1.0"
   }
 }
 
