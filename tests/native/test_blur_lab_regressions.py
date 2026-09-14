@@ -36,9 +36,9 @@ def shader_sources():
 uniform float frostLift;"""
     grade_code = """float sat = mix(1.0, frostSaturation, intensity);
 float lift = mix(1.0, frostLift, intensity);
-float3 rgb = output.rgb;
+float3 rgb = sampled.rgb;
 float luminance = dot(rgb, float3(0.213, 0.715, 0.072));
-output.rgb = mix(float3(luminance), rgb, sat) * lift;"""
+sampled.rgb = mix(float3(luminance), rgb, sat) * lift;"""
 
     for vertical, graded in ((False, False), (True, False), (True, True)):
         if graded:
