@@ -44,7 +44,7 @@ class ProgressivePublicBackend(unittest.TestCase):
         for contract in (
             "Build.VERSION_CODES.TIRAMISU",
             "BlurLabGeometry.MAX_RADIUS_PX",
-            "supportsPresetCurves(view)",
+            "supportsCurves(view)",
             "child is SurfaceView",
             "view.isAttachedToWindow && !view.isHardwareAccelerated",
             'view.mode = "mask"',
@@ -96,10 +96,6 @@ class ProgressivePublicBackend(unittest.TestCase):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
 
-        # WebView is an intentional capture boundary. Do not recursively reject
-        # Chromium's implementation-private SurfaceView descendants before the
-        # materialized draw-functor path can be validated on a device. Direct RN
-        # SurfaceView children remain unsupported.
         self.assertIn("android.webkit.WebView", selector)
         self.assertIn("if (child is WebView) continue", selector)
         self.assertIn("if (child is SurfaceView) return true", selector)
@@ -148,9 +144,6 @@ class ProgressivePublicBackend(unittest.TestCase):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
 
-        # Direct ownership: draw sharp content with the progressive bands clipped
-        # out, then draw the filtered strips into those empty regions. No second
-        # sharp image exists under the blur, so replacement blending is unnecessary.
         self.assertIn("for (strip in strips) clipOut(canvas, strip.band.visible)", renderer)
         self.assertIn("canvas.drawRenderNode(content)", renderer)
         self.assertIn("canvas.drawRenderNode(strip.node)", renderer)
@@ -192,11 +185,28 @@ class ProgressivePublicBackend(unittest.TestCase):
             self.assertNotIn(forbidden, shaders)
             self.assertNotIn(forbidden, renderer)
 
+    def test_custom_curves_drive_radius_mask_through_lut_not_blur_crossfade(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        mask = public_mask_source()
+
+        self.assertIn("EdgeFadeCurves.parseCustomLUT(curve)", selector)
+        self.assertIn("EdgeFadeCurves.parseCustomLUT(curve)", renderer)
+        self.assertIn('setFloatUniform("useLut"', renderer)
+        self.assertIn('setFloatUniform("curveTopLut", topCurve.lut)', renderer)
+        self.assertIn("1f - alpha[index]", renderer)
+        self.assertIn("uniform float curveTopLut[32]", mask)
+        self.assertIn("uniform float curveBottomLut[32]", mask)
+        self.assertIn("uniform float curveLeftLut[32]", mask)
+        self.assertIn("uniform float curveRightLut[32]", mask)
+        self.assertIn("for (int i = 0; i < 31; i++)", mask)
+        self.assertIn("sampleTop(topPos)", mask)
+        self.assertIn("sampleBottom(bottomPos)", mask)
+
     def test_renderer_cannot_retain_weak_map_key_and_draw_is_fallback_safe(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
 
-        # WeakHashMap values must not strongly retain their EdgeFadeView key.
         self.assertIn("WeakHashMap<EdgeFadeView, State>()", selector)
         self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()", selector)
         self.assertIn("val edgeFadeView = changed as? EdgeFadeView", selector)
@@ -204,8 +214,6 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("private val hostRef = WeakReference(host)", renderer)
         self.assertNotIn("private val host: EdgeFadeView", renderer)
 
-        # draw() must report whether it actually owned the frame. The host then
-        # uses Mask in the same frame instead of accepting a blank progressive draw.
         self.assertIn("fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean", renderer)
         self.assertIn("if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return false", renderer)
         self.assertIn("if (!prepared) return false", renderer)
@@ -228,18 +236,21 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertNotIn("compileSdkMinor", gradle)
         self.assertIn('compileSdkVersion getExtOrDefault("compileSdkVersion")', gradle)
 
-    def test_public_mask_is_analytical_not_lut_loop(self):
+    def test_public_mask_supports_analytical_presets_and_constant_index_custom_luts(self):
         mask = public_mask_source()
         self.assertIn("uniform float4 curveExp", mask)
         self.assertIn("uniform float4 curveMode", mask)
-        self.assertNotIn("[32]", mask)
-        self.assertNotIn("for (", mask)
+        self.assertIn("uniform float4 useLut", mask)
         self.assertIn("1.0 - pow(1.0 - x, exponent)", mask)
         self.assertIn("1.0 - cos(x * 1.5707963)", mask)
+        # Custom curves use fixed-size LUTs and constant-index loop access. The
+        # LUT changes only the radius intensity field; it never selects blur levels.
+        self.assertEqual(mask.count("[32]"), 4)
+        self.assertGreaterEqual(mask.count("for (int i = 0; i < 31; i++)"), 4)
+        self.assertNotIn("blurLevel", mask)
+        self.assertNotIn("opacity", mask)
 
     def test_smooth_and_linear_match_edge_fade_presence(self):
-        # EdgeFadeCurves: smooth alpha=(1-t)^3 -> presence=1-(1-t)^3;
-        # linear alpha=1-t -> presence=t.
         for i in range(1001):
             t = i / 1000
             shader_smooth = 1 - math.pow(1 - t, 3)
