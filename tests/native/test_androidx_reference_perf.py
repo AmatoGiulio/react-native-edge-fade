@@ -5,7 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 ACTIVITY = ROOT / "androidx-reference/src/main/kotlin/com/edgefade/androidxref/BenchmarkActivity.kt"
 PROBE = ROOT / "androidx-reference/src/main/kotlin/com/edgefade/androidxref/AndroidxBlurCompileProbe.kt"
-SCRIPT = ROOT / "scripts/benchmark-progressive-vs-androidx.ps1"
+SCRIPT = ROOT / "scripts/benchmark-progressive-vs-androidx.mjs"
 BUILD = ROOT / "androidx-reference/build.gradle.kts"
 MANIFEST = ROOT / "androidx-reference/src/main/AndroidManifest.xml"
 
@@ -31,7 +31,9 @@ class AndroidxReferencePerfContract(unittest.TestCase):
             'intent.getFloatExtra(EXTRA_RADIUS_PX, 144f)',
             'intent.getStringExtra(EXTRA_EDGES) == "four"',
             'intent.getStringExtra(EXTRA_CURVE) != "linear"',
+            'intent.getStringExtra(EXTRA_EFFECT) != "off"',
             "AndroidxBlurCompileProbe.create(width, height, radiusPx, mask)",
+            "viewport.setRenderEffect(null)",
             "1.0 - inverse * inverse * inverse",
             "max(max(top, bottom), max(left, right))",
         ):
@@ -48,27 +50,26 @@ class AndroidxReferencePerfContract(unittest.TestCase):
         self.assertIn('signingConfig = signingConfigs.getByName("debug")', build)
         self.assertIn("isMinifyEnabled = false", build)
 
-    def test_script_runs_balanced_cross_app_comparison_at_explicit_radius(self):
+    def test_script_runs_balanced_isolated_comparison_at_explicit_radius(self):
         script = read(SCRIPT)
         for contract in (
-            "[double]$TargetRadiusPx = 144.0",
-            "$PublicPackage = 'com.edgefadeexample'",
-            "$AndroidxPackage = 'com.edgefade.androidxref'",
-            "$AndroidxActivity = 'com.edgefade.androidxref/.BenchmarkActivity'",
-            "radiusPx=$radiusInvariant",
-            "'--ef', 'radiusPx', $radiusInvariant",
+            "radiusPx: 144",
+            "com.edgefadeexample",
+            "com.edgefade.androidxref",
+            "com.edgefade.androidxref/.BenchmarkActivity",
+            "radiusPx=${radiusInvariant}",
+            "'--ef', 'radiusPx', radiusInvariant",
             "Warm-up (discarded)",
-            "@('public', 'androidx', 'androidx', 'public')",
-            "@('androidx', 'public', 'public', 'androidx')",
+            "function stopBothApps()",
+            "['public-off', 'public', 'androidx-off', 'androidx'",
             "dumpsys', 'gfxinfo'",
             "dumpsys', 'meminfo'",
             "MissedPctMedian",
-            "Public / AndroidX median ratios",
         ):
             self.assertIn(contract, script)
 
         self.assertIn("DEBUGGABLE", script)
-        self.assertIn("-AllowEmulator", script)
+        self.assertIn("--allow-emulator", script)
 
 
 if __name__ == "__main__":
