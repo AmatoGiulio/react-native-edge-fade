@@ -23,6 +23,8 @@ import kotlin.math.roundToInt
  * the same edge depths, the same neutral white viewport and the same 144px
  * stress radius. There is no RN/Expo/Compose UI in this Activity; only the
  * official Compose UI graphics BlurRadiusSpec implementation is under test.
+ * The same Activity can run with the RenderEffect disabled so cross-runtime
+ * comparisons use incremental blur cost rather than raw process frame time.
  */
 class BenchmarkActivity : Activity() {
   private val density by lazy { resources.displayMetrics.density }
@@ -31,6 +33,7 @@ class BenchmarkActivity : Activity() {
   private var radiusPx = 144f
   private var allEdges = false
   private var smooth = true
+  private var effectEnabled = true
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -38,6 +41,7 @@ class BenchmarkActivity : Activity() {
     radiusPx = intent.getFloatExtra(EXTRA_RADIUS_PX, 144f).coerceIn(1f, 150f)
     allEdges = intent.getStringExtra(EXTRA_EDGES) == "four"
     smooth = intent.getStringExtra(EXTRA_CURVE) != "linear"
+    effectEnabled = intent.getStringExtra(EXTRA_EFFECT) != "off"
 
     window.statusBarColor = BG
     window.navigationBarColor = BG
@@ -67,7 +71,7 @@ class BenchmarkActivity : Activity() {
     header.addView(text("After hours.", 34f, INK, bold = true), matchWrap(top = 10))
     header.addView(
       text(
-        "AndroidX official · ${radiusPx.roundToInt()}px · ${if (smooth) "Smooth" else "Linear"} · ${if (allEdges) "Four edges" else "Top + bottom"}",
+        "${if (effectEnabled) "AndroidX official" else "AndroidX baseline · no effect"} · ${radiusPx.roundToInt()}px · ${if (smooth) "Smooth" else "Linear"} · ${if (allEdges) "Four edges" else "Top + bottom"}",
         11f,
         MUTED,
       ),
@@ -116,15 +120,24 @@ class BenchmarkActivity : Activity() {
     repeat(64) { addTrack(tracks, it) }
 
     viewport.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-      applyOfficialBlur()
+      applyEffect()
     }
-    viewport.post { applyOfficialBlur() }
+    viewport.post { applyEffect() }
   }
 
-  private fun applyOfficialBlur() {
+  private fun applyEffect() {
     val width = viewport.width
     val height = viewport.height
     if (width <= 0 || height <= 0) return
+
+    if (!effectEnabled) {
+      viewport.setRenderEffect(null)
+      Log.i(
+        TAG,
+        "AndroidX baseline active: viewport=${width}x$height radius=${radiusPx.roundToInt()}px edges=${if (allEdges) "four" else "vertical"}",
+      )
+      return
+    }
 
     val mask = RuntimeShader(MASK_SHADER).apply {
       setFloatUniform("size", floatArrayOf(width.toFloat(), height.toFloat()))
@@ -240,6 +253,7 @@ class BenchmarkActivity : Activity() {
     const val EXTRA_RADIUS_PX = "radiusPx"
     const val EXTRA_EDGES = "edges"
     const val EXTRA_CURVE = "curve"
+    const val EXTRA_EFFECT = "effect"
 
     private const val TAG = "AndroidXReferencePerf"
 
