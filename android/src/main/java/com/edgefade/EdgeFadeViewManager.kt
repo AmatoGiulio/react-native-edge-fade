@@ -18,10 +18,9 @@ class EdgeFadeViewManager :
   override fun getDelegate(): ViewManagerDelegate<EdgeFadeView> = delegate
   override fun getName(): String = NAME
   override fun createViewInstance(context: ThemedReactContext): EdgeFadeView =
-    EdgeFadeView(context).also { view ->
-      EdgeFadeProgressiveBlurEffect.register(view)
-      EdgeFadeGlesMotionInvalidator.register(view)
-    }
+    EdgeFadeView(context)
+      .also(EdgeFadeProgressiveBlurEffect::register)
+      .also(EdgeFadeGlesMotionInvalidator::register)
 
   // JS sends sizes in dp. Fabric Float props arrive unscaled, so we convert here.
   private fun dp(view: EdgeFadeView, dp: Float): Float =
