@@ -118,6 +118,18 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     if (key == next) return true
 
+    // Radius 0 is the identity transform, not a fallback. Drop any filtered
+    // strip resources from the previous non-zero frame and let draw() render
+    // the React children directly, with no mask and no blur passes.
+    if (next.radius <= 0f) {
+      strips.forEach { it.release() }
+      strips = emptyList()
+      content.setUseCompositingLayer(false, null)
+      content.discardDisplayList()
+      key = next
+      return true
+    }
+
     configure(next)
     key = next
     return true
