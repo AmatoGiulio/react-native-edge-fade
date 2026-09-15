@@ -14,6 +14,7 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
@@ -124,6 +125,23 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     }
     lensNode = null
     super.onDetachedFromWindow()
+  }
+
+  /**
+   * A progressive blur depends on the actual pixels produced by its descendants,
+   * not only on this host's own property state. Under HWUI, descendant display
+   * lists can be re-recorded without invalidating the parent display list, which
+   * leaves a materialized progressive scene stale during scrolling/animation.
+   *
+   * Re-mark only an active non-zero progressive host dirty when Android reports
+   * descendant drawing invalidation. The zero-radius identity path and every
+   * non-progressive mode keep the platform's normal invalidation behavior.
+   */
+  override fun onDescendantInvalidated(child: View, target: View) {
+    super.onDescendantInvalidated(child, target)
+    if (progressiveBlurActive && blurRadius > 0f) {
+      invalidate()
+    }
   }
 
   /** Record exactly the React children, bypassing this host's dispatch logic. */
