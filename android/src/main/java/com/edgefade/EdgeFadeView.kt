@@ -14,6 +14,7 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
@@ -142,6 +143,17 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     if (progressiveBlurActive && blurRadius > 0f) {
       invalidate()
     }
+  }
+
+  /**
+   * Touch reaches this host before it is dispatched to the wrapped ScrollView.
+   * Forward only the action type to the API 31-32 motion bridge so drag/fling
+   * updates keep re-recording the GLES capture even when HWUI keeps this host's
+   * display list cached. The bridge is a no-op outside API 31-32.
+   */
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    EdgeFadeGlesMotionInvalidator.onTouchEvent(this, event.actionMasked)
+    return super.dispatchTouchEvent(event)
   }
 
   /** Record exactly the React children, bypassing this host's dispatch logic. */
