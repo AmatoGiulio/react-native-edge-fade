@@ -26,8 +26,10 @@ package com.edgefade
  * evaluate the same paired Gaussian taps used by the AGSL path.
  */
 internal object EdgeFadeGlesShaders {
-  const val VERTEX = """
-    #version 300 es
+  // GLSL requires #version to be the first line in the source. Keep the opening
+  // raw-string delimiter on the same line so Kotlin does not inject a leading
+  // newline before the directive (ANGLE rejects that on API 31-32).
+  const val VERTEX = """#version 300 es
     layout(location = 0) in vec2 aPosition;
     out vec2 vUv;
 
@@ -135,8 +137,7 @@ internal object EdgeFadeGlesShaders {
     }
   """
 
-  val HORIZONTAL = """
-    #version 300 es
+  val HORIZONTAL = """#version 300 es
     #extension GL_OES_EGL_image_external_essl3 : require
     precision highp float;
     precision highp samplerExternalOES;
@@ -205,8 +206,7 @@ internal object EdgeFadeGlesShaders {
     }
   """
 
-  val VERTICAL = """
-    #version 300 es
+  val VERTICAL = """#version 300 es
     precision highp float;
 
     in vec2 vUv;
