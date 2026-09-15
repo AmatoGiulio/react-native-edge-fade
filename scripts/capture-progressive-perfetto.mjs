@@ -148,8 +148,12 @@ const radiusInvariant = String(Number(options.radiusPx.toFixed(3)));
 
 console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}dpi (${round(densityScale)}x)`);
 console.log(`Trace scene: ${round(radiusDp, 2)}dp / ${options.radiusPx}px / Smooth / ${options.edges}`);
-console.log(`Capture: ${options.durationMs}ms / ${options.swipes} driven swipes / warm-up ${options.warmupSwipes}`);
+console.log(`Capture: ${options.durationMs}ms`);
 console.log(`Public backend: ${sdk >= 33 ? 'AGSL API 33+' : 'GLES 3.0 API 31-32'}`);
+
+function usesDeterministicAutoScroll(renderer) {
+  return renderer === 'public' && sdk < 33;
+}
 
 function stopBothApps() {
   adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
@@ -164,7 +168,8 @@ function startRenderer(renderer) {
 
   if (renderer === 'public') {
     adb(['logcat', '-c']);
-    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on`;
+    const workload = usesDeterministicAutoScroll(renderer) ? 'auto' : 'input';
+    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on&workload=${workload}`;
     adb(['shell', `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`]);
     sleep(1800);
     const logcat = adb(['logcat', '-d'], { trim: false });
@@ -194,6 +199,68 @@ function driveSwipes(count) {
     const toY = i % 2 === 0 ? yTop : yBottom;
     adb(['shell', 'input', 'swipe', String(x), String(fromY), String(x), String(toY), String(options.swipeDurationMs)]);
     sleep(90);
+  }
+}
+
+function resetFrameStats(pkg) {
+  adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'reset']);
+}
+
+function readFrameStats(pkg) {
+  const dump = adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'framestats'], { trim: false });
+  const intendedVsyncNs = [];
+  let header = null;
+  let intendedIndex = -1;
+  let waitingForHeader = false;
+
+  for (const rawLine of dump.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === '---PROFILEDATA---') {
+      if (header !== null) {
+        header = null;
+        intendedIndex = -1;
+        waitingForHeader = false;
+      } else {
+        waitingForHeader = true;
+      }
+      continue;
+    }
+
+    if (waitingForHeader && line.startsWith('Flags,')) {
+      header = line.split(',');
+      intendedIndex = header.indexOf('IntendedVsync');
+      waitingForHeader = false;
+      continue;
+    }
+
+    if (header !== null && intendedIndex >= 0 && /^\d+,/.test(line)) {
+      const parts = line.split(',');
+      const intended = Number(parts[intendedIndex]);
+      if (Number.isFinite(intended) && intended > 0) intendedVsyncNs.push(intended);
+    }
+  }
+
+  const unique = [...new Set(intendedVsyncNs)].sort((a, b) => a - b);
+  const spanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1_000_000 : 0;
+  return { frameCount: unique.length, spanMs };
+}
+
+function assertAutoWorkloadCoverage(pkg) {
+  const stats = readFrameStats(pkg);
+  const minSpanMs = options.durationMs * 0.75;
+  const minFrameCount = Math.max(30, Math.floor(options.durationMs / 100));
+
+  console.log(
+    `Auto workload proof: ${stats.frameCount} rendered frames spanning ${round(stats.spanMs, 1)}ms`
+  );
+
+  if (stats.spanMs < minSpanMs || stats.frameCount < minFrameCount) {
+    throw new Error(
+      `Deterministic auto-scroll did not cover the capture window: ` +
+      `${stats.frameCount} frames / ${round(stats.spanMs, 1)}ms span; ` +
+      `need >= ${minFrameCount} frames and >= ${round(minSpanMs, 1)}ms. ` +
+      `Refusing to treat this trace as a steady-state benchmark.`
+    );
   }
 }
 
@@ -244,11 +311,25 @@ function waitForChild(child) {
 
 async function capture(renderer) {
   const pkg = renderer === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
+  const autoWorkload = usesDeterministicAutoScroll(renderer);
   console.log(`\n=== Perfetto: ${renderer} / ${options.edges} / ${options.radiusPx}px ===`);
+  console.log(
+    autoWorkload
+      ? 'Workload: deterministic in-app auto-scroll with gfx frame-span proof'
+      : `Workload: ${options.swipes} driven input swipes / warm-up ${options.warmupSwipes}`
+  );
 
   startRenderer(renderer);
-  driveSwipes(options.warmupSwipes);
-  sleep(500);
+  if (autoWorkload) {
+    // The route has already been auto-scrolling during the renderer startup wait.
+    // Give it one extra cycle fragment before resetting GraphicsStats so startup
+    // frames cannot satisfy the measured-window coverage proof.
+    sleep(500);
+  } else {
+    driveSwipes(options.warmupSwipes);
+    sleep(500);
+  }
+  resetFrameStats(pkg);
 
   const id = `${process.pid}-${Date.now()}`;
   // Android 14+ SELinux can deny perfetto's domain access to configs placed in
@@ -272,9 +353,13 @@ async function capture(renderer) {
     const perfettoDone = waitForChild(perfetto);
     perfetto.stdin.end(perfettoConfig(pkg));
 
-    sleep(900);
-    driveSwipes(options.swipes);
+    if (!autoWorkload) {
+      sleep(900);
+      driveSwipes(options.swipes);
+    }
     await perfettoDone;
+
+    if (autoWorkload) assertAutoWorkloadCoverage(pkg);
 
     adb(['pull', remoteTrace, localTrace]);
     console.log(`Trace: ${localTrace}`);
