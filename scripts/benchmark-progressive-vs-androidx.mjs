@@ -103,6 +103,11 @@ function round(value, digits = 3) {
   return Math.round(value * factor) / factor;
 }
 
+function ratio(a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+  return round(a / b);
+}
+
 function parseFrameStats(text) {
   const durations = [];
   const intervals = [];
@@ -241,8 +246,9 @@ if (isEmulator) console.warn('EMULATOR SMOKE TEST ONLY: do not use these frame/G
 
 console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}dpi (${round(densityScale)}x)`);
 console.log(`Scene: ${round(radiusDp, 2)}dp public = ${options.radiusPx}px official / Smooth / ${options.edges}`);
-console.log('Metric: incremental blur cost = blur run - same-app no-effect baseline');
 console.log(`Method: ${options.blocks} balanced block(s); both apps are force-stopped before every run`);
+console.log('Host-level gfxinfo is a smoke/diagnostic metric. Renderer-level acceptance uses Perfetto/FrameTimeline.');
+console.log('No-effect baselines are retained for diagnostics only; independent percentiles are not subtracted as a release metric.');
 
 function stopBothApps() {
   adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
@@ -257,10 +263,18 @@ function startVariant(name) {
   sleep(400);
 
   if (variant.app === 'public') {
+    if (variant.effect) adb(['logcat', '-c']);
     const effect = variant.effect ? 'on' : 'off';
     const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=${effect}`;
     const command = `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`;
     adb(['shell', command]);
+    if (variant.effect) {
+      sleep(1200);
+      const logcat = adb(['logcat', '-d'], { trim: false });
+      if (!logcat.includes('EdgeFadeProgressive: Using pure progressive AGSL blur on API 33+')) {
+        throw new Error('Public Progressive activation was not observed in logcat; refusing to benchmark the wrong backend.');
+      }
+    }
   } else {
     adb([
       'shell', 'am', 'start', '-W', '-n', ANDROIDX_ACTIVITY,
@@ -373,7 +387,7 @@ function aggregateFor(name) {
   return row;
 }
 
-function incremental(blurName, baselineName) {
+function diagnosticDelta(blurName, baselineName) {
   const blur = aggregateFor(blurName);
   const baseline = aggregateFor(baselineName);
   return {
@@ -389,61 +403,48 @@ function incremental(blurName, baselineName) {
     BaselineMissedPct: baseline.MissedPctMedian,
     BlurMissedPct: blur.MissedPctMedian,
     MissedPctDelta: round(blur.MissedPctMedian - baseline.MissedPctMedian, 2),
-    BaselinePssMb: baseline.PssMedianMb,
-    BlurPssMb: blur.PssMedianMb,
-    PssDeltaMb: baseline.PssMedianMb == null || blur.PssMedianMb == null
-      ? null
-      : round(blur.PssMedianMb - baseline.PssMedianMb, 2),
   };
 }
 
-function safeRatio(numerator, denominator) {
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || Math.abs(denominator) < 0.05) return null;
-  return round(numerator / denominator);
-}
-
-const publicIncremental = incremental('public', 'public-off');
-const androidxIncremental = incremental('androidx', 'androidx-off');
-const normalized = {
+const publicBlur = aggregateFor('public');
+const androidxBlur = aggregateFor('androidx');
+const hostComparison = {
   Edges: options.edges,
   RadiusDpPublic: round(radiusDp),
   RadiusPx: options.radiusPx,
-  Public: publicIncremental,
-  Androidx: androidxIncremental,
-  P50IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P50DeltaMs, androidxIncremental.P50DeltaMs),
-  P95IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P95DeltaMs, androidxIncremental.P95DeltaMs),
-  P99IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P99DeltaMs, androidxIncremental.P99DeltaMs),
+  PublicP50Ms: publicBlur.P50MedianMs,
+  AndroidxP50Ms: androidxBlur.P50MedianMs,
+  P50RatioPublicToAndroidx: ratio(publicBlur.P50MedianMs, androidxBlur.P50MedianMs),
+  PublicP95Ms: publicBlur.P95MedianMs,
+  AndroidxP95Ms: androidxBlur.P95MedianMs,
+  P95RatioPublicToAndroidx: ratio(publicBlur.P95MedianMs, androidxBlur.P95MedianMs),
+  PublicP99Ms: publicBlur.P99MedianMs,
+  AndroidxP99Ms: androidxBlur.P99MedianMs,
+  P99RatioPublicToAndroidx: ratio(publicBlur.P99MedianMs, androidxBlur.P99MedianMs),
+  PublicMissedPct: publicBlur.MissedPctMedian,
+  AndroidxMissedPct: androidxBlur.MissedPctMedian,
 };
 
-console.log('\nRaw same-app aggregates:');
-console.table(aggregate);
-console.log('\nNormalized incremental blur cost (blur - same-app baseline):');
-console.table([
-  {
-    App: 'public',
-    P50DeltaMs: publicIncremental.P50DeltaMs,
-    P95DeltaMs: publicIncremental.P95DeltaMs,
-    P99DeltaMs: publicIncremental.P99DeltaMs,
-    MissedPctDelta: publicIncremental.MissedPctDelta,
-  },
-  {
-    App: 'androidx',
-    P50DeltaMs: androidxIncremental.P50DeltaMs,
-    P95DeltaMs: androidxIncremental.P95DeltaMs,
-    P99DeltaMs: androidxIncremental.P99DeltaMs,
-    MissedPctDelta: androidxIncremental.MissedPctDelta,
-  },
-]);
-console.log('\nPublic / AndroidX incremental ratios:');
-console.log(`  p50: ${normalized.P50IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
-console.log(`  p95: ${normalized.P95IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
-console.log(`  p99: ${normalized.P99IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
+const baselineDiagnostic = {
+  Public: diagnosticDelta('public', 'public-off'),
+  Androidx: diagnosticDelta('androidx', 'androidx-off'),
+};
 
-const result = { aggregate, normalized };
+console.log('\nRaw isolated aggregates:');
+console.table(aggregate);
+console.log('\nEffect-on host-level comparison (smoke/diagnostic, not renderer isolation):');
+console.table([hostComparison]);
+console.log('\nNo-effect baseline diagnostics (do not ratio/subtract these percentiles for acceptance):');
+console.table([
+  { App: 'public', ...baselineDiagnostic.Public },
+  { App: 'androidx', ...baselineDiagnostic.Androidx },
+]);
+
+const result = { aggregate, hostComparison, baselineDiagnostic };
 const aggregatePath = options.aggregateOut
   ? path.resolve(options.aggregateOut)
-  : path.join(RESULTS_DIR, `${timestamp()}-${options.edges}-${label}px-normalized.json`);
+  : path.join(RESULTS_DIR, `${timestamp()}-${options.edges}-${label}px-isolated.json`);
 fs.mkdirSync(path.dirname(aggregatePath), { recursive: true });
 fs.writeFileSync(aggregatePath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
-console.log(`\nNormalized JSON: ${aggregatePath}`);
+console.log(`\nIsolated JSON: ${aggregatePath}`);
 console.log(`Raw framestats, meminfo and JSON summaries: ${RESULTS_DIR}`);
