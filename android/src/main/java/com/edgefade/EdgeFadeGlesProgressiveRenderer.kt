@@ -110,7 +110,6 @@ internal class EdgeFadeGlesProgressiveRenderer(
   private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
   private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
   private var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
-  private var eglConfig: EGLConfig? = null
 
   private var outputReader: ImageReader? = null
   private var sourceSurfaceTexture: SurfaceTexture? = null
@@ -379,8 +378,10 @@ internal class EdgeFadeGlesProgressiveRenderer(
       return
     }
 
-    destroyGlResources()
+    // Retained hardware Bitmaps must release their ImageReader slots before the
+    // reader itself is destroyed during resize/reconfiguration.
     closePendingFrames()
+    destroyGlResources()
 
     val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
     if (display == EGL14.EGL_NO_DISPLAY) throw RuntimeException("eglGetDisplay failed")
@@ -392,6 +393,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
     val configs = arrayOfNulls<EGLConfig>(1)
     val count = IntArray(1)
     val configAttributes = intArrayOf(
+      EGL14.EGL_SURFACE_TYPE,
+      EGL14.EGL_WINDOW_BIT,
       EGL14.EGL_RENDERABLE_TYPE,
       EGL_OPENGL_ES3_BIT_KHR,
       EGL14.EGL_RED_SIZE,
@@ -406,7 +409,7 @@ internal class EdgeFadeGlesProgressiveRenderer(
     )
     if (!EGL14.eglChooseConfig(display, configAttributes, 0, configs, 0, 1, count, 0) || count[0] < 1) {
       EGL14.eglTerminate(display)
-      throw RuntimeException("No RGBA8 GLES3 EGLConfig")
+      throw RuntimeException("No RGBA8 GLES3 window EGLConfig")
     }
     val config = requireNotNull(configs[0])
 
@@ -444,7 +447,6 @@ internal class EdgeFadeGlesProgressiveRenderer(
     }
 
     eglDisplay = display
-    eglConfig = config
     eglContext = context
     eglSurface = windowSurface
     outputReader = reader
@@ -706,7 +708,7 @@ internal class EdgeFadeGlesProgressiveRenderer(
   private fun destroyGlResources() {
     sourceRenderer?.run {
       stop()
-      clearContent()
+      setContentRoot(null)
       destroy()
     }
     sourceRenderer = null
@@ -744,7 +746,6 @@ internal class EdgeFadeGlesProgressiveRenderer(
     eglDisplay = EGL14.EGL_NO_DISPLAY
     eglContext = EGL14.EGL_NO_CONTEXT
     eglSurface = EGL14.EGL_NO_SURFACE
-    eglConfig = null
     sourceTextureId = 0
     horizontalTextureId = 0
     framebufferId = 0
