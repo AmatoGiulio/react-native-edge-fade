@@ -48,8 +48,10 @@ export default function ProgressiveBlurPerfRoute() {
   const params = useLocalSearchParams<{
     edges?: string;
     radiusPx?: string;
+    effect?: string;
   }>();
   const fourEdges = params.edges === 'four';
+  const effectEnabled = params.effect !== 'off';
   const targetRadiusPx = resolveRadiusPx(params.radiusPx);
   const radiusDp = targetRadiusPx / PERF_DENSITY;
   const actualRadiusPx = radiusDp * PERF_DENSITY;
@@ -65,7 +67,7 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.eyebrow}>EDGE FADE / PERF</Text>
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
-          Public Progressive ·
+          {effectEnabled ? 'Public Progressive' : 'Public baseline · no effect'} ·
           {` ${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
         </Text>
@@ -75,11 +77,11 @@ export default function ProgressiveBlurPerfRoute() {
         <EdgeFadeView
           testID="perf-edge-fade"
           style={s.viewport}
-          mode="blur"
-          top={92}
-          bottom={112}
-          left={fourEdges ? 48 : 0}
-          right={fourEdges ? 48 : 0}
+          mode={effectEnabled ? 'blur' : 'mask'}
+          top={effectEnabled ? 92 : 0}
+          bottom={effectEnabled ? 112 : 0}
+          left={effectEnabled && fourEdges ? 48 : 0}
+          right={effectEnabled && fourEdges ? 48 : 0}
           curve="smooth"
           blurRadius={radiusDp}
         >
