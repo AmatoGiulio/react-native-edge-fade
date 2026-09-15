@@ -12,6 +12,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RESULTS_DIR = path.join(ROOT, 'benchmark-results', 'androidx-official');
 fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
+const VARIANTS = {
+  'public-off': { app: 'public', effect: false },
+  public: { app: 'public', effect: true },
+  'androidx-off': { app: 'androidx', effect: false },
+  androidx: { app: 'androidx', effect: true },
+};
+const VARIANT_ORDER = ['public-off', 'public', 'androidx-off', 'androidx'];
+
 function parseArgs(argv) {
   const options = {
     edges: 'vertical',
@@ -90,6 +98,7 @@ function median(values) {
 }
 
 function round(value, digits = 3) {
+  if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
 }
@@ -175,7 +184,7 @@ function parseFrameStats(text) {
 
 function totalPssMb(text) {
   const match = text.match(/TOTAL PSS:\s+(\d+)/);
-  return match ? round(Number(match[1]) / 1024, 2) : Number.NaN;
+  return match ? round(Number(match[1]) / 1024, 2) : null;
 }
 
 function radiusLabel(value) {
@@ -231,24 +240,34 @@ if (isEmulator && !options.allowEmulator) {
 if (isEmulator) console.warn('EMULATOR SMOKE TEST ONLY: do not use these frame/GPU numbers for renderer decisions.');
 
 console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}dpi (${round(densityScale)}x)`);
-console.log(`Scene: ${round(radiusDp, 2)}dp public = ${options.radiusPx}px official / Smooth / ${options.edges} / neutral pure Gaussian`);
-console.log(`Method: discarded warm-up per renderer + ${options.blocks} balanced ABBA/BAAB block(s)`);
+console.log(`Scene: ${round(radiusDp, 2)}dp public = ${options.radiusPx}px official / Smooth / ${options.edges}`);
+console.log('Metric: incremental blur cost = blur run - same-app no-effect baseline');
+console.log(`Method: ${options.blocks} balanced block(s); both apps are force-stopped before every run`);
 
-function startRenderer(name) {
-  if (name === 'public') {
-    adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
-    sleep(400);
-    const uri = `edgefade://progressive-blur-perf?backend=progressive&edges=${options.edges}&radiusPx=${radiusInvariant}`;
+function stopBothApps() {
+  adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
+  adb(['shell', 'am', 'force-stop', ANDROIDX_PACKAGE]);
+}
+
+function startVariant(name) {
+  const variant = VARIANTS[name];
+  if (!variant) throw new Error(`Unknown benchmark variant: ${name}`);
+
+  stopBothApps();
+  sleep(400);
+
+  if (variant.app === 'public') {
+    const effect = variant.effect ? 'on' : 'off';
+    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=${effect}`;
     const command = `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`;
     adb(['shell', command]);
   } else {
-    adb(['shell', 'am', 'force-stop', ANDROIDX_PACKAGE]);
-    sleep(400);
     adb([
       'shell', 'am', 'start', '-W', '-n', ANDROIDX_ACTIVITY,
       '--es', 'edges', options.edges,
       '--ef', 'radiusPx', radiusInvariant,
       '--es', 'curve', 'smooth',
+      '--es', 'effect', variant.effect ? 'on' : 'off',
     ]);
   }
   sleep(2000);
@@ -264,16 +283,18 @@ function driveSwipes(count) {
 }
 
 console.log('\nWarm-up (discarded):');
-for (const name of ['public', 'androidx']) {
+for (const name of VARIANT_ORDER) {
   console.log(`  ${name}`);
-  startRenderer(name);
+  startVariant(name);
   driveSwipes(options.warmupSwipes);
   sleep(500);
 }
 
 function runOne(name, run) {
-  const pkg = name === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
-  startRenderer(name);
+  const variant = VARIANTS[name];
+  const pkg = variant.app === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
+  startVariant(name);
+
   adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'reset']);
   driveSwipes(options.swipes);
   sleep(1000);
@@ -288,7 +309,9 @@ function runOne(name, run) {
   fs.writeFileSync(`${prefix}-meminfo.txt`, memoryText, 'utf8');
 
   const summary = {
-    Renderer: name,
+    Variant: name,
+    App: variant.app,
+    Effect: variant.effect ? 'blur' : 'off',
     Edges: options.edges,
     Run: run,
     DensityDpi: densityDpi,
@@ -311,8 +334,8 @@ function runOne(name, run) {
 const sequence = [];
 for (let block = 0; block < options.blocks; block++) {
   sequence.push(...(block % 2 === 0
-    ? ['public', 'androidx', 'androidx', 'public']
-    : ['androidx', 'public', 'public', 'androidx']));
+    ? ['public-off', 'public', 'androidx-off', 'androidx', 'androidx', 'androidx-off', 'public', 'public-off']
+    : ['androidx-off', 'androidx', 'public-off', 'public', 'public', 'public-off', 'androidx', 'androidx-off']));
 }
 
 const runs = [];
@@ -325,36 +348,102 @@ for (let i = 0; i < sequence.length; i++) {
   if (i < sequence.length - 1) sleep(options.cooldownSeconds * 1000);
 }
 
-const aggregate = ['androidx', 'public'].map((renderer) => {
-  const items = runs.filter((item) => item.Renderer === renderer);
+const aggregate = VARIANT_ORDER.map((variantName) => {
+  const items = runs.filter((item) => item.Variant === variantName);
   return {
-    Renderer: renderer,
+    Variant: variantName,
+    App: VARIANTS[variantName].app,
+    Effect: VARIANTS[variantName].effect ? 'blur' : 'off',
     Edges: options.edges,
     RadiusDpPublic: round(radiusDp),
     RadiusPx: options.radiusPx,
     Runs: items.length,
-    FrameIntervalMs: round(median(items.map((item) => item.FrameIntervalMs))),
+    FrameIntervalMs: round(median(items.map((item) => item.FrameIntervalMs).filter(Number.isFinite))),
     P50MedianMs: round(median(items.map((item) => item.P50Ms))),
     P95MedianMs: round(median(items.map((item) => item.P95Ms))),
     P99MedianMs: round(median(items.map((item) => item.P99Ms))),
     MissedPctMedian: round(median(items.map((item) => item.MissedPct)), 2),
-    PssMedianMb: round(median(items.map((item) => item.TotalPssMb)), 2),
+    PssMedianMb: round(median(items.map((item) => item.TotalPssMb).filter(Number.isFinite)), 2),
   };
 });
 
-console.log('\nAggregate (balanced ABBA/BAAB):');
-console.table(aggregate);
-const publicRow = aggregate.find((item) => item.Renderer === 'public');
-const androidxRow = aggregate.find((item) => item.Renderer === 'androidx');
-console.log('\nPublic / AndroidX median ratios:');
-console.log(`  p50: ${round(publicRow.P50MedianMs / androidxRow.P50MedianMs)}x`);
-console.log(`  p95: ${round(publicRow.P95MedianMs / androidxRow.P95MedianMs)}x`);
-console.log(`  p99: ${round(publicRow.P99MedianMs / androidxRow.P99MedianMs)}x`);
+function aggregateFor(name) {
+  const row = aggregate.find((item) => item.Variant === name);
+  if (!row) throw new Error(`Missing aggregate row for ${name}`);
+  return row;
+}
 
+function incremental(blurName, baselineName) {
+  const blur = aggregateFor(blurName);
+  const baseline = aggregateFor(baselineName);
+  return {
+    BaselineP50Ms: baseline.P50MedianMs,
+    BlurP50Ms: blur.P50MedianMs,
+    P50DeltaMs: round(blur.P50MedianMs - baseline.P50MedianMs),
+    BaselineP95Ms: baseline.P95MedianMs,
+    BlurP95Ms: blur.P95MedianMs,
+    P95DeltaMs: round(blur.P95MedianMs - baseline.P95MedianMs),
+    BaselineP99Ms: baseline.P99MedianMs,
+    BlurP99Ms: blur.P99MedianMs,
+    P99DeltaMs: round(blur.P99MedianMs - baseline.P99MedianMs),
+    BaselineMissedPct: baseline.MissedPctMedian,
+    BlurMissedPct: blur.MissedPctMedian,
+    MissedPctDelta: round(blur.MissedPctMedian - baseline.MissedPctMedian, 2),
+    BaselinePssMb: baseline.PssMedianMb,
+    BlurPssMb: blur.PssMedianMb,
+    PssDeltaMb: baseline.PssMedianMb == null || blur.PssMedianMb == null
+      ? null
+      : round(blur.PssMedianMb - baseline.PssMedianMb, 2),
+  };
+}
+
+function safeRatio(numerator, denominator) {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || Math.abs(denominator) < 0.05) return null;
+  return round(numerator / denominator);
+}
+
+const publicIncremental = incremental('public', 'public-off');
+const androidxIncremental = incremental('androidx', 'androidx-off');
+const normalized = {
+  Edges: options.edges,
+  RadiusDpPublic: round(radiusDp),
+  RadiusPx: options.radiusPx,
+  Public: publicIncremental,
+  Androidx: androidxIncremental,
+  P50IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P50DeltaMs, androidxIncremental.P50DeltaMs),
+  P95IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P95DeltaMs, androidxIncremental.P95DeltaMs),
+  P99IncrementalRatioPublicToAndroidx: safeRatio(publicIncremental.P99DeltaMs, androidxIncremental.P99DeltaMs),
+};
+
+console.log('\nRaw same-app aggregates:');
+console.table(aggregate);
+console.log('\nNormalized incremental blur cost (blur - same-app baseline):');
+console.table([
+  {
+    App: 'public',
+    P50DeltaMs: publicIncremental.P50DeltaMs,
+    P95DeltaMs: publicIncremental.P95DeltaMs,
+    P99DeltaMs: publicIncremental.P99DeltaMs,
+    MissedPctDelta: publicIncremental.MissedPctDelta,
+  },
+  {
+    App: 'androidx',
+    P50DeltaMs: androidxIncremental.P50DeltaMs,
+    P95DeltaMs: androidxIncremental.P95DeltaMs,
+    P99DeltaMs: androidxIncremental.P99DeltaMs,
+    MissedPctDelta: androidxIncremental.MissedPctDelta,
+  },
+]);
+console.log('\nPublic / AndroidX incremental ratios:');
+console.log(`  p50: ${normalized.P50IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
+console.log(`  p95: ${normalized.P95IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
+console.log(`  p99: ${normalized.P99IncrementalRatioPublicToAndroidx ?? 'n/a'}x`);
+
+const result = { aggregate, normalized };
 const aggregatePath = options.aggregateOut
   ? path.resolve(options.aggregateOut)
-  : path.join(RESULTS_DIR, `${timestamp()}-${options.edges}-${label}px-aggregate.json`);
+  : path.join(RESULTS_DIR, `${timestamp()}-${options.edges}-${label}px-normalized.json`);
 fs.mkdirSync(path.dirname(aggregatePath), { recursive: true });
-fs.writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`, 'utf8');
-console.log(`\nAggregate JSON: ${aggregatePath}`);
+fs.writeFileSync(aggregatePath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+console.log(`\nNormalized JSON: ${aggregatePath}`);
 console.log(`Raw framestats, meminfo and JSON summaries: ${RESULTS_DIR}`);
