@@ -7,6 +7,7 @@ import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
 import androidx.annotation.RequiresApi
+import java.lang.ref.WeakReference
 import kotlin.math.ceil
 
 /**
@@ -31,7 +32,7 @@ import kotlin.math.ceil
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
-  private val host: EdgeFadeView,
+  host: EdgeFadeView,
 ) {
 
   private data class Key(
@@ -78,15 +79,20 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
   }
 
+  // Api33.renderers is a WeakHashMap keyed by EdgeFadeView. Keeping a strong
+  // host reference in the value would create value -> key retention and defeat
+  // the weak-key lifecycle if React Native ever skips an explicit drop callback.
+  private val hostRef = WeakReference(host)
   private val content = RenderNode("EdgeFade.Progressive.content")
   private var key: Key? = null
   private var strips = emptyList<Strip>()
 
   /** Compile/configure shaders before the selector commits to this backend. */
-  fun prepare() {
+  fun prepare(): Boolean {
+    val host = hostRef.get() ?: return false
     val width = host.width
     val height = host.height
-    if (width <= 0 || height <= 0) return
+    if (width <= 0 || height <= 0) return false
 
     val next = Key(
       width = width,
@@ -103,26 +109,34 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveRight = host.curveRight,
     )
 
-    if (key == next) return
+    if (key == next) return true
 
     configure(next)
     key = next
+    return true
   }
 
-  fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit) {
-    if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return
+  /**
+   * @return true only if this renderer owned the frame. false tells the host to
+   * draw Mask instead, so an empty/invalid renderer can never blank the content.
+   */
+  fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
+    val host = hostRef.get() ?: return false
+    if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return false
 
     Trace.beginSection("EdgeFade.progressive.strip.draw")
     try {
       // Re-evaluate geometry before inspecting strips. Layout/prop updates can
       // reach draw between selector transactions; never let a stale empty list
       // suppress the child scene for a frame.
-      tracePhase("EdgeFade.progressive.prepare") {
+      val prepared = tracePhase("EdgeFade.progressive.prepare") {
         prepare()
       }
+      if (!prepared) return false
+
       if (strips.isEmpty()) {
         recordChildren(canvas)
-        return
+        return true
       }
 
       // Materialize the child scene once. The sharp base and every filtered
@@ -183,6 +197,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           }
         }
       }
+      return true
     } finally {
       Trace.endSection()
     }
@@ -290,6 +305,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   fun release() {
     strips.forEach { it.release() }
     strips = emptyList()
+    content.setUseCompositingLayer(false, null)
     content.discardDisplayList()
     key = null
   }
