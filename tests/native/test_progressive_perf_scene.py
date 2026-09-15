@@ -55,7 +55,7 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("AndroidX baseline active", source)
         self.assertIn("AndroidX official active", source)
 
-    def test_cross_platform_comparator_uses_same_app_baselines(self):
+    def test_cross_platform_comparator_keeps_baselines_as_diagnostics(self):
         script = read(COMPARATOR_NODE)
         for contract in (
             "com.edgefadeexample",
@@ -65,10 +65,7 @@ class ProgressivePerfScene(unittest.TestCase):
             "'androidx-off'",
             "effect=${effect}",
             "'--es', 'effect', variant.effect ? 'on' : 'off'",
-            "incremental('public', 'public-off')",
-            "incremental('androidx', 'androidx-off')",
-            "P50IncrementalRatioPublicToAndroidx",
-            "Normalized incremental blur cost (blur - same-app baseline)",
+            "function stopBothApps()",
             "--aggregate-out",
             "DEBUGGABLE",
             "ro.kernel.qemu",
@@ -92,24 +89,31 @@ class ProgressivePerfScene(unittest.TestCase):
             script,
         )
 
-    def test_cross_platform_envelope_reports_normalized_incremental_cost(self):
+    def test_cross_platform_envelope_reports_isolated_host_metrics_without_percentile_subtraction(self):
         script = read(ENVELOPE_NODE)
         self.assertIn("defaultBlurRadiusDp: 28", script)
         self.assertIn("[64, defaultRadiusPx, 120, 144]", script)
         self.assertIn("['vertical', 'four']", script)
         self.assertIn("benchmark-progressive-vs-androidx.mjs", script)
         self.assertIn("--aggregate-out", script)
-        self.assertIn("resultJson.normalized", script)
-        self.assertIn("PublicP50IncrementalMs", script)
-        self.assertIn("AndroidxP50IncrementalMs", script)
-        self.assertIn("P50IncrementalRatioPublicToAndroidx", script)
-        self.assertIn("PublicMissedPctDelta", script)
-        self.assertIn("AndroidxMissedPctDelta", script)
-        self.assertIn("public-vs-androidx-normalized-envelope.csv", script)
+        self.assertIn("PublicBlurP50Ms", script)
+        self.assertIn("AndroidxBlurP50Ms", script)
+        self.assertIn("P50HostRatioPublicToAndroidx", script)
+        self.assertIn("PublicBlurP95Ms", script)
+        self.assertIn("AndroidxBlurP95Ms", script)
+        self.assertIn("P95HostRatioPublicToAndroidx", script)
+        self.assertIn("No-effect baselines are diagnostic only", script)
+        self.assertIn("Renderer-level acceptance is based on Perfetto/FrameTimeline slices", script)
+        self.assertIn("public-vs-androidx-isolated-envelope.csv", script)
+        self.assertNotIn("P50IncrementalRatioPublicToAndroidx", script)
         self.assertNotIn("legacy", script.lower())
 
-    def test_perfetto_capture_streams_config_and_uses_supported_trace_directory(self):
+    def test_perfetto_capture_isolates_target_and_uses_supported_trace_directory(self):
         script = read(PERFETTO_NODE)
+        self.assertIn("function stopBothApps()", script)
+        self.assertIn("adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE])", script)
+        self.assertIn("adb(['shell', 'am', 'force-stop', ANDROIDX_PACKAGE])", script)
+        self.assertIn("stopBothApps();", script)
         self.assertIn("/data/misc/perfetto-traces/edgefade-", script)
         self.assertIn("'-c', '-'", script)
         self.assertIn("perfetto.stdin.end(perfettoConfig(pkg))", script)
