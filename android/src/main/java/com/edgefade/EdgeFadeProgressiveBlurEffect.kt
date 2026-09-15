@@ -13,9 +13,9 @@ import java.util.WeakHashMap
 /**
  * Internal backend switch for the public EdgeFadeView.
  *
- * `mode="blur"` keeps one semantic contract on supported Android releases:
- * a true spatially-varying Gaussian whose radius is driven continuously by the
- * edge mask. The implementation is selected by platform capability:
+ * `mode="blur"` keeps one Android semantic contract on supported releases: a
+ * true spatially-varying Gaussian whose radius is driven continuously by the
+ * edge mask. The implementation is selected only by platform capability:
  *
  * - API 33+: AndroidX-derived AGSL / RuntimeShader edge-local renderer.
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
@@ -143,7 +143,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     when {
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.clear(view)
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.clear(view)
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> view.setRenderEffect(null)
     }
   }
 
