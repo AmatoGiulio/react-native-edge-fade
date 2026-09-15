@@ -96,6 +96,24 @@ function relevantLogcat() {
   );
 }
 
+function failureExcerpt(logcat) {
+  const lines = logcat.split(/\r?\n/);
+  const markers = [
+    'GLES progressive renderer creation failed',
+    'GLES progressive configuration failed',
+    'GLES progressive frame unavailable',
+    'GLES progressive draw failed',
+    'Progressive strip shader creation failed',
+    'Progressive strip configuration failed',
+    'Progressive strip draw failed',
+    'FATAL EXCEPTION',
+    'Fatal signal',
+  ];
+  const first = lines.findIndex((line) => markers.some((marker) => line.includes(marker)));
+  if (first < 0) return '';
+  return lines.slice(first, Math.min(lines.length, first + 24)).join('\n').trim();
+}
+
 const model = shell('getprop ro.product.model');
 const sdk = Number(shell('getprop ro.build.version.sdk'));
 const qemu = shell('getprop ro.kernel.qemu');
@@ -127,8 +145,7 @@ const yBottom = Math.round(height * 0.78);
 
 const accelerometerRotation =
   shell('settings get system accelerometer_rotation', { allowFailure: true }) || '1';
-const userRotation =
-  shell('settings get system user_rotation', { allowFailure: true }) || '0';
+const userRotation = shell('settings get system user_rotation', { allowFailure: true }) || '0';
 const uri = `edgefade://progressive-blur-smoke?edges=${options.edges}`;
 
 function startSmoke() {
@@ -246,6 +263,11 @@ if (sdk >= 33) {
 if (failures.length) {
   console.error('\nFAIL');
   for (const failure of failures) console.error(`  - ${failure}`);
+  const excerpt = failureExcerpt(logcat);
+  if (excerpt) {
+    console.error('\nNative failure excerpt:');
+    console.error(excerpt);
+  }
   process.exitCode = 1;
 } else {
   console.log('\nPASS');
