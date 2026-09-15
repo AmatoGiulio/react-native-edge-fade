@@ -54,6 +54,10 @@ class ProgressivePublicBackend(unittest.TestCase):
             "progressiveFallbackReason(view)",
         ):
             self.assertIn(contract, source)
+        self.assertIn(
+            'Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "requires API 33+"',
+            source,
+        )
         self.assertNotIn('view.mode = "overlay"', source)
         self.assertNotIn("hasNeutralColorGrade", source)
         self.assertNotIn("keeping Legacy", source)
@@ -187,6 +191,36 @@ class ProgressivePublicBackend(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, shaders)
             self.assertNotIn(forbidden, renderer)
+
+    def test_renderer_cannot_retain_weak_map_key_and_draw_is_fallback_safe(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+
+        # WeakHashMap values must not strongly retain their EdgeFadeView key.
+        self.assertIn("WeakHashMap<EdgeFadeView, State>()", selector)
+        self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()", selector)
+        self.assertIn("val edgeFadeView = changed as? EdgeFadeView", selector)
+        self.assertNotIn("apply(view)\n      }\n    }\n    state.layoutListener", selector)
+        self.assertIn("private val hostRef = WeakReference(host)", renderer)
+        self.assertNotIn("private val host: EdgeFadeView", renderer)
+
+        # draw() must report whether it actually owned the frame. The host then
+        # uses Mask in the same frame instead of accepting a blank progressive draw.
+        self.assertIn("fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean", renderer)
+        self.assertIn("if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return false", renderer)
+        self.assertIn("if (!prepared) return false", renderer)
+        self.assertIn("recordChildren(canvas)\n        return true", renderer)
+        self.assertIn("return true\n    } finally", renderer)
+        self.assertIn("renderer.draw(canvas, recordChildren)", selector)
+        self.assertIn("Progressive strip draw failed; using mask fallback", selector)
+        self.assertIn("Api33.clear(view)", selector)
+
+    def test_release_clears_compositing_layer_and_display_lists(self):
+        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        self.assertIn("node.setRenderEffect(null)", renderer)
+        self.assertIn("node.discardDisplayList()", renderer)
+        self.assertIn("content.setUseCompositingLayer(false, null)", renderer)
+        self.assertIn("content.discardDisplayList()", renderer)
 
     def test_consumer_build_remains_compose_free(self):
         gradle = read(ROOT / "android/build.gradle")
