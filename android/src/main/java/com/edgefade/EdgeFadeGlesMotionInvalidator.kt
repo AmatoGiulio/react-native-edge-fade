@@ -2,6 +2,7 @@ package com.edgefade
 
 import android.os.Build
 import android.view.Choreographer
+import android.view.View
 import android.view.ViewTreeObserver
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
@@ -25,12 +26,53 @@ internal object EdgeFadeGlesMotionInvalidator {
     private val viewRef = WeakReference(view)
     private val choreographer = Choreographer.getInstance()
 
-    var observer: ViewTreeObserver? = null
-    var scheduled = false
-    var activeUntilNanos = 0L
+    private var observer: ViewTreeObserver? = null
+    private var scheduled = false
+    private var activeUntilNanos = 0L
 
-    val scrollListener = ViewTreeObserver.OnScrollChangedListener {
+    private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
       kick()
+    }
+
+    private val attachListener = object : View.OnAttachStateChangeListener {
+      override fun onViewAttachedToWindow(attached: View) {
+        attachObserver(attached as EdgeFadeView)
+      }
+
+      override fun onViewDetachedFromWindow(detached: View) {
+        detachObserver()
+        stopBurst()
+      }
+    }
+
+    fun start() {
+      val view = viewRef.get() ?: return
+      view.addOnAttachStateChangeListener(attachListener)
+      attachObserver(view)
+    }
+
+    private fun attachObserver(view: EdgeFadeView) {
+      detachObserver()
+      val next = view.viewTreeObserver
+      if (!next.isAlive) return
+      next.addOnScrollChangedListener(scrollListener)
+      observer = next
+    }
+
+    private fun detachObserver() {
+      val current = observer
+      if (current != null && current.isAlive) {
+        current.removeOnScrollChangedListener(scrollListener)
+      }
+      observer = null
+    }
+
+    private fun stopBurst() {
+      if (scheduled) {
+        choreographer.removeFrameCallback(this)
+        scheduled = false
+      }
+      activeUntilNanos = 0L
     }
 
     fun kick() {
@@ -63,15 +105,9 @@ internal object EdgeFadeGlesMotionInvalidator {
     }
 
     fun dispose() {
-      if (scheduled) {
-        choreographer.removeFrameCallback(this)
-        scheduled = false
-      }
-      val listenerObserver = observer
-      if (listenerObserver != null && listenerObserver.isAlive) {
-        listenerObserver.removeOnScrollChangedListener(scrollListener)
-      }
-      observer = null
+      stopBurst()
+      detachObserver()
+      viewRef.get()?.removeOnAttachStateChangeListener(attachListener)
     }
   }
 
@@ -81,13 +117,10 @@ internal object EdgeFadeGlesMotionInvalidator {
     if (!platformUsesGlesBackend()) return
     unregister(view)
 
-    val state = State(view)
-    val observer = view.viewTreeObserver
-    if (observer.isAlive) {
-      observer.addOnScrollChangedListener(state.scrollListener)
-      state.observer = observer
+    State(view).also { state ->
+      states[view] = state
+      state.start()
     }
-    states[view] = state
   }
 
   fun unregister(view: EdgeFadeView) {
