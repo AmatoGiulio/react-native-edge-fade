@@ -8,6 +8,7 @@ on:
       - 'android/src/**/EdgeFadeProgressiveStripRenderer.kt'
       - 'android/src/**/EdgeFadeGlesProgressiveRenderer.kt'
       - 'android/src/**/EdgeFadeGlesShaders.kt'
+      - 'android/src/**/EdgeFadeView.kt'
       - 'android/src/**/EdgeFadeViewManager.kt'
       - 'android/build.gradle'
       - 'src/BlurLabNativeComponent.ts'
@@ -22,6 +23,7 @@ on:
       - 'tests/native/test_progressive_public_backend.py'
       - 'tests/native/test_gles_shader_source_contract.py'
       - 'tests/native/test_progressive_perf_scene.py'
+      - 'tests/native/test_progressive_descendant_invalidation.py'
       - '.github/workflows/blur-lab-regressions.yml'
   workflow_dispatch:
 
@@ -54,6 +56,7 @@ jobs:
         run: |
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_shader_source_contract.py
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_descendant_invalidation.py
       - name: Check public performance harness contracts
         run: |
           node --check scripts/benchmark-progressive-vs-androidx.mjs
