@@ -67,6 +67,11 @@ function round(value, digits = 3) {
   return Math.round(value * factor) / factor;
 }
 
+function ratio(a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= 0) return null;
+  return round(a / b);
+}
+
 function timestamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -89,13 +94,14 @@ const requestedRadii = options.radiiPx.length ? options.radiiPx : [64, defaultRa
 const radii = [...new Set(requestedRadii.map((value) => round(Math.min(150, Math.max(1, value)), 3)))];
 const edgeModes = options.edges === 'both' ? ['vertical', 'four'] : [options.edges];
 
-console.log('Public Progressive vs AndroidX Official normalized performance envelope');
+console.log('Public Progressive vs AndroidX Official isolated host envelope');
 console.log(`Density: ${densityDpi}dpi (${round(densityScale)}x)`);
 console.log(`Public default: ${options.defaultBlurRadiusDp}dp = ${round(defaultRadiusPx, 1)}px`);
 console.log(`Radii: ${radii.join(', ')} px`);
 console.log(`Edges: ${edgeModes.join(', ')}`);
-console.log('Metric: blur - same-app no-effect baseline');
-console.log(`Each point: ${options.blocks} balanced block(s)`);
+console.log(`Each point: ${options.blocks} balanced block(s); both apps are force-stopped before every variant`);
+console.log('No-effect baselines are diagnostic only. Do not subtract independent percentiles as a renderer metric.');
+console.log('Renderer-level acceptance is based on Perfetto/FrameTimeline slices.');
 
 const rows = [];
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'edgefade-androidx-envelope-'));
@@ -124,9 +130,16 @@ try {
       if (result.status !== 0) throw new Error(`Comparator failed for ${edges} / ${radiusPx}px with exit ${result.status}`);
 
       const resultJson = JSON.parse(fs.readFileSync(aggregatePath, 'utf8'));
-      const normalized = resultJson.normalized;
-      if (!normalized?.Public || !normalized?.Androidx) {
-        throw new Error(`Missing normalized Public or AndroidX data for ${edges} / ${radiusPx}px`);
+      const aggregate = resultJson.aggregate;
+      if (!Array.isArray(aggregate)) throw new Error(`Missing aggregate data for ${edges} / ${radiusPx}px`);
+
+      const find = (name) => aggregate.find((item) => item.Variant === name);
+      const publicOff = find('public-off');
+      const publicBlur = find('public');
+      const androidxOff = find('androidx-off');
+      const androidxBlur = find('androidx');
+      if (!publicOff || !publicBlur || !androidxOff || !androidxBlur) {
+        throw new Error(`Missing benchmark variant for ${edges} / ${radiusPx}px`);
       }
 
       rows.push({
@@ -134,21 +147,19 @@ try {
         RadiusPx: radiusPx,
         RadiusDpPublic: round(radiusPx / densityScale),
         IsPublicDefault: Math.abs(radiusPx - defaultRadiusPx) < 0.6,
-        PublicBaselineP50Ms: normalized.Public.BaselineP50Ms,
-        PublicBlurP50Ms: normalized.Public.BlurP50Ms,
-        PublicP50IncrementalMs: normalized.Public.P50DeltaMs,
-        AndroidxBaselineP50Ms: normalized.Androidx.BaselineP50Ms,
-        AndroidxBlurP50Ms: normalized.Androidx.BlurP50Ms,
-        AndroidxP50IncrementalMs: normalized.Androidx.P50DeltaMs,
-        P50IncrementalRatioPublicToAndroidx: normalized.P50IncrementalRatioPublicToAndroidx,
-        PublicP95IncrementalMs: normalized.Public.P95DeltaMs,
-        AndroidxP95IncrementalMs: normalized.Androidx.P95DeltaMs,
-        P95IncrementalRatioPublicToAndroidx: normalized.P95IncrementalRatioPublicToAndroidx,
-        PublicP99IncrementalMs: normalized.Public.P99DeltaMs,
-        AndroidxP99IncrementalMs: normalized.Androidx.P99DeltaMs,
-        P99IncrementalRatioPublicToAndroidx: normalized.P99IncrementalRatioPublicToAndroidx,
-        PublicMissedPctDelta: normalized.Public.MissedPctDelta,
-        AndroidxMissedPctDelta: normalized.Androidx.MissedPctDelta,
+        PublicBaselineP50Ms: publicOff.P50MedianMs,
+        AndroidxBaselineP50Ms: androidxOff.P50MedianMs,
+        PublicBlurP50Ms: publicBlur.P50MedianMs,
+        AndroidxBlurP50Ms: androidxBlur.P50MedianMs,
+        P50HostRatioPublicToAndroidx: ratio(publicBlur.P50MedianMs, androidxBlur.P50MedianMs),
+        PublicBlurP95Ms: publicBlur.P95MedianMs,
+        AndroidxBlurP95Ms: androidxBlur.P95MedianMs,
+        P95HostRatioPublicToAndroidx: ratio(publicBlur.P95MedianMs, androidxBlur.P95MedianMs),
+        PublicBlurP99Ms: publicBlur.P99MedianMs,
+        AndroidxBlurP99Ms: androidxBlur.P99MedianMs,
+        P99HostRatioPublicToAndroidx: ratio(publicBlur.P99MedianMs, androidxBlur.P99MedianMs),
+        PublicBlurMissedPct: publicBlur.MissedPctMedian,
+        AndroidxBlurMissedPct: androidxBlur.MissedPctMedian,
       });
     }
   }
@@ -157,12 +168,12 @@ try {
 }
 
 rows.sort((a, b) => a.Edges.localeCompare(b.Edges) || a.RadiusPx - b.RadiusPx);
-console.log('\nNormalized envelope summary:');
+console.log('\nIsolated host envelope summary:');
 console.table(rows);
 
 const stamp = timestamp();
-const jsonPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-normalized-envelope.json`);
-const csvPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-normalized-envelope.csv`);
+const jsonPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-isolated-envelope.json`);
+const csvPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-isolated-envelope.csv`);
 fs.writeFileSync(jsonPath, `${JSON.stringify(rows, null, 2)}\n`, 'utf8');
 const headers = Object.keys(rows[0] ?? {});
 const csv = [
