@@ -38,9 +38,11 @@ def public_mask_source():
 class ProgressivePublicBackend(unittest.TestCase):
     def test_manager_keeps_js_api_and_selects_backend_after_transaction(self):
         manager = read(NATIVE / "EdgeFadeViewManager.kt")
-        self.assertIn("EdgeFadeProgressiveBlurEffect::register", manager)
+        self.assertIn("EdgeFadeProgressiveBlurEffect.register(view)", manager)
+        self.assertIn("EdgeFadeGlesMotionInvalidator.register(view)", manager)
         self.assertIn("EdgeFadeProgressiveBlurEffect.setRequestedMode", manager)
         self.assertIn("EdgeFadeProgressiveBlurEffect.apply(view)", manager)
+        self.assertIn("EdgeFadeGlesMotionInvalidator.unregister(view)", manager)
         self.assertIn("EdgeFadeProgressiveBlurEffect.unregister(view)", manager)
         self.assertNotIn('@ReactProp(name = "androidBlurBackend")', manager)
 
