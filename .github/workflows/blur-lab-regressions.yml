@@ -11,8 +11,6 @@ on:
       - 'src/BlurLabNativeComponent.ts'
       - 'example/app/progressive-blur.tsx'
       - 'example/app/progressive-blur-perf.tsx'
-      - 'scripts/benchmark-progressive-vs-androidx.ps1'
-      - 'scripts/benchmark-progressive-androidx-envelope.ps1'
       - 'scripts/benchmark-progressive-vs-androidx.mjs'
       - 'scripts/benchmark-progressive-androidx-envelope.mjs'
       - 'scripts/capture-progressive-perfetto.mjs'
