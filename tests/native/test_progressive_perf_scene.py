@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PERF = ROOT / "example/app/progressive-blur-perf.tsx"
 ANDROIDX_BENCH = ROOT / "androidx-reference/src/main/kotlin/com/edgefade/androidxref/BenchmarkActivity.kt"
 SELECTOR = ROOT / "android/src/main/java/com/edgefade/EdgeFadeProgressiveBlurEffect.kt"
+GLES_RENDERER = ROOT / "android/src/main/java/com/edgefade/EdgeFadeGlesProgressiveRenderer.kt"
 COMPARATOR_NODE = ROOT / "scripts/benchmark-progressive-vs-androidx.mjs"
 ENVELOPE_NODE = ROOT / "scripts/benchmark-progressive-androidx-envelope.mjs"
 PERFETTO_NODE = ROOT / "scripts/capture-progressive-perfetto.mjs"
@@ -33,6 +34,24 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertNotIn("frostSaturation", source)
         self.assertNotIn("frostLift", source)
         self.assertNotIn("frostProgression", source)
+
+    def test_perf_scene_has_deterministic_auto_scroll_workload(self):
+        source = read(PERF)
+        for contract in (
+            "workload?: string",
+            "const autoScroll = params.workload === 'auto'",
+            "PERF_AUTO_SCROLL_CYCLE_MS = 4200",
+            "requestAnimationFrame(tick)",
+            "cancelAnimationFrame(frame)",
+            "scrollRef.current?.scrollTo({",
+            "y: maxOffset * position",
+            "animated: false",
+            "onContentSizeChange",
+            "viewportHeightRef.current",
+            "contentHeightRef.current",
+            "Auto workload",
+        ):
+            self.assertIn(contract, source)
 
     def test_perf_radius_is_explicit_physical_px_and_capped_at_androidx_limit(self):
         source = read(PERF)
@@ -129,6 +148,46 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("adb(['pull', remoteTrace, localTrace])", script)
         self.assertNotIn("/data/local/tmp/edgefade-perfetto", script)
         self.assertNotIn("adb(['push', localConfig, remoteConfig])", script)
+
+    def test_api31_perfetto_uses_auto_scroll_and_reports_recent_gfx_activity(self):
+        script = read(PERFETTO_NODE)
+        for contract in (
+            "renderer === 'public' && sdk < 33",
+            "workload=${workload}",
+            "dumpsys', 'gfxinfo', pkg, 'reset'",
+            "dumpsys', 'gfxinfo', pkg, 'framestats'",
+            "IntendedVsync",
+            "function reportRecentFrameActivity(pkg)",
+            "Auto workload diagnostic",
+            "Steady-state acceptance still comes from EdgeFade.progressive.gles slices",
+        ):
+            self.assertIn(contract, script)
+        self.assertNotIn("Refusing to treat this trace as a steady-state benchmark", script)
+
+    def test_api31_gles_uniform_locations_are_cached_outside_the_frame_hot_path(self):
+        renderer = read(GLES_RENDERER)
+
+        self.assertIn("private data class ProgramUniforms(", renderer)
+        self.assertIn("private var horizontalUniforms: ProgramUniforms? = null", renderer)
+        self.assertIn("private var verticalUniforms: ProgramUniforms? = null", renderer)
+        self.assertIn(
+            "horizontalUniforms = resolveProgramUniforms(horizontalProgram, includeTexMatrix = true)",
+            renderer,
+        )
+        self.assertIn(
+            "verticalUniforms = resolveProgramUniforms(verticalProgram, includeTexMatrix = false)",
+            renderer,
+        )
+        self.assertIn("private fun resolveProgramUniforms(", renderer)
+        self.assertEqual(renderer.count("GLES30.glGetUniformLocation"), 1)
+
+        hot_start = renderer.index("private fun renderToFrame")
+        hot_end = renderer.index("private fun curveUniforms")
+        hot_path = renderer[hot_start:hot_end]
+        self.assertNotIn("glGetUniformLocation", hot_path)
+        self.assertNotIn("resolveUniform(", hot_path)
+        self.assertIn("setCommonUniforms(horizontalLocations, key)", hot_path)
+        self.assertIn("setCommonUniforms(verticalLocations, key)", hot_path)
 
 
 if __name__ == "__main__":

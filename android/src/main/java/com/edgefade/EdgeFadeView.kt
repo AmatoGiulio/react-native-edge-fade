@@ -14,6 +14,8 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.view.MotionEvent
+import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
@@ -21,10 +23,10 @@ import androidx.annotation.RequiresApi
 /**
  * Native Android host for edge fade effects.
  *
- * `mode="blur"` has exactly one implementation: the API 33+ AndroidX-derived
- * progressive Gaussian owned by [EdgeFadeProgressiveBlurEffect]. If that engine
- * cannot run, the public selector changes [mode] to `mask`; this class never
- * substitutes another blur algorithm.
+ * `mode="blur"` uses one continuous progressive-Gaussian contract. API 33+
+ * executes it through RuntimeShader; API 31-32 use the GLES backend selected by
+ * [EdgeFadeProgressiveBlurEffect]. Unsupported configurations degrade to mask;
+ * this class never substitutes the removed multi-level blur algorithm.
  */
 class EdgeFadeView(context: Context) : FrameLayout(context) {
 
@@ -126,6 +128,34 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     super.onDetachedFromWindow()
   }
 
+  /**
+   * A progressive blur depends on the actual pixels produced by its descendants,
+   * not only on this host's own property state. Under HWUI, descendant display
+   * lists can be re-recorded without invalidating the parent display list, which
+   * leaves a materialized progressive scene stale during scrolling/animation.
+   *
+   * Re-mark only an active non-zero progressive host dirty when Android reports
+   * descendant drawing invalidation. The zero-radius identity path and every
+   * non-progressive mode keep the platform's normal invalidation behavior.
+   */
+  override fun onDescendantInvalidated(child: View, target: View) {
+    super.onDescendantInvalidated(child, target)
+    if (progressiveBlurActive && blurRadius > 0f) {
+      invalidate()
+    }
+  }
+
+  /**
+   * Touch reaches this host before it is dispatched to the wrapped ScrollView.
+   * Forward only the action type to the API 31-32 motion bridge so drag/fling
+   * updates keep re-recording the GLES capture even when HWUI keeps this host's
+   * display list cached. The bridge is a no-op outside API 31-32.
+   */
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    EdgeFadeGlesMotionInvalidator.onTouchEvent(this, event.actionMasked)
+    return super.dispatchTouchEvent(event)
+  }
+
   /** Record exactly the React children, bypassing this host's dispatch logic. */
   internal fun drawChildrenForProgressive(canvas: Canvas) {
     super.dispatchDraw(canvas)
@@ -144,6 +174,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
       when {
         mode == "lens" -> drawLens(canvas)
+        mode == "blur" && blurRadius <= 0f -> super.dispatchDraw(canvas)
         !hasAnyFade -> super.dispatchDraw(canvas)
         mode == "overlay" -> {
           super.dispatchDraw(canvas)
@@ -151,7 +182,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
         }
         mode == "blur" &&
           progressiveBlurActive &&
-          Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
           canvas.isHardwareAccelerated -> {
           val drawn = EdgeFadeProgressiveBlurEffect.draw(
             this,
