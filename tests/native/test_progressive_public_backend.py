@@ -16,6 +16,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "android/src/main/java/com/edgefade"
+SMOKE = ROOT / "scripts/smoke-progressive-release.mjs"
 COMPILE_SHADERS = "--compile-shaders" in sys.argv
 if COMPILE_SHADERS:
     sys.argv.remove("--compile-shaders")
@@ -78,6 +79,29 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertNotIn('view.mode = "overlay"', source)
         self.assertNotIn("hasNeutralColorGrade", source)
         self.assertNotIn("keeping Legacy", source)
+
+    def test_zero_radius_is_platform_independent_identity_before_capability_checks(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        host = read(NATIVE / "EdgeFadeView.kt")
+        smoke = read(SMOKE)
+
+        identity_guard = "if (view.blurRadius <= 0f)"
+        fallback_lookup = "val fallbackReason = progressiveFallbackReason(view)"
+        self.assertIn(identity_guard, selector)
+        self.assertIn(fallback_lookup, selector)
+        self.assertLess(selector.index(identity_guard), selector.index(fallback_lookup))
+        self.assertIn('view.mode = "blur"', selector[selector.index(identity_guard):selector.index(fallback_lookup)])
+        self.assertIn(
+            'Blur identity active: blurRadius 0px (no blur, no Mask fallback).',
+            selector,
+        )
+        self.assertIn(
+            'mode == "blur" && blurRadius <= 0f -> super.dispatchDraw(canvas)',
+            host,
+        )
+        self.assertIn("ZERO_RADIUS_IDENTITY_LOG", smoke)
+        self.assertIn("platform-independent radius 0 identity activation log was not observed", smoke)
+        self.assertIn("<31 nonzero Mask fallback + platform-independent 0px identity", smoke)
 
     def test_api31_webview_is_deliberately_not_claimed_yet(self):
         source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
