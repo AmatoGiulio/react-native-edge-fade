@@ -85,7 +85,9 @@ internal object EdgeFadeProgressiveBlurEffect {
 
     // One public blur backend only. If the AndroidX-style progressive renderer
     // cannot reproduce the requested configuration, degrade to mask rather than
-    // silently changing the blur algorithm.
+    // silently changing the blur algorithm. A zero radius is not unsupported:
+    // radius = maxRadius * intensity collapses to the identity transform, so the
+    // progressive renderer remains active and draws the child scene sharp.
     val fallbackReason = progressiveFallbackReason(view)
     if (fallbackReason != null) {
       clearProgressive(view)
@@ -120,8 +122,8 @@ internal object EdgeFadeProgressiveBlurEffect {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "requires API 33+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
     view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
-    view.blurRadius !in 1f..BlurLabGeometry.MAX_RADIUS_PX ->
-      "blurRadius ${view.blurRadius}px outside 1..${BlurLabGeometry.MAX_RADIUS_PX}px"
+    view.blurRadius > BlurLabGeometry.MAX_RADIUS_PX ->
+      "blurRadius ${view.blurRadius}px exceeds ${BlurLabGeometry.MAX_RADIUS_PX}px"
     view.fadeRadius > 0f -> "fadeRadius is not supported by progressive blur"
     view.overlayColor != null ||
       view.overlayColorTop != null ||
