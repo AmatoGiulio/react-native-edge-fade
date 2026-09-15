@@ -204,14 +204,16 @@ const failures = [];
 if (/FATAL EXCEPTION|AndroidRuntime: FATAL|Fatal signal/i.test(logcat)) {
   failures.push('fatal Android/native exception observed');
 }
-if (logcat.includes('Progressive strip draw failed; using mask fallback.')) {
-  failures.push('progressive draw failure observed');
-}
-if (logcat.includes('Progressive strip shader creation failed')) {
-  failures.push('progressive shader creation failure observed');
-}
-if (logcat.includes('Progressive strip configuration failed')) {
-  failures.push('progressive configuration failure observed');
+for (const [needle, message] of [
+  ['Progressive strip draw failed; using mask fallback.', 'API 33+ progressive draw failure observed'],
+  ['Progressive strip shader creation failed', 'API 33+ progressive shader creation failure observed'],
+  ['Progressive strip configuration failed', 'API 33+ progressive configuration failure observed'],
+  ['GLES progressive renderer creation failed', 'API 31-32 GLES renderer creation failure observed'],
+  ['GLES progressive configuration failed', 'API 31-32 GLES configuration failure observed'],
+  ['GLES progressive frame unavailable', 'API 31-32 GLES frame was unavailable'],
+  ['GLES progressive draw failed', 'API 31-32 GLES draw failure observed'],
+]) {
+  if (logcat.includes(needle)) failures.push(message);
 }
 if (logcat.includes('curve cannot be represented by the progressive radius mask')) {
   failures.push('serialized custom curve fell back to Mask');
@@ -220,12 +222,25 @@ if (/mask fallback: blurRadius 0(?:\.0+)?px/i.test(logcat)) {
   failures.push('radius 0 incorrectly fell back to Mask');
 }
 
+let backendSummary;
 if (sdk >= 33) {
   if (!logcat.includes('Using pure progressive AGSL blur on API 33+')) {
-    failures.push('Public Progressive activation log was not observed');
+    failures.push('API 33+ Public Progressive activation log was not observed');
   }
-} else if (!logcat.includes('Progressive unavailable; using mask fallback: requires API 33+')) {
-  failures.push('API <33 did not explicitly report the required Mask fallback');
+  backendSummary = '33+ AGSL Public Progressive activation + 0px identity + radius recovery';
+} else if (sdk >= 31) {
+  if (!logcat.includes('Using GLES 3.0 continuous progressive blur on API 31-32')) {
+    failures.push('API 31-32 GLES continuous progressive activation log was not observed');
+  }
+  if (/Progressive unavailable; using mask fallback: requires API 31\+/i.test(logcat)) {
+    failures.push('API 31-32 incorrectly took the API <31 Mask fallback');
+  }
+  backendSummary = '31-32 GLES continuous progressive activation + 0px identity + radius recovery';
+} else {
+  if (!logcat.includes('Progressive unavailable; using mask fallback: requires API 31+')) {
+    failures.push('API <31 did not explicitly report the required Mask fallback');
+  }
+  backendSummary = '<31 explicit Mask fallback';
 }
 
 if (failures.length) {
@@ -234,13 +249,7 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log('\nPASS');
-  console.log(
-    `  API ${
-      sdk >= 33
-        ? '33+ Public Progressive activation + 0px identity + radius recovery'
-        : '<33 explicit Mask fallback'
-    }`
-  );
+  console.log(`  API ${backendSummary}`);
   console.log('  analytical + custom curve transitions: no progressive fallback observed');
   console.log(
     '  rapid scroll + background/foreground + portrait/landscape/portrait: no native failure observed'
