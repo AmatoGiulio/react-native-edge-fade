@@ -13,21 +13,14 @@ It deliberately does **not** use Expo, React Native or Compose UI widgets. The p
 
 ## Build and install
 
-From the repository root.
-
-Windows PowerShell:
-
-```powershell
-git pull --ff-only origin experiment/androidx-progressive-blur
-.\example\android\gradlew.bat -p androidx-reference installRelease --no-daemon
-```
-
-macOS / Linux:
+From the repository root:
 
 ```bash
 git pull --ff-only origin experiment/androidx-progressive-blur
 ./example/android/gradlew -p androidx-reference installRelease --no-daemon
 ```
+
+On Windows use the equivalent `example\android\gradlew.bat` wrapper.
 
 The `release` variant is non-debuggable but signed with the local debug keystore only to make physical benchmark installation straightforward. It is installed alongside the Expo example under the separate application id `com.edgefade.androidxref`.
 
@@ -39,62 +32,70 @@ adb -s <SERIAL> shell am start -n com.edgefade.androidxref/.MainActivity
 
 ## Physical official-vs-public benchmark
 
-`BenchmarkActivity` mirrors the public performance scene rather than the interactive controls:
+`BenchmarkActivity` mirrors the public performance scene:
 
 - 64 generated playlist rows
-- radius supplied in physical pixels, capped at 150px
+- radius supplied in physical pixels
 - top band 92dp
 - bottom band 112dp
 - optional left/right bands 48dp
 - neutral pure Gaussian output
 - Smooth curve for the release perf gate
 
-The preferred cross-platform harness is Node-based, so the same command works on macOS, Linux and Windows as long as `node` and `adb` are available:
+Raw cross-process frame time is **not** the acceptance metric because the Public app includes React Native / Expo / Hermes while the AndroidX reference is a small native Activity. The canonical benchmark therefore measures a same-app baseline for each renderer and compares only the incremental blur cost:
+
+```text
+Public incremental = Public Progressive - Public no-effect baseline
+AndroidX incremental = AndroidX Official - AndroidX no-effect baseline
+
+acceptance comparison = Public incremental / AndroidX incremental
+```
+
+Every measured variant force-stops **both** applications before launching the target, so the other process cannot consume CPU during the run.
+
+Run a focused default-radius comparison with:
 
 ```bash
 node scripts/benchmark-progressive-vs-androidx.mjs \
+  --serial <SERIAL> \
   --edges vertical \
-  --serial <SERIAL>
-
-node scripts/benchmark-progressive-vs-androidx.mjs \
-  --edges four \
-  --serial <SERIAL>
+  --radius-px 98 \
+  --blocks 2
 ```
 
-The full default envelope is:
+Run the full normalized envelope with:
 
 ```bash
 node scripts/benchmark-progressive-androidx-envelope.mjs \
   --serial <SERIAL>
 ```
 
-It covers 64px, the public 28dp default converted to device pixels, 120px and 144px across Top+Bottom and Four edges. Use `--radii-px 98,120 --blocks 2` to re-run only selected points with a stronger balanced sample.
+The default envelope covers:
 
-The PowerShell equivalents remain available for existing Windows workflows:
+```text
+64px
+public default 28dp converted to physical px
+120px
+144px
 
-```powershell
-.\scripts\benchmark-progressive-vs-androidx.ps1 `
-  -Edges vertical `
-  -Serial <SERIAL>
-
-.\scripts\benchmark-progressive-androidx-envelope.ps1 `
-  -Serial <SERIAL>
+x Top + bottom
+x Four edges
 ```
 
-The harness:
+The comparator:
 
-- compares **Public Progressive** only against **AndroidX Official**;
 - refuses debuggable packages;
-- refuses emulator performance runs unless explicitly allowed;
-- performs one discarded warm-up for each renderer;
-- uses balanced ABBA/BAAB blocks;
-- drives the same ADB swipe coordinates and duration for both apps;
+- refuses emulator performance runs unless `--allow-emulator` is explicit;
+- runs both blur and no-effect baselines inside each app;
+- force-stops both apps before every variant;
+- uses balanced forward/reverse run ordering;
+- drives identical ADB swipe coordinates and duration;
 - resets and captures `dumpsys gfxinfo framestats` per run;
-- captures `dumpsys meminfo` for per-process diagnostics but does not treat cross-app PSS as a renderer comparison;
-- reports median p50/p95/p99, deadline misses and Public/AndroidX ratios;
+- captures `dumpsys meminfo`;
+- reports raw same-app aggregates plus normalized p50/p95/p99 deltas;
 - writes raw outputs under `benchmark-results/androidx-official/`.
 
-The AndroidX benchmark Activity is launched directly by the harness with the requested physical `radiusPx`, `curve=smooth` and edge configuration. The official implementation is still created by:
+The AndroidX implementation is still created by:
 
 ```text
 BlurRadiusSpec.shader(...)
@@ -103,12 +104,39 @@ BlurRadiusSpec.shader(...)
   -> View.setRenderEffect(...)
 ```
 
+The no-effect baseline uses the identical native scene with `viewport.setRenderEffect(null)`.
+
+## Perfetto / FrameTimeline
+
+For renderer-level diagnosis, use:
+
+```bash
+node scripts/capture-progressive-perfetto.mjs \
+  --serial <SERIAL> \
+  --renderer both \
+  --edges vertical \
+  --radius-px 98
+```
+
+The harness force-stops both apps before each trace, records scheduler / CPU frequency / graphics / view / FrameTimeline data and writes `.perfetto-trace` files under `benchmark-results/perfetto/`.
+
+Public traces include fine-grained slices such as:
+
+```text
+EdgeFade.progressive.recordContent
+EdgeFade.progressive.drawSharp
+EdgeFade.progressive.recordStrip.top
+EdgeFade.progressive.drawStrip.top
+EdgeFade.progressive.recordStrip.bottom
+EdgeFade.progressive.drawStrip.bottom
+```
+
 ## Interactive visual comparison
 
 For manual visual inspection, open the Expo **Progressive Blur Lab** with **AGSL reference** active and `.MainActivity` side by side on the same device. The interactive reference uses:
 
 - 48 generated playlist rows
-- radius range capped to 150px
+- radius range 0..48dp, capped to 150px
 - top band 92dp
 - bottom band 112dp
 - optional left/right bands 48dp
