@@ -128,7 +128,7 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.overlayColorBottom != null ||
       view.overlayColorLeft != null ||
       view.overlayColorRight != null -> "overlay color is not part of pure progressive blur"
-    !supportsPresetCurves(view) -> "curve is not supported by the analytical progressive mask"
+    !supportsCurves(view) -> "curve cannot be represented by the progressive radius mask"
     containsUnsupportedSurface(view) -> "contains a SurfaceView outside a WebView subtree"
     else -> null
   }
@@ -143,11 +143,19 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
-  private fun supportsPresetCurves(view: EdgeFadeView): Boolean =
-    EdgeFadeCurves.agslPresetParams(view.curveTop) != null &&
-      EdgeFadeCurves.agslPresetParams(view.curveBottom) != null &&
-      EdgeFadeCurves.agslPresetParams(view.curveLeft) != null &&
-      EdgeFadeCurves.agslPresetParams(view.curveRight) != null
+  /**
+   * Public presets stay analytical. Serialized cubicBezier/stops curves use the
+   * same 32-sample linear interpolation contract already used by EdgeFade mask
+   * rendering; the LUT drives radius intensity directly, never blur opacity.
+   */
+  private fun supportsCurves(view: EdgeFadeView): Boolean =
+    supportsCurve(view.curveTop) &&
+      supportsCurve(view.curveBottom) &&
+      supportsCurve(view.curveLeft) &&
+      supportsCurve(view.curveRight)
+
+  private fun supportsCurve(curve: String): Boolean =
+    EdgeFadeCurves.agslPresetParams(curve) != null || EdgeFadeCurves.parseCustomLUT(curve) != null
 
   private fun containsUnsupportedSurface(parent: ViewGroup): Boolean {
     for (index in 0 until parent.childCount) {
@@ -226,7 +234,8 @@ internal object EdgeFadeProgressiveBlurEffect {
   // Shared by every edge-local strip. `origin` maps local strip coordinates back
   // into the EdgeFadeView coordinate space. The output alpha is the true radius
   // intensity field: the Gaussian kernel later computes radius = maxRadius * a.
-  // Preset curves stay analytical; there is no material/color term here.
+  // Presets are analytical; custom curves use constant-index loop LUT sampling.
+  // Neither path adds a material/color term.
   internal const val MASK_SHADER = """
     uniform float2 origin;
     uniform float2 viewSize;
@@ -234,6 +243,11 @@ internal object EdgeFadeProgressiveBlurEffect {
     uniform float progression;
     uniform float4 curveExp;
     uniform float4 curveMode;
+    uniform float4 useLut;
+    uniform float curveTopLut[32];
+    uniform float curveBottomLut[32];
+    uniform float curveLeftLut[32];
+    uniform float curveRightLut[32];
 
     float presence(float t, float exponent, float mode) {
       float x = clamp(t, 0.0, 1.0);
@@ -244,6 +258,38 @@ internal object EdgeFadeProgressiveBlurEffect {
         return 1.0 - cos(x * 1.5707963);
       }
       return 1.0 - pow(1.0 - x, exponent);
+    }
+
+    float sampleTop(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveTopLut[i], curveTopLut[i + 1], x - float(i));
+      }
+      return curveTopLut[31];
+    }
+
+    float sampleBottom(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveBottomLut[i], curveBottomLut[i + 1], x - float(i));
+      }
+      return curveBottomLut[31];
+    }
+
+    float sampleLeft(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveLeftLut[i], curveLeftLut[i + 1], x - float(i));
+      }
+      return curveLeftLut[31];
+    }
+
+    float sampleRight(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveRightLut[i], curveRightLut[i + 1], x - float(i));
+      }
+      return curveRightLut[31];
     }
 
     float position(float distance, float depth) {
@@ -258,10 +304,10 @@ internal object EdgeFadeProgressiveBlurEffect {
       float leftPos = position(p.x, edges.z);
       float rightPos = position(viewSize.x - p.x, edges.w);
 
-      float top = topPos < 0.0 ? 0.0 : presence(topPos, curveExp.x, curveMode.x);
-      float bottom = bottomPos < 0.0 ? 0.0 : presence(bottomPos, curveExp.y, curveMode.y);
-      float left = leftPos < 0.0 ? 0.0 : presence(leftPos, curveExp.z, curveMode.z);
-      float right = rightPos < 0.0 ? 0.0 : presence(rightPos, curveExp.w, curveMode.w);
+      float top = topPos < 0.0 ? 0.0 : (useLut.x > 0.5 ? sampleTop(topPos) : presence(topPos, curveExp.x, curveMode.x));
+      float bottom = bottomPos < 0.0 ? 0.0 : (useLut.y > 0.5 ? sampleBottom(bottomPos) : presence(bottomPos, curveExp.y, curveMode.y));
+      float left = leftPos < 0.0 ? 0.0 : (useLut.z > 0.5 ? sampleLeft(leftPos) : presence(leftPos, curveExp.z, curveMode.z));
+      float right = rightPos < 0.0 ? 0.0 : (useLut.w > 0.5 ? sampleRight(rightPos) : presence(rightPos, curveExp.w, curveMode.w));
       float intensity = max(max(top, bottom), max(left, right));
       return half4(0.0, 0.0, 0.0, intensity);
     }
