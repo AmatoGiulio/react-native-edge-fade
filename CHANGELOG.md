@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Android blur
+
+* **android:** replace the published 0.2.2 multi-level blur stack with **Public Progressive**, a true spatially varying Gaussian on API 33+. Every fragment derives its radius from the edge mask (`radius = blurRadius * intensity`) and runs the AndroidX-derived separable Gaussian kernel. There are no discrete blur levels, opacity cross-fades, saturation/lift grading, tint veil, or Legacy blur fallback.
+* **android:** unsupported progressive configurations and API < 33 now degrade directly to `mask`. The old API 31/32 RenderEffect blur is not retained as a second implementation.
+* **android:** keep WebView eligible by materializing child content once into a compositing `RenderNode`; direct `SurfaceView` descendants outside a WebView subtree remain an explicit `mask` fallback.
+* **android:** support preset curves analytically and serialized `cubicBezier` / `stops` curves through a 32-sample radius-mask LUT. Custom curves reshape the continuous radius field; they do not blend between discrete blur levels.
+* **android:** harden renderer lifecycle and failure handling: weak host ownership, deterministic RenderNode release, boolean draw ownership, and same-frame `mask` fallback if progressive setup/draw cannot own the frame.
+
+### API
+
+* **blur:** add `blurProgression` as the canonical public name for the fraction of the fade band over which the blur radius reaches its maximum. `frostProgression` remains a deprecated compatibility alias; `blurProgression` wins when both are supplied.
+* **blur:** deprecate `frostSaturation` and `frostLift`. Android Public Progressive ignores both because color grading is no longer part of the blur algorithm.
+* **android:** `color` remains an overlay concern rather than part of Public Progressive. An explicit Android `mode="blur"` request that also requires overlay color falls back to `mask` instead of silently changing the blur algorithm.
+
+### Validation
+
+* **performance:** physical-device Perfetto / FrameTimeline validation at the public 28dp default (98px on the 560dpi test device) shows renderer-level parity with AndroidX Official. Observed `Drawing` p50 was ~6.667ms Public vs ~6.675ms AndroidX, and `DrawFrames` p50 was ~10.167ms vs ~10.532ms.
+* **webview:** physical API 36 scrolling/fling/direction-change regression passed with Public Progressive active and no observed page flashes, blank blur frames, or stale edge content.
+* **tooling:** add isolated AndroidX Official reference app, cross-platform performance/Perfetto harnesses, progressive shader/compiler contracts, and a release smoke harness for radius transitions, custom curves, background/foreground, rotation, rapid scroll, and API fallback behavior.
+
 ## [0.2.2](https://github.com/AmatoGiulio/react-native-edge-fade/compare/v0.2.1...v0.2.2) (2026-08-20)
 
 
@@ -54,7 +76,7 @@
 * **android:** resolve AGSL rendering issue ([fb782c6](https://github.com/AmatoGiulio/react-native-edge-fade/commit/fb782c6851b645349e257ffa72219139f0d2d8ac))
 * **android:** uniform reuse runtimeShader ([2077b92](https://github.com/AmatoGiulio/react-native-edge-fade/commit/2077b9297dfb629c7b6488b34026fbcc0e6ace1e))
 * demo ([10bfe5d](https://github.com/AmatoGiulio/react-native-edge-fade/commit/10bfe5d96ff9cc8a892fa215c9c667b34c7fe89a))
-* demo app ([883b361](https://github.com/AmatoGiulio/react-native-edge-fade/commit/883b3612300c980481a5a817bf343d0356737d94))
+* demo app ([883b361](https://github.com/AmatoGiulio/react-native-edge-fade/commit/883b3612300c980481a5b817bf343d0356737d94))
 * **example:** add nestedScrollEnabled to inner ScrollViews ([228cf6e](https://github.com/AmatoGiulio/react-native-edge-fade/commit/228cf6e6d960711940567d848311708d9aaf85a8))
 * **ios:** mask mode crash and rendering on new architecture ([4dbb27a](https://github.com/AmatoGiulio/react-native-edge-fade/commit/4dbb27afbbd9253258a758f2b0b80a276fcf751f))
 * layout ([d3f4bcc](https://github.com/AmatoGiulio/react-native-edge-fade/commit/d3f4bccfdd557a5e26a578eab1c226278ac87852))

@@ -19,7 +19,7 @@ const DEFAULT_CURVE: EdgeFadeCurve = 'smooth';
 const DEFAULT_BLUR_RADIUS = 28;
 const DEFAULT_FROST_SATURATION = 0.9;
 const DEFAULT_FROST_LIFT = 1.03;
-const DEFAULT_FROST_PROGRESSION = 1;
+const DEFAULT_BLUR_PROGRESSION = 1;
 
 interface ResolvedEdge {
   size: number;
@@ -149,6 +149,12 @@ export function resolveNativeProps(props: EdgeFadeViewProps): NativeEdgeProps {
     blurRadius: props.blurRadius ?? DEFAULT_BLUR_RADIUS,
     frostSaturation: props.frostSaturation ?? DEFAULT_FROST_SATURATION,
     frostLift: props.frostLift ?? DEFAULT_FROST_LIFT,
-    frostProgression: props.frostProgression ?? DEFAULT_FROST_PROGRESSION,
+    // Native 0.2.x plumbing still uses the historical frostProgression name on
+    // both platforms. Keep that internal detail hidden behind the new public
+    // blurProgression name until the native codegen surface is migrated.
+    frostProgression:
+      props.blurProgression ??
+      props.frostProgression ??
+      DEFAULT_BLUR_PROGRESSION,
   };
 }

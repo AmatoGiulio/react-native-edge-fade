@@ -58,8 +58,7 @@ export function GalleryScreen() {
   const { catalog, isLoading, isError } = useCatalog();
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
-  const { curve, blurRadius, frostSaturation, frostLift, frostProgression } =
-    useFadeRender();
+  const { curve, blurRadius, frostProgression } = useFadeRender();
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
@@ -81,10 +80,8 @@ export function GalleryScreen() {
         curve={curve}
         mode={mode}
         blurRadius={blurRadius}
-        frostSaturation={frostSaturation}
-        frostLift={frostLift}
-        frostProgression={frostProgression}
-        color={tint}
+        blurProgression={frostProgression}
+        color={mode === 'overlay' ? tint : undefined}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
         {isLoading || isError || catalog.length === 0 ? (

@@ -52,47 +52,47 @@ export interface EdgeFadeViewProps extends ViewProps {
    * 'mask'    — true alpha fade via native compositing (default).
    * 'overlay' — paint gradient from transparent to `color` over content.
    * 'blur'    — fade content into a blurred copy of itself toward the enabled
-   *             edges (progressive blur). Sharp at the inner edge, fully blurred
-   *             at the outer edge, following the per-edge `size`/`curve`.
+   *             edges. Sharp at the inner edge, fully blurred at the outer edge,
+   *             following the per-edge `size`/`curve`.
+   *
+   * Android uses the true spatial progressive Gaussian on API 33+ and falls
+   * back to mask when that renderer is unavailable. iOS keeps its native blur
+   * implementation. Web falls back to mask.
    */
   mode?: EdgeFadeMode;
   /**
    * Overlay mode: gradient target color. Per-edge `EdgeConfig.color` overrides this.
    *
-   * Blur mode: optional frosted-glass material tint painted over the blur
-   * (translucent inner → opaque outer). Omit it for a pure content-derived
-   * Gaussian fade that adapts to any background; pass a dark color when
-   * overlaying controls that need a legibility backdrop.
+   * Blur mode does not use this as part of the blur algorithm on Android. A
+   * colored blur request that cannot preserve pure progressive semantics falls
+   * back to mask rather than silently changing algorithms.
    */
   color?: ColorValue;
   /**
    * Maximum blur radius (dp) reached at the outer edge in `mode="blur"`.
    * Ignored in other modes. Defaults to 28.
-   *
-   * Fully supported on iOS 13+ and Android 12 (API 31)+. On older Android and
-   * on web, `mode="blur"` degrades to a transparent `mask` fade.
    */
   blurRadius?: number;
   /**
-   * Blur mode frost grade — saturation multiplier applied to the blurred pixels
-   * (1 = neutral). Below 1 desaturates toward a soft pastel frosted-glass look;
-   * above 1 keeps it colourful. **Android only** — silently ignored on iOS
-   * (no public-API color grade on UIVisualEffectView). Defaults to 0.9.
+   * Fraction of the fade band over which the blur radius progression completes.
+   * Clamped natively to [0.05, 1]. Defaults to 1.
+   */
+  blurProgression?: number;
+  /**
+   * @deprecated Public Progressive does not apply a saturation grade. This
+   * compatibility prop is ignored by the Android progressive renderer and will
+   * be removed in a future API cleanup.
    */
   frostSaturation?: number;
   /**
-   * Blur mode frost grade — brightness multiplier applied to the blurred pixels
-   * (1 = neutral). Slightly above 1 gives a light frosted-glass lift; below 1
-   * darkens. **Android only** — silently ignored on iOS (no public-API color
-   * grade on UIVisualEffectView). Defaults to 1.03.
+   * @deprecated Public Progressive does not apply a brightness/lift grade. This
+   * compatibility prop is ignored by the Android progressive renderer and will
+   * be removed in a future API cleanup.
    */
   frostLift?: number;
   /**
-   * Blur mode — the `curve` shapes the blur's entire progression across the
-   * band; `frostProgression` is the fraction of the band (inner→outer) over
-   * which that curve envelope completes. Smaller = the same shape compressed
-   * toward the inner edge, reaching full blur sooner. Android and iOS; clamped
-   * to [0.05, 1]; defaults to 1 (the curve spans the full band).
+   * @deprecated Use `blurProgression`. Kept as a compatibility alias for the
+   * 0.2.x API; `blurProgression` wins when both are provided.
    */
   frostProgression?: number;
   /**

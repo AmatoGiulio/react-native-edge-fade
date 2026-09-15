@@ -26,20 +26,30 @@ buildscript {
   }
 }
 
-
 apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
-
 apply plugin: "com.facebook.react"
+
+// Compose UI 1.13.0-alpha03 requires AGP 9.1+ and compileSdk 37.1.
+// Expo SDK 57 currently evaluates its Gradle modules against the AGP 8.x DSL,
+// so pulling that alpha into a React Native/Expo consumer makes the whole app
+// toolchain incompatible before Edge Fade even compiles. The official binary
+// stays in the isolated androidx-reference harness. The API 33+ public candidate
+// uses the dependency-free, attributed AGSL port and does not raise consumer
+// SDK/AGP requirements.
 
 android {
   namespace "com.edgefade"
-
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
+  }
+
+  // Never compile the Compose-dependent adapter into an RN/Expo consumer.
+  sourceSets {
+    main.java.srcDir("src/noAndroidxBlur/java")
   }
 
   buildFeatures {

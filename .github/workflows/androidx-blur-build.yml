@@ -1,0 +1,55 @@
+name: AndroidX blur reference
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'androidx-reference/**'
+      - 'android/src/androidxBlur/**'
+      - 'scripts/benchmark-progressive-vs-androidx.ps1'
+      - 'tests/native/test_androidx_reference_perf.py'
+      - '.github/workflows/androidx-blur-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: androidx-blur-reference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  official-binary-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Validate physical benchmark contracts
+        run: python3 tests/native/test_androidx_reference_perf.py
+      - name: Install JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install compile SDK
+        run: |
+          set +o pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          set -o pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+      - name: Install isolated Gradle 9.3.1
+        run: |
+          curl --fail --location --silent --show-error \
+            https://services.gradle.org/distributions/gradle-9.3.1-bin.zip \
+            --output "$RUNNER_TEMP/gradle-9.3.1-bin.zip"
+          unzip -q "$RUNNER_TEMP/gradle-9.3.1-bin.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" --version
+      - name: Build installable release AndroidX reference APK
+        run: |
+          "$RUNNER_TEMP/gradle-9.3.1/bin/gradle" \
+            -p androidx-reference assembleRelease --no-daemon --stacktrace
+          find androidx-reference/build/outputs/apk/release -type f -name '*.apk' -print
+          test -n "$(find androidx-reference/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+      # Deliberately isolated from Expo SDK 57: AGP 9.1 is binary-incompatible
+      # with its current Expo Gradle plugin. This release APK exercises the
+      # official Compose UI 1.13.0-alpha03 BlurRadiusSpec on ordinary platform Views.
