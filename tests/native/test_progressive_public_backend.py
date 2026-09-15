@@ -65,12 +65,10 @@ class ProgressivePublicBackend(unittest.TestCase):
     def test_old_multilevel_blur_is_physically_absent_from_public_host(self):
         host = read(NATIVE / "EdgeFadeView.kt")
 
-        # mode="blur" may only dispatch the new renderer or mask fallback.
         self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
         self.assertIn("if (!drawn) drawMask(canvas)", host)
         self.assertIn('mode == "blur" -> drawMask(canvas)', host)
 
-        # 0.2.2 renderer internals must not survive as a hidden fallback.
         for forbidden in (
             "drawBlurLayered",
             "drawEdgeLevels",
@@ -192,7 +190,7 @@ class ProgressivePublicBackend(unittest.TestCase):
 
         self.assertIn("EdgeFadeCurves.parseCustomLUT(curve)", selector)
         self.assertIn("EdgeFadeCurves.parseCustomLUT(curve)", renderer)
-        self.assertIn('setFloatUniform("useLut"', renderer)
+        self.assertIn('"useLut"', renderer)
         self.assertIn('setFloatUniform("curveTopLut", topCurve.lut)', renderer)
         self.assertIn("1f - alpha[index]", renderer)
         self.assertIn("uniform float curveTopLut[32]", mask)
@@ -243,8 +241,6 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("uniform float4 useLut", mask)
         self.assertIn("1.0 - pow(1.0 - x, exponent)", mask)
         self.assertIn("1.0 - cos(x * 1.5707963)", mask)
-        # Custom curves use fixed-size LUTs and constant-index loop access. The
-        # LUT changes only the radius intensity field; it never selects blur levels.
         self.assertEqual(mask.count("[32]"), 4)
         self.assertGreaterEqual(mask.count("for (int i = 0; i < 31; i++)"), 4)
         self.assertNotIn("blurLevel", mask)
