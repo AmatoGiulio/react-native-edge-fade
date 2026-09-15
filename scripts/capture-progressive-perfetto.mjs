@@ -141,14 +141,18 @@ console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}d
 console.log(`Trace scene: ${round(radiusDp, 2)}dp / ${options.radiusPx}px / Smooth / ${options.edges}`);
 console.log(`Capture: ${options.durationMs}ms / ${options.swipes} driven swipes / warm-up ${options.warmupSwipes}`);
 
+function stopBothApps() {
+  adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
+  adb(['shell', 'am', 'force-stop', ANDROIDX_PACKAGE]);
+}
+
 function startRenderer(renderer) {
-  const pkg = renderer === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
-  adb(['shell', 'am', 'force-stop', pkg]);
+  stopBothApps();
   sleep(400);
 
   if (renderer === 'public') {
     adb(['logcat', '-c']);
-    const uri = `edgefade://progressive-blur-perf?backend=progressive&edges=${options.edges}&radiusPx=${radiusInvariant}`;
+    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on`;
     adb(['shell', `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`]);
     sleep(1800);
     const logcat = adb(['logcat', '-d'], { trim: false });
@@ -161,6 +165,7 @@ function startRenderer(renderer) {
       '--es', 'edges', options.edges,
       '--ef', 'radiusPx', radiusInvariant,
       '--es', 'curve', 'smooth',
+      '--es', 'effect', 'on',
     ]);
     sleep(1800);
   }
