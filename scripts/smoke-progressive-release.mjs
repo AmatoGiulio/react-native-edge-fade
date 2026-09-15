@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 
 const PACKAGE = 'com.edgefadeexample';
+const ADB_MAX_BUFFER = 64 * 1024 * 1024;
 
 function parseArgs(argv) {
   const options = {
@@ -19,12 +20,23 @@ function parseArgs(argv) {
       return argv[++i];
     };
     switch (arg) {
-      case '--serial': options.serial = value(); break;
-      case '--edges': options.edges = value(); break;
-      case '--swipes': options.swipes = Number(value()); break;
-      case '--settle-ms': options.settleMs = Number(value()); break;
-      case '--allow-emulator': options.allowEmulator = true; break;
-      default: throw new Error(`Unknown argument: ${arg}`);
+      case '--serial':
+        options.serial = value();
+        break;
+      case '--edges':
+        options.edges = value();
+        break;
+      case '--swipes':
+        options.swipes = Number(value());
+        break;
+      case '--settle-ms':
+        options.settleMs = Number(value());
+        break;
+      case '--allow-emulator':
+        options.allowEmulator = true;
+        break;
+      default:
+        throw new Error(`Unknown argument: ${arg}`);
     }
   }
   if (!['vertical', 'four'].includes(options.edges)) {
@@ -46,7 +58,10 @@ function adbArgs(args) {
 }
 
 function adb(args, { trim = true, allowFailure = false } = {}) {
-  const result = spawnSync('adb', adbArgs(args), { encoding: 'utf8' });
+  const result = spawnSync('adb', adbArgs(args), {
+    encoding: 'utf8',
+    maxBuffer: ADB_MAX_BUFFER,
+  });
   if (result.error) throw result.error;
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   if (result.status !== 0 && !allowFailure) {
@@ -69,7 +84,9 @@ const sdk = Number(shell('getprop ro.build.version.sdk'));
 const qemu = shell('getprop ro.kernel.qemu');
 const isEmulator = qemu === '1' || /sdk_gphone|emulator/i.test(model);
 if (isEmulator && !options.allowEmulator) {
-  throw new Error(`Detected emulator ${model}. Use a physical device or pass --allow-emulator for functional smoke only.`);
+  throw new Error(
+    `Detected emulator ${model}. Use a physical device or pass --allow-emulator for functional smoke only.`
+  );
 }
 
 const packagePath = shell(`pm path ${PACKAGE}`);
@@ -91,8 +108,10 @@ const x = Math.round(width * 0.5);
 const yTop = Math.round(height * 0.34);
 const yBottom = Math.round(height * 0.78);
 
-const accelerometerRotation = shell('settings get system accelerometer_rotation', { allowFailure: true }) || '1';
-const userRotation = shell('settings get system user_rotation', { allowFailure: true }) || '0';
+const accelerometerRotation =
+  shell('settings get system accelerometer_rotation', { allowFailure: true }) || '1';
+const userRotation =
+  shell('settings get system user_rotation', { allowFailure: true }) || '0';
 const uri = `edgefade://progressive-blur-smoke?edges=${options.edges}`;
 
 function startSmoke() {
@@ -140,8 +159,12 @@ try {
   driveSwipes(3);
   sleep(options.settleMs);
 } finally {
-  shell(`settings put system accelerometer_rotation ${accelerometerRotation}`, { allowFailure: true });
-  shell(`settings put system user_rotation ${userRotation}`, { allowFailure: true });
+  shell(`settings put system accelerometer_rotation ${accelerometerRotation}`, {
+    allowFailure: true,
+  });
+  shell(`settings put system user_rotation ${userRotation}`, {
+    allowFailure: true,
+  });
 }
 
 const logcat = adb(['logcat', '-d'], { trim: false });
@@ -162,13 +185,13 @@ if (logcat.includes('Progressive strip configuration failed')) {
 if (logcat.includes('curve cannot be represented by the progressive radius mask')) {
   failures.push('serialized custom curve fell back to Mask');
 }
+if (/blurRadius 0(?:\.0+)?px .*mask fallback/i.test(logcat)) {
+  failures.push('radius 0 incorrectly fell back to Mask');
+}
 
 if (sdk >= 33) {
   if (!logcat.includes('Using pure progressive AGSL blur on API 33+')) {
     failures.push('Public Progressive activation log was not observed');
-  }
-  if (!/blurRadius 0(?:\.0+)?px outside 1\.\./.test(logcat)) {
-    failures.push('radius 0 -> Mask transition was not observed');
   }
 } else if (!logcat.includes('Progressive unavailable; using mask fallback: requires API 33+')) {
   failures.push('API <33 did not explicitly report the required Mask fallback');
@@ -180,7 +203,15 @@ if (failures.length) {
   process.exitCode = 1;
 } else {
   console.log('\nPASS');
-  console.log(`  API ${sdk >= 33 ? '33+ Public Progressive activation + radius fallback/recovery' : '<33 explicit Mask fallback'}`);
+  console.log(
+    `  API ${
+      sdk >= 33
+        ? '33+ Public Progressive activation + 0px identity + radius recovery'
+        : '<33 explicit Mask fallback'
+    }`
+  );
   console.log('  analytical + custom curve transitions: no progressive fallback observed');
-  console.log('  rapid scroll + background/foreground + portrait/landscape/portrait: no native failure observed');
+  console.log(
+    '  rapid scroll + background/foreground + portrait/landscape/portrait: no native failure observed'
+  );
 }
