@@ -67,7 +67,8 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.eyebrow}>EDGE FADE / PERF</Text>
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
-          {effectEnabled ? 'Public Progressive' : 'Public baseline · no effect'} ·
+          {effectEnabled ? 'Public Progressive' : 'Public baseline · no effect'}
+          {'·'}
           {` ${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
         </Text>
