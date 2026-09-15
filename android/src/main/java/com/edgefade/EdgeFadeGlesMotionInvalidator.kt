@@ -2,6 +2,7 @@ package com.edgefade
 
 import android.os.Build
 import android.view.Choreographer
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewTreeObserver
 import java.lang.ref.WeakReference
@@ -9,14 +10,18 @@ import java.util.WeakHashMap
 import kotlin.math.max
 
 /**
- * Keeps the API 31-32 GLES backend in sync while descendant scrolling is being
+ * Keeps the API 31-32 GLES backend in sync while descendant motion is being
  * composited without re-recording the EdgeFadeView display list.
  *
- * ViewTreeObserver.OnScrollChangedListener gives us the first observable scroll
- * change, then a short Choreographer burst explicitly invalidates the host. Each
- * traversal exposes subsequent scroll changes and extends the burst. The loop
- * stops after a small stable grace window, so a static blur does not keep the UI
- * thread awake indefinitely.
+ * Scroll notifications remain useful for programmatic motion, but they are not
+ * sufficient on every HWUI path: touch-driven scrolling can keep advancing on
+ * the child while the host display list stays cached. EdgeFadeView therefore
+ * forwards touch actions here. MOVE/DOWN actions keep a short frame burst alive;
+ * UP/CANCEL extends it long enough to cover the following fling. Every later
+ * touch or observable scroll extends the deadline again.
+ *
+ * The callback is activity-bounded: once input/scrolling goes quiet the frame
+ * callback stops, so a static blur never becomes a permanent redraw loop.
  *
  * API 33+ does not participate: RuntimeShader lives inside the normal HWUI
  * render path and does not need this API 31-32 capture bridge.
@@ -31,7 +36,7 @@ internal object EdgeFadeGlesMotionInvalidator {
     private var activeUntilNanos = 0L
 
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
-      kick()
+      kick(MOTION_GRACE_NS)
     }
 
     private val attachListener = object : View.OnAttachStateChangeListener {
@@ -75,13 +80,25 @@ internal object EdgeFadeGlesMotionInvalidator {
       activeUntilNanos = 0L
     }
 
-    fun kick() {
+    fun onTouchAction(actionMasked: Int) {
+      when (actionMasked) {
+        MotionEvent.ACTION_DOWN,
+        MotionEvent.ACTION_MOVE,
+        MotionEvent.ACTION_POINTER_DOWN,
+        MotionEvent.ACTION_POINTER_UP -> kick(MOTION_GRACE_NS)
+
+        MotionEvent.ACTION_UP,
+        MotionEvent.ACTION_CANCEL -> kick(POST_TOUCH_GRACE_NS)
+      }
+    }
+
+    private fun kick(graceNanos: Long) {
       val view = viewRef.get() ?: return
       if (!eligible(view)) return
 
       activeUntilNanos = max(
         activeUntilNanos,
-        System.nanoTime() + MOTION_GRACE_NS,
+        System.nanoTime() + graceNanos,
       )
       if (!scheduled) {
         scheduled = true
@@ -127,6 +144,11 @@ internal object EdgeFadeGlesMotionInvalidator {
     states.remove(view)?.dispose()
   }
 
+  fun onTouchEvent(view: EdgeFadeView, actionMasked: Int) {
+    if (!platformUsesGlesBackend()) return
+    states[view]?.onTouchAction(actionMasked)
+  }
+
   private fun platformUsesGlesBackend(): Boolean =
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
       Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
@@ -140,4 +162,5 @@ internal object EdgeFadeGlesMotionInvalidator {
       view.isShown
 
   private const val MOTION_GRACE_NS = 250_000_000L
+  private const val POST_TOUCH_GRACE_NS = 750_000_000L
 }
