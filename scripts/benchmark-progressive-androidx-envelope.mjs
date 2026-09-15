@@ -61,13 +61,8 @@ function adb(args) {
   return `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
 }
 
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
 function round(value, digits = 3) {
+  if (!Number.isFinite(value)) return null;
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
 }
@@ -79,7 +74,7 @@ function timestamp() {
 }
 
 function csvEscape(value) {
-  const text = String(value);
+  const text = value == null ? '' : String(value);
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
@@ -94,12 +89,13 @@ const requestedRadii = options.radiiPx.length ? options.radiiPx : [64, defaultRa
 const radii = [...new Set(requestedRadii.map((value) => round(Math.min(150, Math.max(1, value)), 3)))];
 const edgeModes = options.edges === 'both' ? ['vertical', 'four'] : [options.edges];
 
-console.log('Public Progressive vs AndroidX Official performance envelope');
+console.log('Public Progressive vs AndroidX Official normalized performance envelope');
 console.log(`Density: ${densityDpi}dpi (${round(densityScale)}x)`);
 console.log(`Public default: ${options.defaultBlurRadiusDp}dp = ${round(defaultRadiusPx, 1)}px`);
 console.log(`Radii: ${radii.join(', ')} px`);
 console.log(`Edges: ${edgeModes.join(', ')}`);
-console.log(`Each point: discarded warm-up + ${options.blocks} balanced ABBA/BAAB block(s)`);
+console.log('Metric: blur - same-app no-effect baseline');
+console.log(`Each point: ${options.blocks} balanced block(s)`);
 
 const rows = [];
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'edgefade-androidx-envelope-'));
@@ -127,27 +123,32 @@ try {
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error(`Comparator failed for ${edges} / ${radiusPx}px with exit ${result.status}`);
 
-      const aggregate = JSON.parse(fs.readFileSync(aggregatePath, 'utf8'));
-      const publicRow = aggregate.find((item) => item.Renderer === 'public');
-      const androidxRow = aggregate.find((item) => item.Renderer === 'androidx');
-      if (!publicRow || !androidxRow) throw new Error(`Missing Public Progressive or AndroidX Official aggregate for ${edges} / ${radiusPx}px`);
+      const resultJson = JSON.parse(fs.readFileSync(aggregatePath, 'utf8'));
+      const normalized = resultJson.normalized;
+      if (!normalized?.Public || !normalized?.Androidx) {
+        throw new Error(`Missing normalized Public or AndroidX data for ${edges} / ${radiusPx}px`);
+      }
 
       rows.push({
         Edges: edges,
         RadiusPx: radiusPx,
         RadiusDpPublic: round(radiusPx / densityScale),
         IsPublicDefault: Math.abs(radiusPx - defaultRadiusPx) < 0.6,
-        PublicP50Ms: publicRow.P50MedianMs,
-        PublicP95Ms: publicRow.P95MedianMs,
-        PublicP99Ms: publicRow.P99MedianMs,
-        PublicMissedPct: publicRow.MissedPctMedian,
-        AndroidxP50Ms: androidxRow.P50MedianMs,
-        AndroidxP95Ms: androidxRow.P95MedianMs,
-        AndroidxP99Ms: androidxRow.P99MedianMs,
-        AndroidxMissedPct: androidxRow.MissedPctMedian,
-        P50RatioPublicToAndroidx: round(publicRow.P50MedianMs / androidxRow.P50MedianMs),
-        P95RatioPublicToAndroidx: round(publicRow.P95MedianMs / androidxRow.P95MedianMs),
-        P99RatioPublicToAndroidx: round(publicRow.P99MedianMs / androidxRow.P99MedianMs),
+        PublicBaselineP50Ms: normalized.Public.BaselineP50Ms,
+        PublicBlurP50Ms: normalized.Public.BlurP50Ms,
+        PublicP50IncrementalMs: normalized.Public.P50DeltaMs,
+        AndroidxBaselineP50Ms: normalized.Androidx.BaselineP50Ms,
+        AndroidxBlurP50Ms: normalized.Androidx.BlurP50Ms,
+        AndroidxP50IncrementalMs: normalized.Androidx.P50DeltaMs,
+        P50IncrementalRatioPublicToAndroidx: normalized.P50IncrementalRatioPublicToAndroidx,
+        PublicP95IncrementalMs: normalized.Public.P95DeltaMs,
+        AndroidxP95IncrementalMs: normalized.Androidx.P95DeltaMs,
+        P95IncrementalRatioPublicToAndroidx: normalized.P95IncrementalRatioPublicToAndroidx,
+        PublicP99IncrementalMs: normalized.Public.P99DeltaMs,
+        AndroidxP99IncrementalMs: normalized.Androidx.P99DeltaMs,
+        P99IncrementalRatioPublicToAndroidx: normalized.P99IncrementalRatioPublicToAndroidx,
+        PublicMissedPctDelta: normalized.Public.MissedPctDelta,
+        AndroidxMissedPctDelta: normalized.Androidx.MissedPctDelta,
       });
     }
   }
@@ -156,12 +157,12 @@ try {
 }
 
 rows.sort((a, b) => a.Edges.localeCompare(b.Edges) || a.RadiusPx - b.RadiusPx);
-console.log('\nEnvelope summary:');
+console.log('\nNormalized envelope summary:');
 console.table(rows);
 
 const stamp = timestamp();
-const jsonPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-envelope.json`);
-const csvPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-envelope.csv`);
+const jsonPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-normalized-envelope.json`);
+const csvPath = path.join(RESULTS_DIR, `${stamp}-public-vs-androidx-normalized-envelope.csv`);
 fs.writeFileSync(jsonPath, `${JSON.stringify(rows, null, 2)}\n`, 'utf8');
 const headers = Object.keys(rows[0] ?? {});
 const csv = [
