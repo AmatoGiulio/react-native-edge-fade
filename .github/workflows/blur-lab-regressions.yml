@@ -20,6 +20,7 @@ on:
       - 'scripts/smoke-progressive-release.mjs'
       - 'tests/native/test_blur_lab_regressions.py'
       - 'tests/native/test_progressive_public_backend.py'
+      - 'tests/native/test_gles_shader_source_contract.py'
       - 'tests/native/test_progressive_perf_scene.py'
       - '.github/workflows/blur-lab-regressions.yml'
   workflow_dispatch:
@@ -52,6 +53,7 @@ jobs:
       - name: Check public backend contracts and compile mask
         run: |
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_shader_source_contract.py
       - name: Check public performance harness contracts
         run: |
           node --check scripts/benchmark-progressive-vs-androidx.mjs
