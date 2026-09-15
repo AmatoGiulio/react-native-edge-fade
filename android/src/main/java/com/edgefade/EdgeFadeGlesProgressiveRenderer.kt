@@ -85,6 +85,27 @@ internal class EdgeFadeGlesProgressiveRenderer(
     val lut: FloatArray,
   )
 
+  /**
+   * Program locations are immutable after a successful link, so resolve them
+   * once during resource creation instead of paying glGetUniformLocation round
+   * trips on every horizontal/vertical pass.
+   */
+  private data class ProgramUniforms(
+    val content: Int,
+    val texMatrix: Int?,
+    val viewSize: Int,
+    val edges: Int,
+    val progression: Int,
+    val blurRadius: Int,
+    val curveExp: Int,
+    val curveMode: Int,
+    val useLut: Int,
+    val curveTopLut: Int,
+    val curveBottomLut: Int,
+    val curveLeftLut: Int,
+    val curveRightLut: Int,
+  )
+
   private class OutputFrame(
     val image: Image,
     val bitmap: Bitmap,
@@ -123,6 +144,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
   private var vertexBufferId = 0
   private var horizontalProgram = 0
   private var verticalProgram = 0
+  private var horizontalUniforms: ProgramUniforms? = null
+  private var verticalUniforms: ProgramUniforms? = null
   private var resourceWidth = 0
   private var resourceHeight = 0
 
@@ -240,6 +263,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
 
     val renderer = sourceRenderer ?: return null
     val sourceTexture = sourceSurfaceTexture ?: return null
+    val horizontalLocations = horizontalUniforms ?: return null
+    val verticalLocations = verticalUniforms ?: return null
 
     val syncResult = tracePhase("EdgeFade.progressive.gles.source") {
       renderer.createRenderRequest()
@@ -262,15 +287,15 @@ internal class EdgeFadeGlesProgressiveRenderer(
       GLES30.glUseProgram(horizontalProgram)
       GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
       GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, sourceTextureId)
-      GLES30.glUniform1i(uniform(horizontalProgram, "uContent"), 0)
+      GLES30.glUniform1i(horizontalLocations.content, 0)
       GLES30.glUniformMatrix4fv(
-        uniform(horizontalProgram, "uTexMatrix"),
+        requireNotNull(horizontalLocations.texMatrix),
         1,
         false,
         sourceTransform,
         0,
       )
-      setCommonUniforms(horizontalProgram, key)
+      setCommonUniforms(horizontalLocations, key)
       drawQuad()
     }
 
@@ -283,8 +308,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
       GLES30.glUseProgram(verticalProgram)
       GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
       GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, horizontalTextureId)
-      GLES30.glUniform1i(uniform(verticalProgram, "uContent"), 0)
-      setCommonUniforms(verticalProgram, key)
+      GLES30.glUniform1i(verticalLocations.content, 0)
+      setCommonUniforms(verticalLocations, key)
       drawQuad()
     }
 
@@ -317,41 +342,41 @@ internal class EdgeFadeGlesProgressiveRenderer(
     }
   }
 
-  private fun setCommonUniforms(program: Int, key: Key) {
+  private fun setCommonUniforms(uniforms: ProgramUniforms, key: Key) {
     val topCurve = curveUniforms(key.curveTop)
     val bottomCurve = curveUniforms(key.curveBottom)
     val leftCurve = curveUniforms(key.curveLeft)
     val rightCurve = curveUniforms(key.curveRight)
 
-    GLES30.glUniform2f(uniform(program, "uViewSize"), key.width.toFloat(), key.height.toFloat())
-    GLES30.glUniform4f(uniform(program, "uEdges"), key.top, key.bottom, key.left, key.right)
-    GLES30.glUniform1f(uniform(program, "uProgression"), key.progression)
-    GLES30.glUniform1f(uniform(program, "uBlurRadius"), key.radius)
+    GLES30.glUniform2f(uniforms.viewSize, key.width.toFloat(), key.height.toFloat())
+    GLES30.glUniform4f(uniforms.edges, key.top, key.bottom, key.left, key.right)
+    GLES30.glUniform1f(uniforms.progression, key.progression)
+    GLES30.glUniform1f(uniforms.blurRadius, key.radius)
     GLES30.glUniform4f(
-      uniform(program, "uCurveExp"),
+      uniforms.curveExp,
       topCurve.exponent,
       bottomCurve.exponent,
       leftCurve.exponent,
       rightCurve.exponent,
     )
     GLES30.glUniform4f(
-      uniform(program, "uCurveMode"),
+      uniforms.curveMode,
       topCurve.mode,
       bottomCurve.mode,
       leftCurve.mode,
       rightCurve.mode,
     )
     GLES30.glUniform4f(
-      uniform(program, "uUseLut"),
+      uniforms.useLut,
       topCurve.useLut,
       bottomCurve.useLut,
       leftCurve.useLut,
       rightCurve.useLut,
     )
-    GLES30.glUniform1fv(uniform(program, "uCurveTopLut[0]"), LUT_SIZE, topCurve.lut, 0)
-    GLES30.glUniform1fv(uniform(program, "uCurveBottomLut[0]"), LUT_SIZE, bottomCurve.lut, 0)
-    GLES30.glUniform1fv(uniform(program, "uCurveLeftLut[0]"), LUT_SIZE, leftCurve.lut, 0)
-    GLES30.glUniform1fv(uniform(program, "uCurveRightLut[0]"), LUT_SIZE, rightCurve.lut, 0)
+    GLES30.glUniform1fv(uniforms.curveTopLut, LUT_SIZE, topCurve.lut, 0)
+    GLES30.glUniform1fv(uniforms.curveBottomLut, LUT_SIZE, bottomCurve.lut, 0)
+    GLES30.glUniform1fv(uniforms.curveLeftLut, LUT_SIZE, leftCurve.lut, 0)
+    GLES30.glUniform1fv(uniforms.curveRightLut, LUT_SIZE, rightCurve.lut, 0)
   }
 
   private fun curveUniforms(curve: String): CurveUniforms {
@@ -474,6 +499,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
 
     horizontalProgram = createProgram(EdgeFadeGlesShaders.VERTEX, EdgeFadeGlesShaders.HORIZONTAL)
     verticalProgram = createProgram(EdgeFadeGlesShaders.VERTEX, EdgeFadeGlesShaders.VERTICAL)
+    horizontalUniforms = resolveProgramUniforms(horizontalProgram, includeTexMatrix = true)
+    verticalUniforms = resolveProgramUniforms(verticalProgram, includeTexMatrix = false)
     createQuad()
     createHorizontalTarget(width, height)
     checkGl("GLES backend initialization")
@@ -607,6 +634,23 @@ internal class EdgeFadeGlesProgressiveRenderer(
     return program
   }
 
+  private fun resolveProgramUniforms(program: Int, includeTexMatrix: Boolean): ProgramUniforms =
+    ProgramUniforms(
+      content = resolveUniform(program, "uContent"),
+      texMatrix = if (includeTexMatrix) resolveUniform(program, "uTexMatrix") else null,
+      viewSize = resolveUniform(program, "uViewSize"),
+      edges = resolveUniform(program, "uEdges"),
+      progression = resolveUniform(program, "uProgression"),
+      blurRadius = resolveUniform(program, "uBlurRadius"),
+      curveExp = resolveUniform(program, "uCurveExp"),
+      curveMode = resolveUniform(program, "uCurveMode"),
+      useLut = resolveUniform(program, "uUseLut"),
+      curveTopLut = resolveUniform(program, "uCurveTopLut[0]"),
+      curveBottomLut = resolveUniform(program, "uCurveBottomLut[0]"),
+      curveLeftLut = resolveUniform(program, "uCurveLeftLut[0]"),
+      curveRightLut = resolveUniform(program, "uCurveRightLut[0]"),
+    )
+
   private fun compileShader(type: Int, source: String): Int {
     val shader = GLES30.glCreateShader(type)
     if (shader == 0) throw RuntimeException("glCreateShader failed")
@@ -622,7 +666,7 @@ internal class EdgeFadeGlesProgressiveRenderer(
     return shader
   }
 
-  private fun uniform(program: Int, name: String): Int {
+  private fun resolveUniform(program: Int, name: String): Int {
     val location = GLES30.glGetUniformLocation(program, name)
     if (location < 0) throw RuntimeException("Missing GLES uniform $name")
     return location
@@ -753,6 +797,8 @@ internal class EdgeFadeGlesProgressiveRenderer(
     vertexBufferId = 0
     horizontalProgram = 0
     verticalProgram = 0
+    horizontalUniforms = null
+    verticalUniforms = null
     resourceWidth = 0
     resourceHeight = 0
   }
