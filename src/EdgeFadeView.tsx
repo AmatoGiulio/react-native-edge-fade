@@ -133,6 +133,10 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    blurProgression: _bp,
+    frostSaturation: _fs,
+    frostLift: _fl,
+    frostProgression: _fp,
     radius,
     style,
     children,
@@ -190,6 +194,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
   }
 
   // Mask mode: CSS mask-image, one gradient per active edge, combined with intersect.
+  // Web intentionally treats blur mode as mask fallback as well.
   const gradients: string[] = [];
   if (n.fadeTop > 0)
     gradients.push(
