@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   PixelRatio,
   Platform,
@@ -36,6 +37,7 @@ const TRACKS = Array.from({ length: 64 }, (_, i) => ({
 const PERF_DEFAULT_TARGET_RADIUS_PX = 144;
 const PERF_MAX_RADIUS_PX = 150;
 const PERF_DENSITY = PixelRatio.get();
+const PERF_AUTO_SCROLL_CYCLE_MS = 4200;
 
 function resolveRadiusPx(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -49,12 +51,49 @@ export default function ProgressiveBlurPerfRoute() {
     edges?: string;
     radiusPx?: string;
     effect?: string;
+    workload?: string;
   }>();
   const fourEdges = params.edges === 'four';
   const effectEnabled = params.effect !== 'off';
+  const autoScroll = params.workload === 'auto';
   const targetRadiusPx = resolveRadiusPx(params.radiusPx);
   const radiusDp = targetRadiusPx / PERF_DENSITY;
   const actualRadiusPx = radiusDp * PERF_DENSITY;
+
+  const scrollRef = useRef<ScrollView>(null);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+
+  useEffect(() => {
+    if (!autoScroll) return undefined;
+
+    let frame = 0;
+    let originMs: number | null = null;
+
+    const tick = (frameTimeMs: number) => {
+      if (originMs === null) originMs = frameTimeMs;
+
+      const maxOffset = Math.max(
+        0,
+        contentHeightRef.current - viewportHeightRef.current,
+      );
+      if (maxOffset > 0) {
+        const phase =
+          ((frameTimeMs - originMs) % PERF_AUTO_SCROLL_CYCLE_MS) /
+          PERF_AUTO_SCROLL_CYCLE_MS;
+        const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+        scrollRef.current?.scrollTo({
+          y: maxOffset * position,
+          animated: false,
+        });
+      }
+
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoScroll]);
 
   if (Platform.OS !== 'android') {
     return <View />;
@@ -68,9 +107,10 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
           {effectEnabled ? 'Public Progressive' : 'Public baseline · no effect'}
-          {'·'}
-          {` ${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
+          {' · '}
+          {`${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
+          {autoScroll ? ' · Auto workload' : ''}
         </Text>
       </View>
 
@@ -87,11 +127,18 @@ export default function ProgressiveBlurPerfRoute() {
           blurRadius={radiusDp}
         >
           <ScrollView
+            ref={scrollRef}
             testID="perf-scroll"
             style={s.list}
             contentContainerStyle={s.tracks}
             showsVerticalScrollIndicator={false}
             removeClippedSubviews={false}
+            onLayout={(event) => {
+              viewportHeightRef.current = event.nativeEvent.layout.height;
+            }}
+            onContentSizeChange={(_width, height) => {
+              contentHeightRef.current = height;
+            }}
           >
             {TRACKS.map((track, index) => (
               <View key={track.id} style={s.track}>
