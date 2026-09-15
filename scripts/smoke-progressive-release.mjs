@@ -4,6 +4,8 @@ import { spawnSync } from 'node:child_process';
 
 const PACKAGE = 'com.edgefadeexample';
 const ADB_MAX_BUFFER = 64 * 1024 * 1024;
+const ZERO_RADIUS_IDENTITY_LOG =
+  'Blur identity active: blurRadius 0px (no blur, no Mask fallback).';
 
 function parseArgs(argv) {
   const options = {
@@ -238,6 +240,9 @@ if (logcat.includes('curve cannot be represented by the progressive radius mask'
 if (/mask fallback: blurRadius 0(?:\.0+)?px/i.test(logcat)) {
   failures.push('radius 0 incorrectly fell back to Mask');
 }
+if (!logcat.includes(ZERO_RADIUS_IDENTITY_LOG)) {
+  failures.push('platform-independent radius 0 identity activation log was not observed');
+}
 
 let backendSummary;
 if (sdk >= 33) {
@@ -255,9 +260,9 @@ if (sdk >= 33) {
   backendSummary = '31-32 GLES continuous progressive activation + 0px identity + radius recovery';
 } else {
   if (!logcat.includes('Progressive unavailable; using mask fallback: requires API 31+')) {
-    failures.push('API <31 did not explicitly report the required Mask fallback');
+    failures.push('API <31 did not explicitly report the required nonzero Mask fallback');
   }
-  backendSummary = '<31 explicit Mask fallback';
+  backendSummary = '<31 nonzero Mask fallback + platform-independent 0px identity';
 }
 
 if (failures.length) {
@@ -272,7 +277,11 @@ if (failures.length) {
 } else {
   console.log('\nPASS');
   console.log(`  API ${backendSummary}`);
-  console.log('  analytical + custom curve transitions: no progressive fallback observed');
+  if (sdk >= 31) {
+    console.log('  analytical + custom curve transitions: no progressive fallback observed');
+  } else {
+    console.log('  nonzero blur phases explicitly used Mask; the 0px phase stayed sharp identity');
+  }
   console.log(
     '  rapid scroll + background/foreground + portrait/landscape/portrait: no native failure observed'
   );
