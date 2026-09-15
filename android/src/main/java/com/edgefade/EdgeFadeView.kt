@@ -144,6 +144,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
       when {
         mode == "lens" -> drawLens(canvas)
+        mode == "blur" && blurRadius <= 0f -> super.dispatchDraw(canvas)
         !hasAnyFade -> super.dispatchDraw(canvas)
         mode == "overlay" -> {
           super.dispatchDraw(canvas)
