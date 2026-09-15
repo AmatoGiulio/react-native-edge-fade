@@ -47,9 +47,13 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   fun register(view: EdgeFadeView) {
     val state = State()
-    val listener = View.OnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+    // Do not capture `view` from a value stored in a WeakHashMap. A value -> key
+    // strong reference would defeat the weak-key lifecycle and retain dropped RN
+    // views if a host lifecycle ever skips onDropViewInstance().
+    val listener = View.OnLayoutChangeListener { changed, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+      val edgeFadeView = changed as? EdgeFadeView ?: return@OnLayoutChangeListener
       if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
-        apply(view)
+        apply(edgeFadeView)
       }
     }
     state.layoutListener = listener
@@ -164,8 +168,17 @@ internal object EdgeFadeProgressiveBlurEffect {
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   fun draw(view: EdgeFadeView, canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val renderer = Api33.rendererFor(view) ?: return false
-    renderer.draw(canvas, recordChildren)
-    return true
+    return try {
+      renderer.draw(canvas, recordChildren)
+    } catch (error: RuntimeException) {
+      // A transient draw/configuration failure must degrade in the same frame to
+      // Mask. Never leave dispatchDraw believing progressive content was drawn,
+      // and never resurrect a second blur implementation as a fallback.
+      Log.w(TAG, "Progressive strip draw failed; using mask fallback.", error)
+      Api33.clear(view)
+      view.progressiveBlurActive = false
+      false
+    }
   }
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -186,7 +199,10 @@ internal object EdgeFadeProgressiveBlurEffect {
       }
 
       return try {
-        renderer.prepare()
+        if (!renderer.prepare()) {
+          if (existing == null) renderer.release()
+          return false
+        }
         if (existing == null) renderers[view] = renderer
         true
       } catch (error: RuntimeException) {
