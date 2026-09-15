@@ -185,7 +185,7 @@ if (logcat.includes('Progressive strip configuration failed')) {
 if (logcat.includes('curve cannot be represented by the progressive radius mask')) {
   failures.push('serialized custom curve fell back to Mask');
 }
-if (/blurRadius 0(?:\.0+)?px .*mask fallback/i.test(logcat)) {
+if (/mask fallback: blurRadius 0(?:\.0+)?px/i.test(logcat)) {
   failures.push('radius 0 incorrectly fell back to Mask');
 }
 
