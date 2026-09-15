@@ -79,6 +79,23 @@ function shell(command, config) {
   return adb(['shell', command], config);
 }
 
+function relevantLogcat() {
+  return adb(
+    [
+      'logcat',
+      '-d',
+      '-v',
+      'brief',
+      'EdgeFadeProgressive:V',
+      'AndroidRuntime:E',
+      'libc:F',
+      'DEBUG:E',
+      '*:S',
+    ],
+    { trim: false }
+  );
+}
+
 const model = shell('getprop ro.product.model');
 const sdk = Number(shell('getprop ro.build.version.sdk'));
 const qemu = shell('getprop ro.kernel.qemu');
@@ -135,11 +152,21 @@ console.log(`Smoke: ${options.edges} / radius cycle 98 -> 0 -> 150 -> 1 -> 98 px
 console.log('Curve cycle: analytical Smooth + serialized custom cubicBezier');
 
 adb(['logcat', '-c']);
+let capturedLogs = '';
+const checkpointLogs = () => {
+  // The device log ring is bounded. Preserve renderer activation/failure
+  // evidence during the smoke instead of depending on a single large dump at
+  // the end, where early activation can already have been evicted.
+  capturedLogs += relevantLogcat();
+};
 
 try {
   startSmoke();
+  checkpointLogs();
+
   driveSwipes(options.swipes);
   sleep(options.settleMs);
+  checkpointLogs();
 
   // Background/foreground lifecycle.
   shell('input keyevent KEYCODE_HOME');
@@ -147,6 +174,7 @@ try {
   shell(`am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PACKAGE}`);
   sleep(1500);
   driveSwipes(Math.max(4, Math.floor(options.swipes / 2)));
+  checkpointLogs();
 
   // Deterministic portrait -> landscape -> portrait. Restore the user's rotation
   // settings in finally even if the app or assertion fails.
@@ -154,10 +182,13 @@ try {
   shell('settings put system user_rotation 1');
   sleep(1700);
   driveSwipes(3);
+  checkpointLogs();
+
   shell('settings put system user_rotation 0');
   sleep(1700);
   driveSwipes(3);
   sleep(options.settleMs);
+  checkpointLogs();
 } finally {
   shell(`settings put system accelerometer_rotation ${accelerometerRotation}`, {
     allowFailure: true,
@@ -167,11 +198,11 @@ try {
   });
 }
 
-const logcat = adb(['logcat', '-d'], { trim: false });
+const logcat = `${capturedLogs}\n${relevantLogcat()}`;
 const failures = [];
 
-if (/FATAL EXCEPTION|AndroidRuntime: FATAL/i.test(logcat)) {
-  failures.push('fatal Android exception observed');
+if (/FATAL EXCEPTION|AndroidRuntime: FATAL|Fatal signal/i.test(logcat)) {
+  failures.push('fatal Android/native exception observed');
 }
 if (logcat.includes('Progressive strip draw failed; using mask fallback.')) {
   failures.push('progressive draw failure observed');
