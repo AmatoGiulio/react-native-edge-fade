@@ -66,11 +66,16 @@ class ProgressivePerfScene(unittest.TestCase):
             "effect=${effect}",
             "'--es', 'effect', variant.effect ? 'on' : 'off'",
             "function stopBothApps()",
+            "hostComparison",
+            "baselineDiagnostic",
+            "Renderer-level acceptance uses Perfetto/FrameTimeline",
+            "independent percentiles are not subtracted as a release metric",
             "--aggregate-out",
             "DEBUGGABLE",
             "ro.kernel.qemu",
         ):
             self.assertIn(contract, script)
+        self.assertNotIn("P50IncrementalRatioPublicToAndroidx", script)
         self.assertNotIn("legacy", script.lower())
 
     def test_comparator_force_stops_both_apps_before_every_variant(self):
