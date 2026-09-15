@@ -44,8 +44,12 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("Math.min(PERF_MAX_RADIUS_PX, Math.max(1, parsed))", source)
 
         selector = read(SELECTOR)
-        self.assertIn("view.blurRadius !in 1f..BlurLabGeometry.MAX_RADIUS_PX", selector)
-        self.assertIn('"blurRadius ${view.blurRadius}px outside 1..${BlurLabGeometry.MAX_RADIUS_PX}px"', selector)
+        self.assertIn("view.blurRadius > BlurLabGeometry.MAX_RADIUS_PX", selector)
+        self.assertIn(
+            '"blurRadius ${view.blurRadius}px exceeds ${BlurLabGeometry.MAX_RADIUS_PX}px"',
+            selector,
+        )
+        self.assertNotIn("view.blurRadius !in 1f..BlurLabGeometry.MAX_RADIUS_PX", selector)
 
     def test_androidx_reference_has_same_no_effect_baseline(self):
         source = read(ANDROIDX_BENCH)
