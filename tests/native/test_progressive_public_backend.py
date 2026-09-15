@@ -179,7 +179,8 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("float d = i + high / weight", shaders)
         self.assertIn("result / weightSum", shaders)
         self.assertNotIn("blurLevel", shaders)
-        self.assertNotIn("opacity", shaders)
+        self.assertNotIn("blurOpacity", shaders)
+        self.assertNotIn("levelOpacity", shaders)
         self.assertNotIn("createBlurEffect", renderer)
 
     def test_api31_records_children_once_and_replaces_bands_geometrically(self):
