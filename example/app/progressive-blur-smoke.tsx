@@ -8,12 +8,23 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { EdgeFadeView } from 'react-native-edge-fade';
+import {
+  EdgeFadeView,
+  type CubicBezierCurve,
+  type EdgeFadeCurve,
+} from 'react-native-edge-fade';
 
 const DENSITY = PixelRatio.get();
 const DEFAULT_RADIUS_PX = 98;
 const MAX_RADIUS_PX = 150;
 const STEPS_PX = [DEFAULT_RADIUS_PX, 0, MAX_RADIUS_PX, 1, DEFAULT_RADIUS_PX];
+const CUSTOM_CURVE: CubicBezierCurve = {
+  type: 'cubicBezier',
+  x1: 0.78,
+  y1: 0.14,
+  x2: 0.15,
+  y2: 0.78,
+};
 
 export default function ProgressiveBlurSmokeRoute() {
   const params = useLocalSearchParams<{ edges?: string }>();
@@ -32,6 +43,10 @@ export default function ProgressiveBlurSmokeRoute() {
 
   const radiusPx = STEPS_PX[step]!;
   const radiusDp = radiusPx / DENSITY;
+  // Exercise the real serialized custom-curve LUT under the maximum radius,
+  // then at the one-pixel boundary before returning to the analytical preset.
+  const curve: EdgeFadeCurve = step === 2 || step === 3 ? CUSTOM_CURVE : 'smooth';
+  const curveLabel = typeof curve === 'string' ? curve : 'custom cubicBezier';
 
   return (
     <View style={s.page} testID="progressive-release-smoke">
@@ -40,7 +55,7 @@ export default function ProgressiveBlurSmokeRoute() {
         <Text style={s.kicker}>EDGE FADE / RELEASE SMOKE</Text>
         <Text style={s.title}>Lifecycle + radius transitions</Text>
         <Text style={s.meta}>
-          {`${radiusPx}px · ${fourEdges ? 'Four edges' : 'Top + bottom'} · step ${step + 1}/${STEPS_PX.length}`}
+          {`${radiusPx}px · ${curveLabel} · ${fourEdges ? 'Four edges' : 'Top + bottom'} · step ${step + 1}/${STEPS_PX.length}`}
         </Text>
       </View>
 
@@ -53,7 +68,7 @@ export default function ProgressiveBlurSmokeRoute() {
           bottom={112}
           left={fourEdges ? 48 : 0}
           right={fourEdges ? 48 : 0}
-          curve="smooth"
+          curve={curve}
           blurRadius={radiusDp}
         >
           <ScrollView
