@@ -113,6 +113,7 @@ function driveSwipes(count) {
 
 console.log(`Device: ${model} / API ${sdk} / ${width}x${height}`);
 console.log(`Smoke: ${options.edges} / radius cycle 98 -> 0 -> 150 -> 1 -> 98 px`);
+console.log('Curve cycle: analytical Smooth + serialized custom cubicBezier');
 
 adb(['logcat', '-c']);
 
@@ -158,6 +159,9 @@ if (logcat.includes('Progressive strip shader creation failed')) {
 if (logcat.includes('Progressive strip configuration failed')) {
   failures.push('progressive configuration failure observed');
 }
+if (logcat.includes('curve cannot be represented by the progressive radius mask')) {
+  failures.push('serialized custom curve fell back to Mask');
+}
 
 if (sdk >= 33) {
   if (!logcat.includes('Using pure progressive AGSL blur on API 33+')) {
@@ -177,5 +181,6 @@ if (failures.length) {
 } else {
   console.log('\nPASS');
   console.log(`  API ${sdk >= 33 ? '33+ Public Progressive activation + radius fallback/recovery' : '<33 explicit Mask fallback'}`);
+  console.log('  analytical + custom curve transitions: no progressive fallback observed');
   console.log('  rapid scroll + background/foreground + portrait/landscape/portrait: no native failure observed');
 }
