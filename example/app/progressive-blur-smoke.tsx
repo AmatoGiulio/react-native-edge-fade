@@ -45,7 +45,8 @@ export default function ProgressiveBlurSmokeRoute() {
   const radiusDp = radiusPx / DENSITY;
   // Exercise the real serialized custom-curve LUT under the maximum radius,
   // then at the one-pixel boundary before returning to the analytical preset.
-  const curve: EdgeFadeCurve = step === 2 || step === 3 ? CUSTOM_CURVE : 'smooth';
+  const curve: EdgeFadeCurve =
+    step === 2 || step === 3 ? CUSTOM_CURVE : 'smooth';
   const curveLabel = typeof curve === 'string' ? curve : 'custom cubicBezier';
 
   return (
@@ -79,11 +80,15 @@ export default function ProgressiveBlurSmokeRoute() {
             {rows.map((row) => (
               <View key={row} style={s.row}>
                 <View style={s.badge}>
-                  <Text style={s.badgeText}>{String(row).padStart(2, '0')}</Text>
+                  <Text style={s.badgeText}>
+                    {String(row).padStart(2, '0')}
+                  </Text>
                 </View>
                 <View style={s.copy}>
                   <Text style={s.rowTitle}>Progressive blur smoke</Text>
-                  <Text style={s.rowMeta}>scroll · rotate · background · restore</Text>
+                  <Text style={s.rowMeta}>
+                    scroll · rotate · background · restore
+                  </Text>
                 </View>
               </View>
             ))}
