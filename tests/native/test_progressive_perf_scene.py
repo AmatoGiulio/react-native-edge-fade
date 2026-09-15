@@ -34,6 +34,24 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertNotIn("frostLift", source)
         self.assertNotIn("frostProgression", source)
 
+    def test_perf_scene_has_deterministic_auto_scroll_workload(self):
+        source = read(PERF)
+        for contract in (
+            "workload?: string",
+            "const autoScroll = params.workload === 'auto'",
+            "PERF_AUTO_SCROLL_CYCLE_MS = 4200",
+            "requestAnimationFrame(tick)",
+            "cancelAnimationFrame(frame)",
+            "scrollRef.current?.scrollTo({",
+            "y: maxOffset * position",
+            "animated: false",
+            "onContentSizeChange",
+            "viewportHeightRef.current",
+            "contentHeightRef.current",
+            "Auto workload",
+        ):
+            self.assertIn(contract, source)
+
     def test_perf_radius_is_explicit_physical_px_and_capped_at_androidx_limit(self):
         source = read(PERF)
         self.assertIn("PixelRatio", source)
@@ -129,6 +147,21 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertIn("adb(['pull', remoteTrace, localTrace])", script)
         self.assertNotIn("/data/local/tmp/edgefade-perfetto", script)
         self.assertNotIn("adb(['push', localConfig, remoteConfig])", script)
+
+    def test_api31_perfetto_uses_auto_scroll_and_proves_measured_frame_span(self):
+        script = read(PERFETTO_NODE)
+        for contract in (
+            "renderer === 'public' && sdk < 33",
+            "workload=${workload}",
+            "dumpsys', 'gfxinfo', pkg, 'reset'",
+            "dumpsys', 'gfxinfo', pkg, 'framestats'",
+            "IntendedVsync",
+            "function assertAutoWorkloadCoverage(pkg)",
+            "options.durationMs * 0.75",
+            "options.durationMs / 100",
+            "Refusing to treat this trace as a steady-state benchmark",
+        ):
+            self.assertIn(contract, script)
 
 
 if __name__ == "__main__":
