@@ -206,7 +206,7 @@ function resetFrameStats(pkg) {
   adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'reset']);
 }
 
-function readFrameStats(pkg) {
+function reportRecentFrameActivity(pkg) {
   const dump = adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'framestats'], { trim: false });
   const intendedVsyncNs = [];
   let header = null;
@@ -241,27 +241,13 @@ function readFrameStats(pkg) {
   }
 
   const unique = [...new Set(intendedVsyncNs)].sort((a, b) => a - b);
-  const spanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1_000_000 : 0;
-  return { frameCount: unique.length, spanMs };
-}
-
-function assertAutoWorkloadCoverage(pkg) {
-  const stats = readFrameStats(pkg);
-  const minSpanMs = options.durationMs * 0.75;
-  const minFrameCount = Math.max(30, Math.floor(options.durationMs / 100));
-
+  const recentSpanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1_000_000 : 0;
   console.log(
-    `Auto workload proof: ${stats.frameCount} rendered frames spanning ${round(stats.spanMs, 1)}ms`
+    `Auto workload diagnostic: ${unique.length} recent gfx frames / ${round(recentSpanMs, 1)}ms recent-buffer span`
   );
-
-  if (stats.spanMs < minSpanMs || stats.frameCount < minFrameCount) {
-    throw new Error(
-      `Deterministic auto-scroll did not cover the capture window: ` +
-      `${stats.frameCount} frames / ${round(stats.spanMs, 1)}ms span; ` +
-      `need >= ${minFrameCount} frames and >= ${round(minSpanMs, 1)}ms. ` +
-      `Refusing to treat this trace as a steady-state benchmark.`
-    );
-  }
+  console.log(
+    'Steady-state acceptance still comes from EdgeFade.progressive.gles slices distributed across the Perfetto capture.'
+  );
 }
 
 function perfettoConfig(pkg) {
@@ -315,7 +301,7 @@ async function capture(renderer) {
   console.log(`\n=== Perfetto: ${renderer} / ${options.edges} / ${options.radiusPx}px ===`);
   console.log(
     autoWorkload
-      ? 'Workload: deterministic in-app auto-scroll with gfx frame-span proof'
+      ? 'Workload: deterministic in-app auto-scroll'
       : `Workload: ${options.swipes} driven input swipes / warm-up ${options.warmupSwipes}`
   );
 
@@ -323,7 +309,7 @@ async function capture(renderer) {
   if (autoWorkload) {
     // The route has already been auto-scrolling during the renderer startup wait.
     // Give it one extra cycle fragment before resetting GraphicsStats so startup
-    // frames cannot satisfy the measured-window coverage proof.
+    // frames do not dominate the post-capture diagnostic.
     sleep(500);
   } else {
     driveSwipes(options.warmupSwipes);
@@ -359,7 +345,7 @@ async function capture(renderer) {
     }
     await perfettoDone;
 
-    if (autoWorkload) assertAutoWorkloadCoverage(pkg);
+    if (autoWorkload) reportRecentFrameActivity(pkg);
 
     adb(['pull', remoteTrace, localTrace]);
     console.log(`Trace: ${localTrace}`);
