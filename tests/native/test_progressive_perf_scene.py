@@ -148,7 +148,7 @@ class ProgressivePerfScene(unittest.TestCase):
         self.assertNotIn("/data/local/tmp/edgefade-perfetto", script)
         self.assertNotIn("adb(['push', localConfig, remoteConfig])", script)
 
-    def test_api31_perfetto_uses_auto_scroll_and_proves_measured_frame_span(self):
+    def test_api31_perfetto_uses_auto_scroll_and_reports_recent_gfx_activity(self):
         script = read(PERFETTO_NODE)
         for contract in (
             "renderer === 'public' && sdk < 33",
@@ -156,12 +156,12 @@ class ProgressivePerfScene(unittest.TestCase):
             "dumpsys', 'gfxinfo', pkg, 'reset'",
             "dumpsys', 'gfxinfo', pkg, 'framestats'",
             "IntendedVsync",
-            "function assertAutoWorkloadCoverage(pkg)",
-            "options.durationMs * 0.75",
-            "options.durationMs / 100",
-            "Refusing to treat this trace as a steady-state benchmark",
+            "function reportRecentFrameActivity(pkg)",
+            "Auto workload diagnostic",
+            "Steady-state acceptance still comes from EdgeFade.progressive.gles slices",
         ):
             self.assertIn(contract, script)
+        self.assertNotIn("Refusing to treat this trace as a steady-state benchmark", script)
 
 
 if __name__ == "__main__":
