@@ -14,10 +14,10 @@ import kotlin.math.ceil
  * Edge-local production candidate for the API 33+ progressive blur path.
  *
  * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
- * the analytical edge mask, derives its own radius as `maxRadius * intensity`,
- * then runs the same AndroidX-derived separable Gaussian kernel in H -> V order.
- * There are no discrete blur levels, opacity cross-fades, frost grading, lift,
- * tint or material post-processing in this renderer.
+ * the analytical/LUT edge mask, derives its own radius as
+ * `maxRadius * intensity`, then runs the same AndroidX-derived separable
+ * Gaussian kernel in H -> V order. There are no discrete blur levels, opacity
+ * cross-fades, frost grading, lift, tint or material post-processing here.
  *
  * Strips are only a work-culling optimization: they bound GPU work to regions
  * where the radius can be non-zero. They do not quantize the blur field. Each
@@ -65,6 +65,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     val edge: Int,
     val visible: Rect,
     val source: Rect,
+  )
+
+  private data class CurveUniforms(
+    val exponent: Float,
+    val mode: Float,
+    val useLut: Float,
+    val lut: FloatArray,
   )
 
   private class Strip(var band: Band) {
@@ -219,10 +226,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     val source = strip.band.source
     strip.node.setPosition(0, 0, source.width, source.height)
 
-    val topCurve = EdgeFadeCurves.agslPresetParams(key.curveTop)!!
-    val bottomCurve = EdgeFadeCurves.agslPresetParams(key.curveBottom)!!
-    val leftCurve = EdgeFadeCurves.agslPresetParams(key.curveLeft)!!
-    val rightCurve = EdgeFadeCurves.agslPresetParams(key.curveRight)!!
+    val topCurve = curveUniforms(key.curveTop)
+    val bottomCurve = curveUniforms(key.curveBottom)
+    val leftCurve = curveUniforms(key.curveLeft)
+    val rightCurve = curveUniforms(key.curveRight)
 
     strip.mask.setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())
     strip.mask.setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())
@@ -233,12 +240,25 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("progression", key.progression)
     strip.mask.setFloatUniform(
       "curveExp",
-      floatArrayOf(topCurve.first, bottomCurve.first, leftCurve.first, rightCurve.first),
+      floatArrayOf(
+        topCurve.exponent,
+        bottomCurve.exponent,
+        leftCurve.exponent,
+        rightCurve.exponent,
+      ),
     )
     strip.mask.setFloatUniform(
       "curveMode",
-      floatArrayOf(topCurve.second, bottomCurve.second, leftCurve.second, rightCurve.second),
+      floatArrayOf(topCurve.mode, bottomCurve.mode, leftCurve.mode, rightCurve.mode),
     )
+    strip.mask.setFloatUniform(
+      "useLut",
+      floatArrayOf(topCurve.useLut, bottomCurve.useLut, leftCurve.useLut, rightCurve.useLut),
+    )
+    strip.mask.setFloatUniform("curveTopLut", topCurve.lut)
+    strip.mask.setFloatUniform("curveBottomLut", bottomCurve.lut)
+    strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
+    strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
 
     for (shader in arrayOf(strip.horizontal, strip.vertical)) {
       shader.setInputShader("mask", strip.mask)
@@ -252,6 +272,22 @@ internal class EdgeFadeProgressiveStripRenderer(
         RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
       ),
     )
+  }
+
+  private fun curveUniforms(curve: String): CurveUniforms {
+    val preset = EdgeFadeCurves.agslPresetParams(curve)
+    if (preset != null) {
+      return CurveUniforms(preset.first, preset.second, 0f, EMPTY_LUT)
+    }
+
+    val alpha = requireNotNull(EdgeFadeCurves.parseCustomLUT(curve)) {
+      "Unsupported progressive curve: $curve"
+    }
+    // The public mask outputs radius presence, while serialized custom curves
+    // carry alpha (inner=1 -> outer=0). Convert once on configuration; the GPU
+    // linearly interpolates these 32 samples exactly like EdgeFade mask mode.
+    val presence = FloatArray(alpha.size) { index -> (1f - alpha[index]).coerceIn(0f, 1f) }
+    return CurveUniforms(1f, 0f, 1f, presence)
   }
 
   /**
@@ -332,6 +368,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (value.isFinite()) value else fallback
 
   private companion object {
+    private val EMPTY_LUT = FloatArray(EdgeFadeCurves.LUT_SIZE)
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
     private const val EDGE_LEFT = 2
