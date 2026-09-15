@@ -75,7 +75,7 @@ export default function ProgressiveBlurPerfRoute() {
 
       const maxOffset = Math.max(
         0,
-        contentHeightRef.current - viewportHeightRef.current,
+        contentHeightRef.current - viewportHeightRef.current
       );
       if (maxOffset > 0) {
         const phase =
