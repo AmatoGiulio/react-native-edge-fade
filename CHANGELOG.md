@@ -74,11 +74,11 @@
 
 * **android:** convert edge fade properties from dp to pixels for accurate rendering ([9e5a6de](https://github.com/AmatoGiulio/react-native-edge-fade/commit/9e5a6dea13b93bd7411442c39d368f7abce2b977))
 * **android:** resolve AGSL rendering issue ([fb782c6](https://github.com/AmatoGiulio/react-native-edge-fade/commit/fb782c6851b645349e257ffa72219139f0d2d8ac))
-* **android:** uniform reuse runtimeShader ([2077b92](https://github.com/AmatoGiulio/react-native-edge-fade/commit/2077b9297dfb259cfbfb02f64071866450822368de51df4801b229a8))
+* **android:** uniform reuse runtimeShader ([2077b92](https://github.com/AmatoGiulio/react-native-edge-fade/commit/2077b9297dfb629c7b6488b34026fbcc0e6ace1e))
 * demo ([10bfe5d](https://github.com/AmatoGiulio/react-native-edge-fade/commit/10bfe5d96ff9cc8a892fa215c9c667b34c7fe89a))
-* demo app ([883b361](https://github.com/AmatoGiulio/react-native-edge-fade/commit/883b3612300c980481a5a817bf343d0356737d94))
+* demo app ([883b361](https://github.com/AmatoGiulio/react-native-edge-fade/commit/883b3612300c980481a5b817bf343d0356737d94))
 * **example:** add nestedScrollEnabled to inner ScrollViews ([228cf6e](https://github.com/AmatoGiulio/react-native-edge-fade/commit/228cf6e6d960711940567d848311708d9aaf85a8))
-* **ios:** mask mode crash and rendering on new architecture ([4dbb27a](https://github.com/AmatoGiulio/react-native-edge-fade/commit/4dbb27afbbd929bd7411442c39d368f7abce2b977))
+* **ios:** mask mode crash and rendering on new architecture ([4dbb27a](https://github.com/AmatoGiulio/react-native-edge-fade/commit/4dbb27afbbd9253258a758f2b0b80a276fcf751f))
 * layout ([d3f4bcc](https://github.com/AmatoGiulio/react-native-edge-fade/commit/d3f4bccfdd557a5e26a578eab1c226278ac87852))
 * make animated edge fade compiler-safe ([91d2cbc](https://github.com/AmatoGiulio/react-native-edge-fade/commit/91d2cbc18a7018716d059d0dd8e5a087d2b64ae9))
 
