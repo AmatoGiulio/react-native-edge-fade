@@ -21,10 +21,10 @@ import androidx.annotation.RequiresApi
 /**
  * Native Android host for edge fade effects.
  *
- * `mode="blur"` has exactly one implementation: the API 33+ AndroidX-derived
- * progressive Gaussian owned by [EdgeFadeProgressiveBlurEffect]. If that engine
- * cannot run, the public selector changes [mode] to `mask`; this class never
- * substitutes another blur algorithm.
+ * `mode="blur"` uses one continuous progressive-Gaussian contract. API 33+
+ * executes it through RuntimeShader; API 31-32 use the GLES backend selected by
+ * [EdgeFadeProgressiveBlurEffect]. Unsupported configurations degrade to mask;
+ * this class never substitutes the removed multi-level blur algorithm.
  */
 class EdgeFadeView(context: Context) : FrameLayout(context) {
 
@@ -151,7 +151,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
         }
         mode == "blur" &&
           progressiveBlurActive &&
-          Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+          Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
           canvas.isHardwareAccelerated -> {
           val drawn = EdgeFadeProgressiveBlurEffect.draw(
             this,
