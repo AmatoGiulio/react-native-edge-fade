@@ -21,6 +21,10 @@ import java.util.WeakHashMap
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
+ * A zero blur radius is a platform-independent identity transform. It bypasses
+ * backend selection entirely, so `blurRadius=0` never becomes Mask even on an
+ * Android release that cannot execute either progressive backend.
+ *
  * The API 31-32 backend is deliberately a separate renderer rather than a stack
  * of uniform RenderEffect blurs. RenderEffect exists on Android 12, but it cannot
  * vary blur radius per fragment without RuntimeShader.
@@ -30,6 +34,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     var requestedMode: String = "mask"
     var layoutListener: View.OnLayoutChangeListener? = null
     var announcedBackend: String? = null
+    var identityAnnounced: Boolean = false
     var lastFallbackReason: String? = null
   }
 
@@ -69,13 +74,28 @@ internal object EdgeFadeProgressiveBlurEffect {
     if (requested != "blur") {
       clearProgressive(view)
       view.mode = requested
+      state.identityAnnounced = false
       state.lastFallbackReason = null
       return
     }
 
-    // A zero radius is the identity transform, not an unsupported blur request.
-    // Keeping the selected backend active lets 0 -> N transitions recover without
-    // changing semantics or temporarily switching to Mask.
+    // Radius zero is not a degraded blur. It is the exact identity transform and
+    // therefore does not require API 31, GLES, RuntimeShader, layout readiness,
+    // or any other blur capability. Keep the requested public mode as `blur` so
+    // the host can draw the children directly and a later 0 -> N update can
+    // select the appropriate backend normally.
+    if (view.blurRadius <= 0f) {
+      clearProgressive(view)
+      view.mode = "blur"
+      state.lastFallbackReason = null
+      if (!state.identityAnnounced) {
+        state.identityAnnounced = true
+        Log.i(TAG, "Blur identity active: blurRadius 0px (no blur, no Mask fallback).")
+      }
+      return
+    }
+    state.identityAnnounced = false
+
     val fallbackReason = progressiveFallbackReason(view)
     if (fallbackReason != null) {
       clearProgressive(view)
