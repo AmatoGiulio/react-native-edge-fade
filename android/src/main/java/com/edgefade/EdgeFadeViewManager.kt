@@ -29,6 +29,16 @@ class EdgeFadeViewManager :
   private fun dp(view: EdgeFadeView, dp: Float): Float =
     dp * view.resources.displayMetrics.density
 
+  private fun logComputeState(view: EdgeFadeView, phase: String) {
+    if (computeRequests[view] != true) return
+    Log.w(
+      COMPUTE_DIAGNOSTIC_TAG,
+      "$phase: mode=${view.mode} size=${view.width}x${view.height} " +
+        "edges=[${view.fadeTop},${view.fadeBottom},${view.fadeLeft},${view.fadeRight}] " +
+        "radius=${view.blurRadius} es31Advertised=${EdgeFadeExactComputeRenderer.isSupported(view)}",
+    )
+  }
+
   // Single redraw per prop transaction — Fabric applies all props in one batch.
   // The progressive backend is also configured here, after every related prop
   // has reached the native view, so no intermediate radius/curve combination is
@@ -36,13 +46,14 @@ class EdgeFadeViewManager :
   override fun onAfterUpdateTransaction(view: EdgeFadeView) {
     super.onAfterUpdateTransaction(view)
     EdgeFadeProgressiveBlurEffect.apply(view)
+    logComputeState(view, "after-props")
     if (computeRequests[view] == true) {
-      Log.w(
-        COMPUTE_DIAGNOSTIC_TAG,
-        "compute transaction result: mode=${view.mode} size=${view.width}x${view.height} " +
-          "edges=[${view.fadeTop},${view.fadeBottom},${view.fadeLeft},${view.fadeRight}] " +
-          "radius=${view.blurRadius} es31Advertised=${EdgeFadeExactComputeRenderer.isSupported(view)}",
-      )
+      // The first transaction can legitimately run before layout. Sample again
+      // on the next display frame, after the layout listener had a chance to
+      // re-apply the requested compute backend with real dimensions.
+      view.postOnAnimation {
+        logComputeState(view, "post-layout")
+      }
     }
     view.invalidate()
   }
