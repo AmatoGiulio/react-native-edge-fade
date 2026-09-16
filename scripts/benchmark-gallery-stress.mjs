@@ -18,6 +18,7 @@ function parseArgs(argv) {
     radiusPx: 140,
     cycleMs: 4200,
     samples: 2,
+    imageRenderer: 'expo',
     outDir: DEFAULT_OUT_DIR,
   };
 
@@ -36,6 +37,7 @@ function parseArgs(argv) {
       case '--radius-px': options.radiusPx = Number(value()); break;
       case '--cycle-ms': options.cycleMs = Number(value()); break;
       case '--samples': options.samples = Number(value()); break;
+      case '--image-renderer': options.imageRenderer = value(); break;
       case '--out-dir': options.outDir = path.resolve(value()); break;
       default: throw new Error(`Unknown argument: ${arg}`);
     }
@@ -58,6 +60,9 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(options.samples) || options.samples < 1 || options.samples > 6) {
     throw new Error('--samples must be an integer in 1..6');
+  }
+  if (!['expo', 'native'].includes(options.imageRenderer)) {
+    throw new Error('--image-renderer must be expo or native');
   }
 
   return options;
@@ -263,7 +268,7 @@ function launchCase(effectEnabled, sdk) {
   sleep(400);
 
   const effect = effectEnabled ? 'on' : 'off';
-  const uri = `edgefade:///?stress=auto&effect=${effect}&radiusPx=${options.radiusPx}&cycleMs=${options.cycleMs}`;
+  const uri = `edgefade:///?stress=auto&effect=${effect}&radiusPx=${options.radiusPx}&cycleMs=${options.cycleMs}&image=${options.imageRenderer}`;
   const launch = adbShell(
     `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PACKAGE}`,
     { trim: false }
@@ -283,7 +288,7 @@ function resetGraphicsStats() {
 
 function runCase({ effectEnabled, ordinal, sdk, runId }) {
   const label = effectEnabled ? 'blur' : 'baseline';
-  console.log(`\n[${ordinal}] ${label.toUpperCase()} / ${options.durationMs}ms`);
+  console.log(`\n[${ordinal}] ${label.toUpperCase()} / ${options.imageRenderer} image / ${options.durationMs}ms`);
 
   launchCase(effectEnabled, sdk);
   resetGraphicsStats();
@@ -301,6 +306,7 @@ function runCase({ effectEnabled, ordinal, sdk, runId }) {
   const result = {
     label,
     effectEnabled,
+    imageRenderer: options.imageRenderer,
     ordinal,
     durationMs: options.durationMs,
     warmupMs: options.warmupMs,
@@ -313,7 +319,7 @@ function runCase({ effectEnabled, ordinal, sdk, runId }) {
     ...recent,
   };
 
-  const fileBase = `${runId}-${String(ordinal).padStart(2, '0')}-${label}`;
+  const fileBase = `${runId}-${options.imageRenderer}-${String(ordinal).padStart(2, '0')}-${label}`;
   fs.writeFileSync(path.join(options.outDir, `${fileBase}-gfxinfo.txt`), gfxSummaryRaw);
   fs.writeFileSync(path.join(options.outDir, `${fileBase}-framestats.txt`), frameStatsRaw);
 
@@ -386,7 +392,7 @@ console.log('Gallery deterministic stress benchmark');
 console.log(`Device: ${model} / API ${sdk}${isEmulator ? ' / emulator' : ' / physical'}`);
 console.log(`Display: ${size.replace(/\s+/g, ' ')} / ${density.replace(/\s+/g, ' ')}`);
 console.log(`Refresh settings: peak=${peakRefreshRate ?? 'n/a'} min=${minRefreshRate ?? 'n/a'}`);
-console.log(`Scene: real Home Photo Grid / FlashList / 4 columns / expo-image`);
+console.log(`Scene: real Home Photo Grid / FlashList / 4 columns / ${options.imageRenderer === 'native' ? 'React Native Image' : 'expo-image'}`);
 console.log(`Workload: triangular auto-scroll / cycle=${options.cycleMs}ms`);
 console.log(`Blur: ${options.radiusPx}px physical target / top+bottom 110dp`);
 console.log(`Capture: ${options.samples} sample(s) per condition / ${options.durationMs}ms each`);
@@ -445,7 +451,10 @@ const report = {
   aggregate: { baseline, blur, comparison },
 };
 
-const reportPath = path.join(options.outDir, `${runId}-report.json`);
+const reportPath = path.join(
+  options.outDir,
+  `${runId}-${options.imageRenderer}-report.json`
+);
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('\n=== Aggregate ===');
