@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback } from 'react';
 import {
   Image as NativeImage,
   Pressable,
@@ -6,10 +6,16 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { FlashList } from '@shopify/flash-list';
 import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  scrollTo,
+  useAnimatedRef,
+  useAnimatedStyle,
+  useFrameCallback,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 import { useCatalog, type CatalogItem } from '@/data/catalog';
@@ -19,6 +25,9 @@ import { useTheme } from '@/theme';
 const GAP = 2;
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
+const STRESS_VIEWPORT_SPAN = 4;
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
 
 export type GalleryStressImageRenderer = 'expo' | 'native' | 'solid';
 
@@ -96,12 +105,18 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
     useFadeStore();
   const { curve, blurRadius, frostProgression } = useFadeRender();
 
-  const listRef = useRef<FlashListRef<CatalogItem>>(null);
-  const viewportHeightRef = useRef(0);
-  const contentHeightRef = useRef(0);
+  // The deterministic stress path must never be JS-rAF driven. Imperative
+  // scrollToOffset(animated:false) from the JS thread produced visible stepping
+  // even in the 0px identity baseline and contaminated renderer comparisons.
+  // Reanimated scrollTo executes synchronously on the UI thread instead.
+  const listRef = useAnimatedRef<any>();
+  const viewportHeight = useSharedValue(0);
+  const contentHeight = useSharedValue(0);
+  const stressOriginMs = useSharedValue(-1);
 
   const stressActive = stress?.autoScroll === true;
   const imageRenderer = stressActive ? stress.imageRenderer : 'expo';
+  const stressCycleMs = stress?.cycleMs ?? 4200;
 
   const renderItem = useCallback(
     ({ item }: { item: CatalogItem }) => (
@@ -110,43 +125,42 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
     [imageRenderer]
   );
 
-  useEffect(() => {
-    if (!stressActive || isLoading || isError || catalog.length === 0) {
-      return undefined;
-    }
+  useFrameCallback(
+    useCallback(
+      (frameInfo) => {
+        'worklet';
+        if (!stressActive) return;
 
-    let frame = 0;
-    let originMs: number | null = null;
+        const viewport = viewportHeight.value;
+        const maxOffset = Math.max(0, contentHeight.value - viewport);
+        if (viewport <= 0 || maxOffset <= 0) return;
 
-    const tick = (frameTimeMs: number) => {
-      const maxOffset = Math.max(
-        0,
-        contentHeightRef.current - viewportHeightRef.current
-      );
+        // Keep the stress velocity independent of catalog size. Traversing the
+        // complete photo catalog in 2.1s made the old baseline itself visibly
+        // non-smooth and turned the benchmark into a virtualization torture test.
+        const travel = Math.min(maxOffset, viewport * STRESS_VIEWPORT_SPAN);
 
-      if (maxOffset > 0) {
-        if (originMs === null) {
-          originMs = frameTimeMs + STRESS_WARMUP_MS;
-          listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        if (stressOriginMs.value < 0) {
+          stressOriginMs.value = frameInfo.timestamp + STRESS_WARMUP_MS;
+          scrollTo(listRef, 0, 0, false);
+          return;
         }
+        if (frameInfo.timestamp < stressOriginMs.value) return;
 
-        if (frameTimeMs >= originMs) {
-          const phase =
-            ((frameTimeMs - originMs) % stress.cycleMs) / stress.cycleMs;
-          const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-          listRef.current?.scrollToOffset({
-            offset: maxOffset * position,
-            animated: false,
-          });
-        }
-      }
-
-      frame = requestAnimationFrame(tick);
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [catalog.length, isError, isLoading, stress, stressActive]);
+        const elapsed = frameInfo.timestamp - stressOriginMs.value;
+        const phase = (elapsed % stressCycleMs) / stressCycleMs;
+        const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+        scrollTo(listRef, 0, travel * position, false);
+      }, [
+        contentHeight,
+        listRef,
+        stressActive,
+        stressCycleMs,
+        stressOriginMs,
+        viewportHeight,
+      ]),
+    stressActive
+  );
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
@@ -162,6 +176,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
   const edgeLeft = stressActive ? 0 : left;
   const edgeRight = stressActive ? 0 : right;
   const edgeRadius = stressActive ? 0 : radius;
+  const edgeCurve = stressActive ? 'smooth' : curve;
   const edgeMode = stressActive ? 'blur' : mode;
   const edgeBlurRadius = stressActive
     ? stress.effectEnabled
@@ -179,7 +194,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         left={edgeLeft}
         right={edgeRight}
         radius={edgeRadius}
-        curve={curve}
+        curve={edgeCurve}
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
@@ -189,7 +204,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         {isLoading || isError || catalog.length === 0 ? (
           <SkeletonGrid />
         ) : (
-          <FlashList
+          <AnimatedFlashList
             ref={listRef}
             testID={stressActive ? 'gallery-stress-list' : undefined}
             data={catalog}
@@ -199,11 +214,14 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.listContent}
+            maintainVisibleContentPosition={
+              stressActive ? { disabled: true } : undefined
+            }
             onLayout={(event) => {
-              viewportHeightRef.current = event.nativeEvent.layout.height;
+              viewportHeight.value = event.nativeEvent.layout.height;
             }}
             onContentSizeChange={(_width, height) => {
-              contentHeightRef.current = height;
+              contentHeight.value = height;
             }}
           />
         )}
