@@ -1,0 +1,73 @@
+name: Blur Lab regressions
+on:
+  pull_request:
+    branches: [main, experiment/androidx-progressive-blur]
+    paths:
+      - 'android/src/**/BlurLab*.kt'
+      - 'android/src/**/EdgeFadeProgressiveBlurEffect.kt'
+      - 'android/src/**/EdgeFadeProgressiveStripRenderer.kt'
+      - 'android/src/**/EdgeFadeGlesProgressiveRenderer.kt'
+      - 'android/src/**/EdgeFadeGlesShaders.kt'
+      - 'android/src/**/EdgeFadeGlesMotionInvalidator.kt'
+      - 'android/src/**/EdgeFadeView.kt'
+      - 'android/src/**/EdgeFadeViewManager.kt'
+      - 'android/build.gradle'
+      - 'src/BlurLabNativeComponent.ts'
+      - 'example/app/progressive-blur.tsx'
+      - 'example/app/progressive-blur-perf.tsx'
+      - 'example/app/progressive-blur-smoke.tsx'
+      - 'scripts/benchmark-progressive-vs-androidx.mjs'
+      - 'scripts/benchmark-progressive-androidx-envelope.mjs'
+      - 'scripts/capture-progressive-perfetto.mjs'
+      - 'scripts/smoke-progressive-release.mjs'
+      - 'tests/native/test_blur_lab_regressions.py'
+      - 'tests/native/test_progressive_public_backend.py'
+      - 'tests/native/test_gles_shader_source_contract.py'
+      - 'tests/native/test_progressive_perf_scene.py'
+      - 'tests/native/test_progressive_descendant_invalidation.py'
+      - 'tests/native/test_gles_motion_invalidation.py'
+      - '.github/workflows/blur-lab-regressions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blur-lab-regressions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-shader-compiler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Install Skia system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libfontconfig1
+      - name: Install isolated host compiler
+        run: |
+          python3 -m venv "$RUNNER_TEMP/blur-lab-venv"
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" -m pip install skia-python==144.0.post2
+      - name: Check lab contracts and compile shader sources
+        run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_blur_lab_regressions.py --compile-shaders
+      - name: Check public backend contracts and compile mask
+        run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_shader_source_contract.py
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_descendant_invalidation.py
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_motion_invalidation.py
+      - name: Check public performance harness contracts
+        run: |
+          node --check scripts/benchmark-progressive-vs-androidx.mjs
+          node --check scripts/benchmark-progressive-androidx-envelope.mjs
+          node --check scripts/capture-progressive-perfetto.mjs
+          node --check scripts/smoke-progressive-release.mjs
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_perf_scene.py
+      # These jobs do NOT validate Android RuntimeShader/GLES GPU execution,
+      # Fabric layout, visual fidelity or frame time. API 31-32 device validation
+      # remains a separate acceptance gate; AndroidX Official remains the semantic
+      # reference for the progressive Gaussian contract.

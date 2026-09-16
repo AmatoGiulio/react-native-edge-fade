@@ -140,6 +140,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    blurProgression: _bp,
     frostSaturation: _fs,
     frostLift: _fl,
     frostProgression: _fp,

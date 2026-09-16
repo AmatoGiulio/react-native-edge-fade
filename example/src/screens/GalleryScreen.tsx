@@ -1,7 +1,13 @@
-import { memo, useCallback } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
-import { Image } from 'expo-image';
+import { memo, useCallback, useEffect, useRef } from 'react';
+import {
+  Image as NativeImage,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -11,32 +17,62 @@ import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
 
 const GAP = 2;
+const STRESS_TOP_BOTTOM_DP = 110;
+const STRESS_WARMUP_MS = 1200;
 
-const PhotoCell = memo(function PhotoCell({ item }: { item: CatalogItem }) {
+export type GalleryStressImageRenderer = 'expo' | 'native' | 'solid';
+
+export interface GalleryStressConfig {
+  autoScroll: boolean;
+  effectEnabled: boolean;
+  radiusDp: number;
+  cycleMs: number;
+  imageRenderer: GalleryStressImageRenderer;
+}
+
+interface GalleryScreenProps {
+  stress?: GalleryStressConfig;
+}
+
+const PhotoCell = memo(function PhotoCell({
+  item,
+  imageRenderer,
+}: {
+  item: CatalogItem;
+  imageRenderer: GalleryStressImageRenderer;
+}) {
   const onPress = useCallback(
     () => router.push('/photo/' + item.id),
     [item.id]
   );
+  const imageStyle = [s.img, { backgroundColor: item.color + '33' }];
+
   return (
     <Pressable style={s.cell} onPress={onPress}>
-      <Image
-        source={item.source}
-        style={[s.img, { backgroundColor: item.color + '33' }]}
-        contentFit="cover"
-        /*placeholder={
-          item.blur_hash && item.blur_hash.length >= 6
-            ? { blurhash: item.blur_hash }
-            : undefined
-        }*/
-        //xtransition={300}
-      />
+      {imageRenderer === 'solid' ? (
+        <View style={[s.img, { backgroundColor: item.color }]} />
+      ) : imageRenderer === 'native' ? (
+        <NativeImage
+          source={item.source}
+          style={imageStyle}
+          resizeMode="cover"
+        />
+      ) : (
+        <ExpoImage
+          source={item.source}
+          style={imageStyle}
+          contentFit="cover"
+          /*placeholder={
+            item.blur_hash && item.blur_hash.length >= 6
+              ? { blurhash: item.blur_hash }
+              : undefined
+          }*/
+          //xtransition={300}
+        />
+      )}
     </Pressable>
   );
 });
-
-function renderItem({ item }: { item: CatalogItem }) {
-  return <PhotoCell item={item} />;
-}
 
 function keyExtractor(item: CatalogItem) {
   return item.id;
@@ -53,50 +89,122 @@ function SkeletonGrid() {
   );
 }
 
-export function GalleryScreen() {
+export function GalleryScreen({ stress }: GalleryScreenProps) {
   const t = useTheme();
   const { catalog, isLoading, isError } = useCatalog();
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
-  const { curve, blurRadius, frostSaturation, frostLift, frostProgression } =
-    useFadeRender();
+  const { curve, blurRadius, frostProgression } = useFadeRender();
+
+  const listRef = useRef<FlashListRef<CatalogItem>>(null);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+
+  const stressActive = stress?.autoScroll === true;
+  const imageRenderer = stressActive ? stress.imageRenderer : 'expo';
+
+  const renderItem = useCallback(
+    ({ item }: { item: CatalogItem }) => (
+      <PhotoCell item={item} imageRenderer={imageRenderer} />
+    ),
+    [imageRenderer]
+  );
+
+  useEffect(() => {
+    if (!stressActive || isLoading || isError || catalog.length === 0) {
+      return undefined;
+    }
+
+    let frame = 0;
+    let originMs: number | null = null;
+
+    const tick = (frameTimeMs: number) => {
+      const maxOffset = Math.max(
+        0,
+        contentHeightRef.current - viewportHeightRef.current
+      );
+
+      if (maxOffset > 0) {
+        if (originMs === null) {
+          originMs = frameTimeMs + STRESS_WARMUP_MS;
+          listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        }
+
+        if (frameTimeMs >= originMs) {
+          const phase =
+            ((frameTimeMs - originMs) % stress.cycleMs) / stress.cycleMs;
+          const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+          listRef.current?.scrollToOffset({
+            offset: maxOffset * position,
+            animated: false,
+          });
+        }
+      }
+
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [catalog.length, isError, isLoading, stress, stressActive]);
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
-    opacity: showBands && top.get() > 0 ? 1 : 0,
+    opacity: !stressActive && showBands && top.get() > 0 ? 1 : 0,
   }));
   const bottomBandStyle = useAnimatedStyle(() => ({
     height: bottom.get(),
-    opacity: showBands && bottom.get() > 0 ? 1 : 0,
+    opacity: !stressActive && showBands && bottom.get() > 0 ? 1 : 0,
   }));
+
+  const edgeTop = stressActive ? STRESS_TOP_BOTTOM_DP : top;
+  const edgeBottom = stressActive ? STRESS_TOP_BOTTOM_DP : bottom;
+  const edgeLeft = stressActive ? 0 : left;
+  const edgeRight = stressActive ? 0 : right;
+  const edgeRadius = stressActive ? 0 : radius;
+  const edgeMode = stressActive ? 'blur' : mode;
+  const edgeBlurRadius = stressActive
+    ? stress.effectEnabled
+      ? stress.radiusDp
+      : 0
+    : blurRadius;
+  const edgeProgression = stressActive ? 1 : frostProgression;
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
       <AnimatedEdgeFadeView
-        top={top}
-        bottom={bottom}
-        left={left}
-        right={right}
-        radius={radius}
+        testID={stressActive ? 'gallery-stress-edge-fade' : undefined}
+        top={edgeTop}
+        bottom={edgeBottom}
+        left={edgeLeft}
+        right={edgeRight}
+        radius={edgeRadius}
         curve={curve}
-        mode={mode}
-        blurRadius={blurRadius}
-        frostSaturation={frostSaturation}
-        frostLift={frostLift}
-        frostProgression={frostProgression}
-        color={tint}
+        mode={edgeMode}
+        blurRadius={edgeBlurRadius}
+        blurProgression={edgeProgression}
+        color={!stressActive && mode === 'overlay' ? tint : undefined}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
         {isLoading || isError || catalog.length === 0 ? (
           <SkeletonGrid />
         ) : (
           <FlashList
+            ref={listRef}
+            testID={stressActive ? 'gallery-stress-list' : undefined}
             data={catalog}
+            extraData={imageRenderer}
             numColumns={4}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.listContent}
+            onLayout={(event) => {
+              viewportHeightRef.current = event.nativeEvent.layout.height;
+            }}
+            onContentSizeChange={(_width, height) => {
+              contentHeightRef.current = height;
+            }}
           />
         )}
       </AnimatedEdgeFadeView>

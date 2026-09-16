@@ -21,6 +21,7 @@ export const EdgeFadeView = memo(function EdgeFadeView(
     mode: _m,
     color: _col,
     blurRadius: _br,
+    blurProgression: _bp,
     frostSaturation: _fs,
     frostLift: _fl,
     frostProgression: _fp,
