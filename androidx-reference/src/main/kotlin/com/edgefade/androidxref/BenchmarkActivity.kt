@@ -14,17 +14,16 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.view.Choreographer
 import kotlin.math.roundToInt
 
 /**
  * Release-benchmark scene for the official AndroidX progressive blur binary.
  *
  * This deliberately mirrors example/app/progressive-blur-perf.tsx: 64 rows,
- * the same edge depths, the same neutral white viewport and the same 144px
- * stress radius. There is no RN/Expo/Compose UI in this Activity; only the
- * official Compose UI graphics BlurRadiusSpec implementation is under test.
- * The same Activity can run with the RenderEffect disabled so cross-runtime
- * comparisons use incremental blur cost rather than raw process frame time.
+ * the same edge depths, the same neutral white viewport and the same stress
+ * radius. There is no RN/Expo/Compose UI in this Activity; only the official
+ * Compose UI graphics BlurRadiusSpec implementation is under test.
  */
 class BenchmarkActivity : Activity() {
   private val density by lazy { resources.displayMetrics.density }
@@ -34,6 +33,27 @@ class BenchmarkActivity : Activity() {
   private var allEdges = false
   private var smooth = true
   private var effectEnabled = true
+  private var autoScroll = false
+  private var autoScrollStartNanos = 0L
+  private val choreographer by lazy { Choreographer.getInstance() }
+
+  private val autoScrollCallback = object : Choreographer.FrameCallback {
+    override fun doFrame(frameTimeNanos: Long) {
+      if (!autoScroll || !::viewport.isInitialized) return
+      if (autoScrollStartNanos == 0L) autoScrollStartNanos = frameTimeNanos
+
+      val child = viewport.getChildAt(0)
+      val maxOffset = (child?.height ?: 0) - viewport.height
+      if (maxOffset > 0) {
+        val elapsedMs = (frameTimeNanos - autoScrollStartNanos) / 1_000_000.0
+        val phase = (elapsedMs % AUTO_SCROLL_CYCLE_MS) / AUTO_SCROLL_CYCLE_MS
+        val position = if (phase < 0.5) phase * 2.0 else (1.0 - phase) * 2.0
+        viewport.scrollTo(0, (maxOffset * position).roundToInt())
+      }
+
+      choreographer.postFrameCallback(this)
+    }
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -42,6 +62,7 @@ class BenchmarkActivity : Activity() {
     allEdges = intent.getStringExtra(EXTRA_EDGES) == "four"
     smooth = intent.getStringExtra(EXTRA_CURVE) != "linear"
     effectEnabled = intent.getStringExtra(EXTRA_EFFECT) != "off"
+    autoScroll = intent.getStringExtra(EXTRA_WORKLOAD) == "auto"
 
     window.statusBarColor = BG
     window.navigationBarColor = BG
@@ -71,7 +92,7 @@ class BenchmarkActivity : Activity() {
     header.addView(text("After hours.", 34f, INK, bold = true), matchWrap(top = 10))
     header.addView(
       text(
-        "${if (effectEnabled) "AndroidX official" else "AndroidX baseline · no effect"} · ${radiusPx.roundToInt()}px · ${if (smooth) "Smooth" else "Linear"} · ${if (allEdges) "Four edges" else "Top + bottom"}",
+        "${if (effectEnabled) "AndroidX official" else "AndroidX baseline · no effect"} · ${radiusPx.roundToInt()}px · ${if (smooth) "Smooth" else "Linear"} · ${if (allEdges) "Four edges" else "Top + bottom"}${if (autoScroll) " · Auto workload" else ""}",
         11f,
         MUTED,
       ),
@@ -122,7 +143,18 @@ class BenchmarkActivity : Activity() {
     viewport.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
       applyEffect()
     }
-    viewport.post { applyEffect() }
+    viewport.post {
+      applyEffect()
+      if (autoScroll) {
+        autoScrollStartNanos = 0L
+        choreographer.postFrameCallback(autoScrollCallback)
+      }
+    }
+  }
+
+  override fun onDestroy() {
+    choreographer.removeFrameCallback(autoScrollCallback)
+    super.onDestroy()
   }
 
   private fun applyEffect() {
@@ -254,7 +286,9 @@ class BenchmarkActivity : Activity() {
     const val EXTRA_EDGES = "edges"
     const val EXTRA_CURVE = "curve"
     const val EXTRA_EFFECT = "effect"
+    const val EXTRA_WORKLOAD = "workload"
 
+    private const val AUTO_SCROLL_CYCLE_MS = 4200.0
     private const val TAG = "AndroidXReferencePerf"
 
     private val BG = Color.rgb(247, 247, 245)
