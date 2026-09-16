@@ -61,8 +61,8 @@ function parseArgs(argv) {
   if (!Number.isInteger(options.samples) || options.samples < 1 || options.samples > 6) {
     throw new Error('--samples must be an integer in 1..6');
   }
-  if (!['expo', 'native'].includes(options.imageRenderer)) {
-    throw new Error('--image-renderer must be expo or native');
+  if (!['expo', 'native', 'solid'].includes(options.imageRenderer)) {
+    throw new Error('--image-renderer must be expo, native or solid');
   }
 
   return options;
@@ -114,6 +114,14 @@ function timestamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function imageRendererLabel() {
+  switch (options.imageRenderer) {
+    case 'native': return 'React Native Image';
+    case 'solid': return 'solid View cells';
+    default: return 'expo-image';
+  }
 }
 
 function assertInstalledReleasePackage() {
@@ -288,7 +296,7 @@ function resetGraphicsStats() {
 
 function runCase({ effectEnabled, ordinal, sdk, runId }) {
   const label = effectEnabled ? 'blur' : 'baseline';
-  console.log(`\n[${ordinal}] ${label.toUpperCase()} / ${options.imageRenderer} image / ${options.durationMs}ms`);
+  console.log(`\n[${ordinal}] ${label.toUpperCase()} / ${options.imageRenderer} / ${options.durationMs}ms`);
 
   launchCase(effectEnabled, sdk);
   resetGraphicsStats();
@@ -329,7 +337,7 @@ function runCase({ effectEnabled, ordinal, sdk, runId }) {
   console.log(
     `  frames=${result.totalFrames ?? 'n/a'} jank=${jankText} deadlineMiss=${deadlineText} ` +
     `p50/p95/p99=${result.p50Ms ?? 'n/a'}/${result.p95Ms ?? 'n/a'}/${result.p99Ms ?? 'n/a'}ms ` +
-    `recentRefresh=${refreshText}`
+    `gfxFrameInterval=${refreshText}`
   );
 
   if (options.cooldownMs > 0) sleep(options.cooldownMs);
@@ -392,7 +400,7 @@ console.log('Gallery deterministic stress benchmark');
 console.log(`Device: ${model} / API ${sdk}${isEmulator ? ' / emulator' : ' / physical'}`);
 console.log(`Display: ${size.replace(/\s+/g, ' ')} / ${density.replace(/\s+/g, ' ')}`);
 console.log(`Refresh settings: peak=${peakRefreshRate ?? 'n/a'} min=${minRefreshRate ?? 'n/a'}`);
-console.log(`Scene: real Home Photo Grid / FlashList / 4 columns / ${options.imageRenderer === 'native' ? 'React Native Image' : 'expo-image'}`);
+console.log(`Scene: real Home Photo Grid / FlashList / 4 columns / ${imageRendererLabel()}`);
 console.log(`Workload: triangular auto-scroll / cycle=${options.cycleMs}ms`);
 console.log(`Blur: ${options.radiusPx}px physical target / top+bottom 110dp`);
 console.log(`Capture: ${options.samples} sample(s) per condition / ${options.durationMs}ms each`);
