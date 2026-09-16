@@ -43,6 +43,7 @@
     "test": "jest",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "benchmark:gallery": "node scripts/benchmark-gallery-stress.mjs",
+    "benchmark:gallery:trace": "node scripts/capture-gallery-perfetto.mjs",
     "release": "release-it --only-version"
   },
   "keywords": [
