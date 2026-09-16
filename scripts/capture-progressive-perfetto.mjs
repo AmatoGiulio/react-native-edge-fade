@@ -18,9 +18,6 @@ function parseArgs(argv) {
     edges: 'vertical',
     radiusPx: 98,
     durationMs: 12000,
-    warmupSwipes: 6,
-    swipes: 28,
-    swipeDurationMs: 180,
     serial: '',
     allowEmulator: false,
     outDir: RESULTS_DIR,
@@ -37,12 +34,14 @@ function parseArgs(argv) {
       case '--edges': options.edges = value(); break;
       case '--radius-px': options.radiusPx = Number(value()); break;
       case '--duration-ms': options.durationMs = Number(value()); break;
-      case '--warmup-swipes': options.warmupSwipes = Number(value()); break;
-      case '--swipes': options.swipes = Number(value()); break;
-      case '--swipe-duration-ms': options.swipeDurationMs = Number(value()); break;
       case '--serial': options.serial = value(); break;
       case '--allow-emulator': options.allowEmulator = true; break;
       case '--out-dir': options.outDir = path.resolve(value()); break;
+      // Backward-compatible no-ops. Both renderers now use the same in-app
+      // deterministic workload; adb swipe counts are intentionally ignored.
+      case '--warmup-swipes': value(); break;
+      case '--swipes': value(); break;
+      case '--swipe-duration-ms': value(); break;
       default: throw new Error(`Unknown argument: ${arg}`);
     }
   }
@@ -56,10 +55,9 @@ function parseArgs(argv) {
   if (!Number.isFinite(options.radiusPx) || options.radiusPx < 1 || options.radiusPx > 150) {
     throw new Error('--radius-px must be in 1..150');
   }
-  for (const key of ['durationMs', 'warmupSwipes', 'swipes', 'swipeDurationMs']) {
-    if (!Number.isFinite(options[key]) || options[key] < 0) throw new Error(`Invalid --${key}`);
+  if (!Number.isFinite(options.durationMs) || options.durationMs < 3000) {
+    throw new Error('--duration-ms must be >= 3000');
   }
-  if (options.durationMs < 3000) throw new Error('--duration-ms must be >= 3000');
   return options;
 }
 
@@ -133,9 +131,6 @@ if (!sizeMatches.length) throw new Error(`Could not parse device size from: ${si
 const size = sizeMatches.at(-1);
 const width = Number(size[1]);
 const height = Number(size[2]);
-const x = Math.round(width * 0.50);
-const yTop = Math.round(height * 0.34);
-const yBottom = Math.round(height * 0.78);
 
 const densityText = adb(['shell', 'wm', 'density']);
 const overrideDensity = densityText.match(/Override density:\s*(\d+)/);
@@ -148,12 +143,8 @@ const radiusInvariant = String(Number(options.radiusPx.toFixed(3)));
 
 console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}dpi (${round(densityScale)}x)`);
 console.log(`Trace scene: ${round(radiusDp, 2)}dp / ${options.radiusPx}px / Smooth / ${options.edges}`);
-console.log(`Capture: ${options.durationMs}ms`);
+console.log(`Capture: ${options.durationMs}ms / deterministic in-app auto-scroll for every renderer`);
 console.log(`Public backend: ${sdk >= 33 ? 'AGSL API 33+' : 'GLES 3.0 API 31-32'}`);
-
-function usesDeterministicAutoScroll(renderer) {
-  return renderer === 'public' && sdk < 33;
-}
 
 function stopBothApps() {
   adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
@@ -168,8 +159,7 @@ function startRenderer(renderer) {
 
   if (renderer === 'public') {
     adb(['logcat', '-c']);
-    const workload = usesDeterministicAutoScroll(renderer) ? 'auto' : 'input';
-    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on&workload=${workload}`;
+    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on&workload=auto`;
     adb(['shell', `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`]);
     sleep(1800);
     const logcat = adb(['logcat', '-d'], { trim: false });
@@ -188,17 +178,9 @@ function startRenderer(renderer) {
       '--ef', 'radiusPx', radiusInvariant,
       '--es', 'curve', 'smooth',
       '--es', 'effect', 'on',
+      '--es', 'workload', 'auto',
     ]);
     sleep(1800);
-  }
-}
-
-function driveSwipes(count) {
-  for (let i = 0; i < count; i++) {
-    const fromY = i % 2 === 0 ? yBottom : yTop;
-    const toY = i % 2 === 0 ? yTop : yBottom;
-    adb(['shell', 'input', 'swipe', String(x), String(fromY), String(x), String(toY), String(options.swipeDurationMs)]);
-    sleep(90);
   }
 }
 
@@ -206,7 +188,7 @@ function resetFrameStats(pkg) {
   adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'reset']);
 }
 
-function reportRecentFrameActivity(pkg) {
+function recentFrameActivity(pkg) {
   const dump = adb(['shell', 'dumpsys', 'gfxinfo', pkg, 'framestats'], { trim: false });
   const intendedVsyncNs = [];
   let header = null;
@@ -225,14 +207,12 @@ function reportRecentFrameActivity(pkg) {
       }
       continue;
     }
-
     if (waitingForHeader && line.startsWith('Flags,')) {
       header = line.split(',');
       intendedIndex = header.indexOf('IntendedVsync');
       waitingForHeader = false;
       continue;
     }
-
     if (header !== null && intendedIndex >= 0 && /^\d+,/.test(line)) {
       const parts = line.split(',');
       const intended = Number(parts[intendedIndex]);
@@ -241,13 +221,8 @@ function reportRecentFrameActivity(pkg) {
   }
 
   const unique = [...new Set(intendedVsyncNs)].sort((a, b) => a - b);
-  const recentSpanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1_000_000 : 0;
-  console.log(
-    `Auto workload diagnostic: ${unique.length} recent gfx frames / ${round(recentSpanMs, 1)}ms recent-buffer span`
-  );
-  console.log(
-    'Steady-state acceptance still comes from EdgeFade.progressive.gles slices distributed across the Perfetto capture.'
-  );
+  const spanMs = unique.length > 1 ? (unique.at(-1) - unique[0]) / 1_000_000 : 0;
+  return { frames: unique.length, spanMs };
 }
 
 function perfettoConfig(pkg) {
@@ -297,31 +272,16 @@ function waitForChild(child) {
 
 async function capture(renderer) {
   const pkg = renderer === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
-  const autoWorkload = usesDeterministicAutoScroll(renderer);
   console.log(`\n=== Perfetto: ${renderer} / ${options.edges} / ${options.radiusPx}px ===`);
-  console.log(
-    autoWorkload
-      ? 'Workload: deterministic in-app auto-scroll'
-      : `Workload: ${options.swipes} driven input swipes / warm-up ${options.warmupSwipes}`
-  );
+  console.log('Workload: deterministic in-app auto-scroll');
 
   startRenderer(renderer);
-  if (autoWorkload) {
-    // The route has already been auto-scrolling during the renderer startup wait.
-    // Give it one extra cycle fragment before resetting GraphicsStats so startup
-    // frames do not dominate the post-capture diagnostic.
-    sleep(500);
-  } else {
-    driveSwipes(options.warmupSwipes);
-    sleep(500);
-  }
+  // Both apps have already been animating during startup. Reset stats only
+  // after the workload has reached steady state.
+  sleep(500);
   resetFrameStats(pkg);
 
   const id = `${process.pid}-${Date.now()}`;
-  // Android 14+ SELinux can deny perfetto's domain access to configs placed in
-  // /data/local/tmp even when adb shell itself can read them. Feed the text
-  // config through stdin instead, and write the trace to Perfetto's sanctioned
-  // device directory so the same harness works on production physical devices.
   const remoteTrace = `/data/misc/perfetto-traces/edgefade-${renderer}-${id}.perfetto-trace`;
   const localTrace = path.join(
     options.outDir,
@@ -338,14 +298,16 @@ async function capture(renderer) {
     );
     const perfettoDone = waitForChild(perfetto);
     perfetto.stdin.end(perfettoConfig(pkg));
-
-    if (!autoWorkload) {
-      sleep(900);
-      driveSwipes(options.swipes);
-    }
     await perfettoDone;
 
-    if (autoWorkload) reportRecentFrameActivity(pkg);
+    const activity = recentFrameActivity(pkg);
+    console.log(`Steady-state diagnostic: ${activity.frames} recent gfx frames / ${round(activity.spanMs, 1)}ms recent-buffer span`);
+    if (activity.frames < 30 || activity.spanMs < 1000) {
+      throw new Error(
+        `${renderer} did not produce a sustained rendering workload during the trace ` +
+        `(${activity.frames} frames / ${round(activity.spanMs, 1)}ms). Refusing an invalid comparison.`
+      );
+    }
 
     adb(['pull', remoteTrace, localTrace]);
     console.log(`Trace: ${localTrace}`);
@@ -373,8 +335,4 @@ for (const renderer of renderers) {
 
 console.log('\nPerfetto capture complete.');
 for (const trace of traces) console.log(`  ${trace}`);
-if (sdk >= 33) {
-  console.log('Open the traces in https://ui.perfetto.dev . For Public, search for "EdgeFade.progressive".');
-} else {
-  console.log('Open the trace in https://ui.perfetto.dev and search for "EdgeFade.progressive.gles". Emulator traces are diagnostic only.');
-}
+console.log('Both traces used the same deterministic 4.2s triangular auto-scroll workload.');
