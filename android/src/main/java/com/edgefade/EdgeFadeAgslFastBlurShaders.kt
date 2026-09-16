@@ -24,25 +24,23 @@ package com.edgefade
  * scene contains only solid Views.
  *
  * This kernel keeps the exact AndroidX-derived paired-tap path through 16px.
- * Above 16px it evaluates a fixed 8-sample-per-side Gaussian quadrature whose
+ * Above 16px it evaluates a fixed 16-sample-per-side Gaussian quadrature whose
  * sample positions scale continuously with the local per-pixel radius. The
  * Gaussian profile, spatial radius field, zero-radius identity, H/V separation,
  * edge bounds and normalization semantics remain continuous; only the number of
  * source fetches is bounded for large radii.
  *
- * Eight samples per side is intentionally an aggressive performance candidate:
- * the real-gallery Perfetto trace still spends about the whole 92 Hz frame
- * budget on GPU work after strip-source tightening. This cuts the large-radius
- * path from 33 content evaluations per pass (center + 16 pairs) to 17 while the
- * exact <=16px path remains untouched. Visual parity at 98-150px is a release
- * gate; this candidate must be rejected if sparse sampling introduces shimmer,
- * ghosting, stepping or an obviously different Gaussian profile.
+ * The 8-sample candidate was rejected on the physical CPH2709 because sparse
+ * large-radius sampling produced visibly blocky/stepped output without a useful
+ * frame-time win. Sixteen samples per side is the minimum quality candidate we
+ * keep for further pipeline profiling: 33 content evaluations per pass instead
+ * of the ~141 evaluations required by the exact 140px paired-tap kernel.
  *
  * This lives separately from [BlurLabShaders] so the exact AndroidX reference
  * remains available for visual/performance A/B validation.
  */
 internal object EdgeFadeAgslFastBlurShaders {
-  private const val SAMPLE_BUDGET = 8
+  private const val SAMPLE_BUDGET = 16
   private const val EXACT_RADIUS_PX = 16f
 
   fun pass(vertical: Boolean): String {
