@@ -9,23 +9,20 @@ import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
-import kotlin.math.cos
-import kotlin.math.pow
 
 /**
  * Edge-local production candidate for the API 33+ progressive blur path.
  *
  * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
  * the analytical/LUT edge mask, derives its own radius as
- * `maxRadius * intensity`, then runs the separable Gaussian kernel in H -> V
- * order. The performance branch bounds source fetches for large physical radii;
- * there are still no discrete blur levels, opacity cross-fades, frost grading,
- * lift, tint or material post-processing here.
+ * `maxRadius * intensity`, then runs the same AndroidX-derived separable
+ * Gaussian kernel in H -> V order. There are no discrete blur levels, opacity
+ * cross-fades, frost grading, lift, tint or material post-processing here.
  *
  * Strips are only a work-culling optimization: they bound GPU work to regions
  * where the radius can be non-zero. They do not quantize the blur field. Each
- * strip records only the source pixels the local radius field can actually
- * reach across its inner boundary. Top/bottom own the corners; left/right own
+ * strip records padded source pixels so the Gaussian still samples real content
+ * across the inner strip boundary. Top/bottom own the corners; left/right own
  * only the remaining center span, making four-edge output disjoint by geometry.
  *
  * The renderer is invoked directly from EdgeFadeView.dispatchDraw(). It records
@@ -80,8 +77,8 @@ internal class EdgeFadeProgressiveStripRenderer(
   private class Strip(var band: Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    val horizontal = RuntimeShader(EdgeFadeAgslFastBlurShaders.pass(vertical = false))
-    val vertical = RuntimeShader(EdgeFadeAgslFastBlurShaders.pass(vertical = true))
+    val horizontal = RuntimeShader(BlurLabShaders.pass(vertical = false))
+    val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true))
 
     fun release() {
       node.setRenderEffect(null)
@@ -161,14 +158,12 @@ internal class EdgeFadeProgressiveStripRenderer(
         return true
       }
 
-      // Record the child scene once as a display list. Do not force the content
-      // RenderNode into its own full-view compositing buffer: the strip nodes
-      // already allocate the edge-local intermediates required by RenderEffect.
-      // Keeping this node as a display-list container avoids an otherwise
-      // unconditional host-sized offscreen layer every active frame.
+      // Materialize the child scene once. The sharp base and every filtered
+      // strip reference this same recording, so the expensive blur work stays
+      // edge-local while content identity is identical across all passes.
       tracePhase("EdgeFade.progressive.recordContent") {
         content.setPosition(0, 0, host.width, host.height)
-        content.setUseCompositingLayer(false, null)
+        content.setUseCompositingLayer(true, null)
         val recording = content.beginRecording()
         try {
           recordChildren(recording)
@@ -190,9 +185,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
       // Fill the empty edge bands with their true progressive Gaussian output.
-      // Visible ownership is already disjoint by geometry. Source ownership is
-      // curve-aware on the inward edge, so zero-radius pixels are not needlessly
-      // processed while every possible Gaussian sample remains available.
+      // Visible ownership is already disjoint by geometry, while each source is
+      // expanded by maxRadius + one paired bilinear tap for correct sampling.
       for (strip in strips) {
         val src = strip.band.source
         tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
@@ -311,15 +305,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   /**
    * Output ownership is disjoint before RenderEffects are allocated:
    * top/bottom own the full-width corners; side strips own only the center span.
-   *
-   * The old geometry expanded every source edge by maxRadius. That is correct
-   * but very conservative for a progressive field: with a 385px fade and a
-   * 140px smooth radius the inner edge only needs about two source pixels, not
-   * 141. The inward pad below evaluates the exact same analytical/LUT radius
-   * field as the shader and keeps one extra pixel for bilinear sampling.
-   *
-   * Side strips still keep maxRadius vertically because their separable vertical
-   * pass can sample across the top/bottom ownership boundary at full radius.
+   * Each source rect then grows by max radius + one paired bilinear tap.
    */
   private fun bands(key: Key): List<Band> {
     val width = key.width
@@ -328,140 +314,36 @@ internal class EdgeFadeProgressiveStripRenderer(
     val bottom = ceil(key.bottom).toInt().coerceIn(0, height)
     val left = ceil(key.left).toInt().coerceIn(0, width)
     val right = ceil(key.right).toInt().coerceIn(0, width)
-    val kernelPad = ceil(key.radius).toInt() + 1
+    val pad = ceil(key.radius).toInt() + 1
 
     val result = ArrayList<Band>(4)
 
-    fun add(
-      edge: Int,
-      visible: Rect,
-      padLeft: Int = 0,
-      padTop: Int = 0,
-      padRight: Int = 0,
-      padBottom: Int = 0,
-    ) {
+    fun add(edge: Int, visible: Rect) {
       if (visible.isEmpty) return
       val source = Rect(
-        (visible.left - padLeft).coerceAtLeast(0),
-        (visible.top - padTop).coerceAtLeast(0),
-        (visible.right + padRight).coerceAtMost(width),
-        (visible.bottom + padBottom).coerceAtMost(height),
+        (visible.left - pad).coerceAtLeast(0),
+        (visible.top - pad).coerceAtLeast(0),
+        (visible.right + pad).coerceAtMost(width),
+        (visible.bottom + pad).coerceAtMost(height),
       )
       result += Band(edge, visible, source)
     }
 
     // Top owns overlap with bottom if pathological depths cover the whole view.
-    val topVisible = Rect(0, 0, width, top)
-    val topPad = inwardPad(
-      curveDepth = key.top,
-      ownedDepth = topVisible.height,
-      radius = key.radius,
-      progression = key.progression,
-      curve = key.curveTop,
-    )
-    add(EDGE_TOP, topVisible, padBottom = topPad)
-
+    add(EDGE_TOP, Rect(0, 0, width, top))
     val bottomTop = (height - bottom).coerceAtLeast(top)
-    val bottomVisible = Rect(0, bottomTop, width, height)
-    val bottomPad = inwardPad(
-      curveDepth = key.bottom,
-      ownedDepth = bottomVisible.height,
-      radius = key.radius,
-      progression = key.progression,
-      curve = key.curveBottom,
-    )
-    add(EDGE_BOTTOM, bottomVisible, padTop = bottomPad)
+    add(EDGE_BOTTOM, Rect(0, bottomTop, width, height))
 
     val centerTop = top
     val centerBottom = (height - bottom).coerceAtLeast(centerTop)
     if (centerBottom > centerTop) {
-      val leftVisible = Rect(0, centerTop, left, centerBottom)
-      val leftPad = inwardPad(
-        curveDepth = key.left,
-        ownedDepth = leftVisible.width,
-        radius = key.radius,
-        progression = key.progression,
-        curve = key.curveLeft,
-      )
-      add(
-        EDGE_LEFT,
-        leftVisible,
-        padTop = kernelPad,
-        padRight = leftPad,
-        padBottom = kernelPad,
-      )
-
+      add(EDGE_LEFT, Rect(0, centerTop, left, centerBottom))
       // Left owns pathological horizontal overlap.
       val rightLeft = (width - right).coerceAtLeast(left)
-      val rightVisible = Rect(rightLeft, centerTop, width, centerBottom)
-      val rightPad = inwardPad(
-        curveDepth = key.right,
-        ownedDepth = rightVisible.width,
-        radius = key.radius,
-        progression = key.progression,
-        curve = key.curveRight,
-      )
-      add(
-        EDGE_RIGHT,
-        rightVisible,
-        padLeft = rightPad,
-        padTop = kernelPad,
-        padBottom = kernelPad,
-      )
+      add(EDGE_RIGHT, Rect(rightLeft, centerTop, width, centerBottom))
     }
 
     return result
-  }
-
-  /**
-   * Maximum number of source pixels needed beyond the owned inner boundary.
-   * For every output pixel at distance d from the outer edge we need samples up
-   * to d + localRadius(d). The excess over ownedDepth is the only inward source
-   * area that can contribute to a visible pixel.
-   */
-  private fun inwardPad(
-    curveDepth: Float,
-    ownedDepth: Int,
-    radius: Float,
-    progression: Float,
-    curve: String,
-  ): Int {
-    if (curveDepth <= 0f || ownedDepth <= 0 || radius <= 0f) return 0
-
-    val uniforms = curveUniforms(curve)
-    var maxExtra = 0f
-    for (distancePx in 0..ownedDepth) {
-      val distance = distancePx.toFloat()
-      if (distance >= curveDepth) continue
-      val position = ((1f - distance / curveDepth) / progression).coerceIn(0f, 1f)
-      val localRadius = radius * curvePresence(uniforms, position)
-      val extra = distance + localRadius - ownedDepth.toFloat()
-      if (extra > maxExtra) maxExtra = extra
-    }
-
-    // One conservative pixel covers sub-pixel maxima between integer probes and
-    // the bilinear footprint of the final source sample.
-    return ceil(maxExtra).toInt() + 1
-  }
-
-  private fun curvePresence(uniforms: CurveUniforms, t: Float): Float {
-    val x = t.coerceIn(0f, 1f)
-    if (uniforms.useLut > 0.5f) {
-      val position = x * (uniforms.lut.size - 1)
-      val lower = position.toInt().coerceIn(0, uniforms.lut.size - 2)
-      val fraction = position - lower.toFloat()
-      return (
-        uniforms.lut[lower] * (1f - fraction) +
-          uniforms.lut[lower + 1] * fraction
-      ).coerceIn(0f, 1f)
-    }
-    if (uniforms.mode > 1.5f) {
-      return x * x * x * (x * (x * 6f - 15f) + 10f)
-    }
-    if (uniforms.mode > 0.5f) {
-      return (1f - cos(x * 1.5707963f)).coerceIn(0f, 1f)
-    }
-    return (1f - (1f - x).pow(uniforms.exponent)).coerceIn(0f, 1f)
   }
 
   private fun clipOut(canvas: Canvas, rect: Rect) {
