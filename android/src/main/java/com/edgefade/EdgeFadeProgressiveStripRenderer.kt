@@ -161,12 +161,14 @@ internal class EdgeFadeProgressiveStripRenderer(
         return true
       }
 
-      // Materialize the child scene once. The sharp base and every filtered
-      // strip reference this same recording, so the expensive blur work stays
-      // edge-local while content identity is identical across all passes.
+      // Record the child scene once as a display list. Do not force the content
+      // RenderNode into its own full-view compositing buffer: the strip nodes
+      // already allocate the edge-local intermediates required by RenderEffect.
+      // Keeping this node as a display-list container avoids an otherwise
+      // unconditional host-sized offscreen layer every active frame.
       tracePhase("EdgeFade.progressive.recordContent") {
         content.setPosition(0, 0, host.width, host.height)
-        content.setUseCompositingLayer(true, null)
+        content.setUseCompositingLayer(false, null)
         val recording = content.beginRecording()
         try {
           recordChildren(recording)
