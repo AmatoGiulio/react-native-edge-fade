@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   GalleryScreen,
   type GalleryStressConfig,
+  type GalleryStressImageRenderer,
 } from '@/screens/GalleryScreen';
 
 const STRESS_DEFAULT_RADIUS_PX = 140;
@@ -34,6 +35,12 @@ function resolveCycleMs(value: string | string[] | undefined) {
   return Math.min(10_000, Math.max(2_000, parsed));
 }
 
+function resolveImageRenderer(
+  value: string | string[] | undefined
+): GalleryStressImageRenderer {
+  return firstParam(value) === 'native' ? 'native' : 'expo';
+}
+
 export default function GalleryEntry() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -41,12 +48,14 @@ export default function GalleryEntry() {
     effect?: string | string[];
     radiusPx?: string | string[];
     cycleMs?: string | string[];
+    image?: string | string[];
   }>();
 
   const stressEnabled = firstParam(params.stress) === 'auto';
   const effectEnabled = firstParam(params.effect) !== 'off';
   const radiusPx = resolveRadiusPx(params.radiusPx);
   const cycleMs = resolveCycleMs(params.cycleMs);
+  const imageRenderer = resolveImageRenderer(params.image);
   const density = PixelRatio.get();
 
   const stress = useMemo<GalleryStressConfig | undefined>(
@@ -57,9 +66,17 @@ export default function GalleryEntry() {
             effectEnabled,
             radiusDp: radiusPx / density,
             cycleMs,
+            imageRenderer,
           }
         : undefined,
-    [cycleMs, density, effectEnabled, radiusPx, stressEnabled]
+    [
+      cycleMs,
+      density,
+      effectEnabled,
+      imageRenderer,
+      radiusPx,
+      stressEnabled,
+    ]
   );
 
   return (
