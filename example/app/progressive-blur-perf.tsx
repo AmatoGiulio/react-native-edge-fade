@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import {
   PixelRatio,
   Platform,
@@ -8,6 +7,12 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import Animated, {
+  scrollTo,
+  useAnimatedRef,
+  useFrameCallback,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { EdgeFadeView } from 'react-native-edge-fade';
 
 const ALBUMS = [
@@ -39,6 +44,8 @@ const PERF_MAX_RADIUS_PX = 150;
 const PERF_DENSITY = PixelRatio.get();
 const PERF_AUTO_SCROLL_CYCLE_MS = 4200;
 
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
+
 function resolveRadiusPx(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number.parseFloat(raw ?? '');
@@ -60,40 +67,37 @@ export default function ProgressiveBlurPerfRoute() {
   const radiusDp = targetRadiusPx / PERF_DENSITY;
   const actualRadiusPx = radiusDp * PERF_DENSITY;
 
-  const scrollRef = useRef<ScrollView>(null);
-  const viewportHeightRef = useRef(0);
-  const contentHeightRef = useRef(0);
+  // Keep the renderer comparison independent of adb input delivery and the JS
+  // event loop. The stress workload is driven from Reanimated's UI-thread frame
+  // callback so the public scene advances on every display frame just like the
+  // native AndroidX reference workload.
+  const scrollRef = useAnimatedRef<ScrollView>();
+  const viewportHeight = useSharedValue(0);
+  const contentHeight = useSharedValue(0);
+  const scrollOriginMs = useSharedValue(-1);
 
-  useEffect(() => {
-    if (!autoScroll) return undefined;
+  useFrameCallback(
+    (frameInfo) => {
+      'worklet';
+      if (!autoScroll) return;
 
-    let frame = 0;
-    let originMs: number | null = null;
+      const maxOffset = Math.max(0, contentHeight.value - viewportHeight.value);
+      if (maxOffset <= 0) return;
 
-    const tick = (frameTimeMs: number) => {
-      if (originMs === null) originMs = frameTimeMs;
-
-      const maxOffset = Math.max(
-        0,
-        contentHeightRef.current - viewportHeightRef.current
-      );
-      if (maxOffset > 0) {
-        const phase =
-          ((frameTimeMs - originMs) % PERF_AUTO_SCROLL_CYCLE_MS) /
-          PERF_AUTO_SCROLL_CYCLE_MS;
-        const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-        scrollRef.current?.scrollTo({
-          y: maxOffset * position,
-          animated: false,
-        });
+      if (scrollOriginMs.value < 0) {
+        scrollOriginMs.value = frameInfo.timestamp;
+        scrollTo(scrollRef, 0, 0, false);
+        return;
       }
 
-      frame = requestAnimationFrame(tick);
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [autoScroll]);
+      const elapsed = frameInfo.timestamp - scrollOriginMs.value;
+      const phase =
+        (elapsed % PERF_AUTO_SCROLL_CYCLE_MS) / PERF_AUTO_SCROLL_CYCLE_MS;
+      const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+      scrollTo(scrollRef, 0, maxOffset * position, false);
+    },
+    autoScroll
+  );
 
   if (Platform.OS !== 'android') {
     return <View />;
@@ -126,7 +130,7 @@ export default function ProgressiveBlurPerfRoute() {
           curve="smooth"
           blurRadius={radiusDp}
         >
-          <ScrollView
+          <AnimatedScrollView
             ref={scrollRef}
             testID="perf-scroll"
             style={s.list}
@@ -134,10 +138,10 @@ export default function ProgressiveBlurPerfRoute() {
             showsVerticalScrollIndicator={false}
             removeClippedSubviews={false}
             onLayout={(event) => {
-              viewportHeightRef.current = event.nativeEvent.layout.height;
+              viewportHeight.value = event.nativeEvent.layout.height;
             }}
             onContentSizeChange={(_width, height) => {
-              contentHeightRef.current = height;
+              contentHeight.value = height;
             }}
           >
             {TRACKS.map((track, index) => (
@@ -158,7 +162,7 @@ export default function ProgressiveBlurPerfRoute() {
                 <Text style={s.duration}>{track.time}</Text>
               </View>
             ))}
-          </ScrollView>
+          </AnimatedScrollView>
         </EdgeFadeView>
       </View>
     </View>
