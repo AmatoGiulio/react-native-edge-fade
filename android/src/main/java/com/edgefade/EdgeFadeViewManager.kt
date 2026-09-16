@@ -1,5 +1,6 @@
 package com.edgefade
 
+import android.util.Log
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
@@ -14,6 +15,7 @@ class EdgeFadeViewManager :
   EdgeFadeViewManagerInterface<EdgeFadeView> {
 
   private val delegate = EdgeFadeViewManagerDelegate(this)
+  private val computeRequests = java.util.WeakHashMap<EdgeFadeView, Boolean>()
 
   override fun getDelegate(): ViewManagerDelegate<EdgeFadeView> = delegate
   override fun getName(): String = NAME
@@ -34,10 +36,19 @@ class EdgeFadeViewManager :
   override fun onAfterUpdateTransaction(view: EdgeFadeView) {
     super.onAfterUpdateTransaction(view)
     EdgeFadeProgressiveBlurEffect.apply(view)
+    if (computeRequests[view] == true) {
+      Log.w(
+        COMPUTE_DIAGNOSTIC_TAG,
+        "compute transaction result: mode=${view.mode} size=${view.width}x${view.height} " +
+          "edges=[${view.fadeTop},${view.fadeBottom},${view.fadeLeft},${view.fadeRight}] " +
+          "radius=${view.blurRadius} es31Advertised=${EdgeFadeExactComputeRenderer.isSupported(view)}",
+      )
+    }
     view.invalidate()
   }
 
   override fun onDropViewInstance(view: EdgeFadeView) {
+    computeRequests.remove(view)
     EdgeFadeGlesMotionInvalidator.unregister(view)
     EdgeFadeProgressiveBlurEffect.unregister(view)
     super.onDropViewInstance(view)
@@ -75,7 +86,12 @@ class EdgeFadeViewManager :
 
   @ReactProp(name = "mode")
   override fun setMode(view: EdgeFadeView, value: String?) {
-    EdgeFadeProgressiveBlurEffect.setRequestedMode(view, value ?: "mask")
+    val requested = value ?: "mask"
+    computeRequests[view] = requested == "blur-compute"
+    if (requested == "blur-compute") {
+      Log.w(COMPUTE_DIAGNOSTIC_TAG, "received mode=blur-compute")
+    }
+    EdgeFadeProgressiveBlurEffect.setRequestedMode(view, requested)
   }
 
   // ── Colors ─────────────────────────────────────────────────────────────────
@@ -114,5 +130,6 @@ class EdgeFadeViewManager :
 
   companion object {
     const val NAME = "EdgeFadeView"
+    private const val COMPUTE_DIAGNOSTIC_TAG = "EdgeFadeCompute"
   }
 }
