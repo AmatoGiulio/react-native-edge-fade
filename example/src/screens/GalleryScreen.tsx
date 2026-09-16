@@ -1,7 +1,13 @@
 import { memo, useCallback, useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Image as NativeImage,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
-import { Image } from 'expo-image';
+import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -14,42 +20,57 @@ const GAP = 2;
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
 
+export type GalleryStressImageRenderer = 'expo' | 'native';
+
 export interface GalleryStressConfig {
   autoScroll: boolean;
   effectEnabled: boolean;
   radiusDp: number;
   cycleMs: number;
+  imageRenderer: GalleryStressImageRenderer;
 }
 
 interface GalleryScreenProps {
   stress?: GalleryStressConfig;
 }
 
-const PhotoCell = memo(function PhotoCell({ item }: { item: CatalogItem }) {
+const PhotoCell = memo(function PhotoCell({
+  item,
+  imageRenderer,
+}: {
+  item: CatalogItem;
+  imageRenderer: GalleryStressImageRenderer;
+}) {
   const onPress = useCallback(
     () => router.push('/photo/' + item.id),
     [item.id]
   );
+  const imageStyle = [s.img, { backgroundColor: item.color + '33' }];
+
   return (
     <Pressable style={s.cell} onPress={onPress}>
-      <Image
-        source={item.source}
-        style={[s.img, { backgroundColor: item.color + '33' }]}
-        contentFit="cover"
-        /*placeholder={
-          item.blur_hash && item.blur_hash.length >= 6
-            ? { blurhash: item.blur_hash }
-            : undefined
-        }*/
-        //xtransition={300}
-      />
+      {imageRenderer === 'native' ? (
+        <NativeImage
+          source={item.source}
+          style={imageStyle}
+          resizeMode="cover"
+        />
+      ) : (
+        <ExpoImage
+          source={item.source}
+          style={imageStyle}
+          contentFit="cover"
+          /*placeholder={
+            item.blur_hash && item.blur_hash.length >= 6
+              ? { blurhash: item.blur_hash }
+              : undefined
+          }*/
+          //xtransition={300}
+        />
+      )}
     </Pressable>
   );
 });
-
-function renderItem({ item }: { item: CatalogItem }) {
-  return <PhotoCell item={item} />;
-}
 
 function keyExtractor(item: CatalogItem) {
   return item.id;
@@ -78,6 +99,14 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
   const contentHeightRef = useRef(0);
 
   const stressActive = stress?.autoScroll === true;
+  const imageRenderer = stressActive ? stress.imageRenderer : 'expo';
+
+  const renderItem = useCallback(
+    ({ item }: { item: CatalogItem }) => (
+      <PhotoCell item={item} imageRenderer={imageRenderer} />
+    ),
+    [imageRenderer]
+  );
 
   useEffect(() => {
     if (!stressActive || isLoading || isError || catalog.length === 0) {
@@ -162,6 +191,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             ref={listRef}
             testID={stressActive ? 'gallery-stress-list' : undefined}
             data={catalog}
+            extraData={imageRenderer}
             numColumns={4}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
