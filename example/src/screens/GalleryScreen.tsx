@@ -20,7 +20,7 @@ const GAP = 2;
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
 
-export type GalleryStressImageRenderer = 'expo' | 'native';
+export type GalleryStressImageRenderer = 'expo' | 'native' | 'solid';
 
 export interface GalleryStressConfig {
   autoScroll: boolean;
@@ -49,7 +49,9 @@ const PhotoCell = memo(function PhotoCell({
 
   return (
     <Pressable style={s.cell} onPress={onPress}>
-      {imageRenderer === 'native' ? (
+      {imageRenderer === 'solid' ? (
+        <View style={[s.img, { backgroundColor: item.color }]} />
+      ) : imageRenderer === 'native' ? (
         <NativeImage
           source={item.source}
           style={imageStyle}
