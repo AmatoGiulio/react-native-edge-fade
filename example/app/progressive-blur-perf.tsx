@@ -14,6 +14,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { EdgeFadeView } from 'react-native-edge-fade';
+import { NativeEdgeFadeView } from 'react-native-edge-fade/native';
 
 const ALBUMS = [
   '#37b9a7',
@@ -59,10 +60,12 @@ export default function ProgressiveBlurPerfRoute() {
     radiusPx?: string;
     effect?: string;
     workload?: string;
+    backend?: string;
   }>();
   const fourEdges = params.edges === 'four';
   const effectEnabled = params.effect !== 'off';
   const autoScroll = params.workload === 'auto';
+  const computeBackend = params.backend === 'compute';
   const targetRadiusPx = resolveRadiusPx(params.radiusPx);
   const radiusDp = targetRadiusPx / PERF_DENSITY;
   const actualRadiusPx = radiusDp * PERF_DENSITY;
@@ -103,6 +106,42 @@ export default function ProgressiveBlurPerfRoute() {
     return <View />;
   }
 
+  const scrollContent = (
+    <AnimatedScrollView
+      ref={scrollRef}
+      testID="perf-scroll"
+      style={s.list}
+      contentContainerStyle={s.tracks}
+      showsVerticalScrollIndicator={false}
+      removeClippedSubviews={false}
+      onLayout={(event) => {
+        viewportHeight.value = event.nativeEvent.layout.height;
+      }}
+      onContentSizeChange={(_width, height) => {
+        contentHeight.value = height;
+      }}
+    >
+      {TRACKS.map((track, index) => (
+        <View key={track.id} style={s.track}>
+          <View
+            pointerEvents="none"
+            style={[s.cover, { backgroundColor: track.color }]}
+          >
+            <View style={s.coverDisc} />
+            <Text style={s.coverNumber}>
+              {String(index + 1).padStart(2, '0')}
+            </Text>
+          </View>
+          <View style={s.trackText}>
+            <Text style={s.trackTitle}>{track.title}</Text>
+            <Text style={s.artist}>{track.artist}</Text>
+          </View>
+          <Text style={s.duration}>{track.time}</Text>
+        </View>
+      ))}
+    </AnimatedScrollView>
+  );
+
   return (
     <View style={s.page} testID="perf-public-progressive">
       <Stack.Screen options={{ headerShown: false }} />
@@ -110,7 +149,11 @@ export default function ProgressiveBlurPerfRoute() {
         <Text style={s.eyebrow}>EDGE FADE / PERF</Text>
         <Text style={s.title}>After hours.</Text>
         <Text style={s.meta}>
-          {effectEnabled ? 'Public Progressive' : 'Public baseline · no effect'}
+          {effectEnabled
+            ? computeBackend
+              ? 'Experimental Exact Compute'
+              : 'Public Progressive'
+            : 'Public baseline · no effect'}
           {' · '}
           {`${radiusDp.toFixed(1)}dp / ${actualRadiusPx.toFixed(0)}px · Smooth · `}
           {fourEdges ? 'Four edges' : 'Top + bottom'}
@@ -119,51 +162,39 @@ export default function ProgressiveBlurPerfRoute() {
       </View>
 
       <View style={s.viewportFrame} collapsable={false}>
-        <EdgeFadeView
-          testID="perf-edge-fade"
-          style={s.viewport}
-          mode={effectEnabled ? 'blur' : 'mask'}
-          top={effectEnabled ? 92 : 0}
-          bottom={effectEnabled ? 112 : 0}
-          left={effectEnabled && fourEdges ? 48 : 0}
-          right={effectEnabled && fourEdges ? 48 : 0}
-          curve="smooth"
-          blurRadius={radiusDp}
-        >
-          <AnimatedScrollView
-            ref={scrollRef}
-            testID="perf-scroll"
-            style={s.list}
-            contentContainerStyle={s.tracks}
-            showsVerticalScrollIndicator={false}
-            removeClippedSubviews={false}
-            onLayout={(event) => {
-              viewportHeight.value = event.nativeEvent.layout.height;
-            }}
-            onContentSizeChange={(_width, height) => {
-              contentHeight.value = height;
-            }}
+        {computeBackend ? (
+          <NativeEdgeFadeView
+            testID="perf-edge-fade"
+            style={s.viewport}
+            mode={effectEnabled ? 'blur-compute' : 'mask'}
+            fadeTop={effectEnabled ? 92 : 0}
+            fadeBottom={effectEnabled ? 112 : 0}
+            fadeLeft={effectEnabled && fourEdges ? 48 : 0}
+            fadeRight={effectEnabled && fourEdges ? 48 : 0}
+            curveTop="smooth"
+            curveBottom="smooth"
+            curveLeft="smooth"
+            curveRight="smooth"
+            blurRadius={radiusDp}
+            frostProgression={1}
           >
-            {TRACKS.map((track, index) => (
-              <View key={track.id} style={s.track}>
-                <View
-                  pointerEvents="none"
-                  style={[s.cover, { backgroundColor: track.color }]}
-                >
-                  <View style={s.coverDisc} />
-                  <Text style={s.coverNumber}>
-                    {String(index + 1).padStart(2, '0')}
-                  </Text>
-                </View>
-                <View style={s.trackText}>
-                  <Text style={s.trackTitle}>{track.title}</Text>
-                  <Text style={s.artist}>{track.artist}</Text>
-                </View>
-                <Text style={s.duration}>{track.time}</Text>
-              </View>
-            ))}
-          </AnimatedScrollView>
-        </EdgeFadeView>
+            {scrollContent}
+          </NativeEdgeFadeView>
+        ) : (
+          <EdgeFadeView
+            testID="perf-edge-fade"
+            style={s.viewport}
+            mode={effectEnabled ? 'blur' : 'mask'}
+            top={effectEnabled ? 92 : 0}
+            bottom={effectEnabled ? 112 : 0}
+            left={effectEnabled && fourEdges ? 48 : 0}
+            right={effectEnabled && fourEdges ? 48 : 0}
+            curve="smooth"
+            blurRadius={radiusDp}
+          >
+            {scrollContent}
+          </EdgeFadeView>
+        )}
       </View>
     </View>
   );

@@ -37,7 +37,7 @@ function parseArgs(argv) {
       case '--serial': options.serial = value(); break;
       case '--allow-emulator': options.allowEmulator = true; break;
       case '--out-dir': options.outDir = path.resolve(value()); break;
-      // Backward-compatible no-ops. Both renderers now use the same in-app
+      // Backward-compatible no-ops. Every renderer uses the same in-app
       // deterministic workload; adb swipe counts are intentionally ignored.
       case '--warmup-swipes': value(); break;
       case '--swipes': value(); break;
@@ -46,8 +46,8 @@ function parseArgs(argv) {
     }
   }
 
-  if (!['public', 'androidx', 'both'].includes(options.renderer)) {
-    throw new Error('--renderer must be public, androidx or both');
+  if (!['public', 'compute', 'androidx', 'both', 'all'].includes(options.renderer)) {
+    throw new Error('--renderer must be public, compute, androidx, both or all');
   }
   if (!['vertical', 'four'].includes(options.edges)) {
     throw new Error('--edges must be vertical or four');
@@ -57,6 +57,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(options.durationMs) || options.durationMs < 3000) {
     throw new Error('--duration-ms must be >= 3000');
+  }
+  if ((options.renderer === 'compute' || options.renderer === 'all') && options.edges !== 'vertical') {
+    throw new Error('The experimental exact compute renderer currently supports --edges vertical only.');
   }
   return options;
 }
@@ -111,19 +114,17 @@ const isEmulator = qemu === '1' || /sdk_gphone|emulator/i.test(model);
 if (sdk < 31) throw new Error(`Continuous progressive blur trace requires API 31+; device is API ${sdk}.`);
 if (sdk < 33 && options.renderer !== 'public') {
   throw new Error(
-    `AndroidX Official comparison requires API 33+. On API ${sdk}, use --renderer public to trace the GLES backend.`
+    `AndroidX/compute comparison requires API 33+. On API ${sdk}, use --renderer public to trace the GLES backend.`
   );
 }
 if (isEmulator && !options.allowEmulator) {
   throw new Error(`Detected an Android emulator (${model}). Use a physical device or pass --allow-emulator for smoke traces.`);
 }
 
-if (options.renderer === 'public' || options.renderer === 'both') {
-  assertInstalledReleasePackage(PUBLIC_PACKAGE, 'Public Edge Fade');
-}
-if (options.renderer === 'androidx' || options.renderer === 'both') {
-  assertInstalledReleasePackage(ANDROIDX_PACKAGE, 'AndroidX reference');
-}
+const needsPublic = ['public', 'compute', 'both', 'all'].includes(options.renderer);
+const needsAndroidx = ['androidx', 'both', 'all'].includes(options.renderer);
+if (needsPublic) assertInstalledReleasePackage(PUBLIC_PACKAGE, 'Public Edge Fade');
+if (needsAndroidx) assertInstalledReleasePackage(ANDROIDX_PACKAGE, 'AndroidX reference');
 
 const sizeText = adb(['shell', 'wm', 'size']);
 const sizeMatches = [...sizeText.matchAll(/(\d+)x(\d+)/g)];
@@ -145,10 +146,11 @@ console.log(`Device: ${model} / API ${sdk} / ${width}x${height} / ${densityDpi}d
 console.log(`Trace scene: ${round(radiusDp, 2)}dp / ${options.radiusPx}px / Smooth / ${options.edges}`);
 console.log(`Capture: ${options.durationMs}ms / deterministic in-app auto-scroll for every renderer`);
 console.log(`Public backend: ${sdk >= 33 ? 'AGSL API 33+' : 'GLES 3.0 API 31-32'}`);
+if (sdk >= 33) console.log('Compute candidate: exact GLES 3.1 shared-memory H/V, vertical edges only');
 
 function stopBothApps() {
   adb(['shell', 'am', 'force-stop', PUBLIC_PACKAGE]);
-  if (sdk >= 33 && (options.renderer === 'androidx' || options.renderer === 'both')) {
+  if (sdk >= 33 && needsAndroidx) {
     adb(['shell', 'am', 'force-stop', ANDROIDX_PACKAGE]);
   }
 }
@@ -157,19 +159,20 @@ function startRenderer(renderer) {
   stopBothApps();
   sleep(400);
 
-  if (renderer === 'public') {
+  if (renderer === 'public' || renderer === 'compute') {
     adb(['logcat', '-c']);
-    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on&workload=auto`;
+    const backend = renderer === 'compute' ? '&backend=compute' : '';
+    const uri = `edgefade://progressive-blur-perf?edges=${options.edges}&radiusPx=${radiusInvariant}&effect=on&workload=auto${backend}`;
     adb(['shell', `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`]);
     sleep(1800);
     const logcat = adb(['logcat', '-d'], { trim: false });
-    const activation = sdk >= 33
-      ? 'EdgeFadeProgressive: Using pure progressive AGSL blur on API 33+'
-      : 'EdgeFadeProgressive: Using GLES 3.0 continuous progressive blur on API 31-32';
+    const activation = renderer === 'compute'
+      ? 'EdgeFadeProgressive: Using experimental exact GLES 3.1 compute blur on API 33+'
+      : sdk >= 33
+        ? 'EdgeFadeProgressive: Using pure progressive AGSL blur on API 33+'
+        : 'EdgeFadeProgressive: Using GLES 3.0 continuous progressive blur on API 31-32';
     if (!logcat.includes(activation)) {
-      throw new Error(
-        `Public Progressive activation was not observed for ${sdk >= 33 ? 'AGSL' : 'GLES'}; refusing to capture the wrong backend.`
-      );
+      throw new Error(`${renderer} backend activation was not observed in logcat; refusing to capture the wrong renderer.`);
     }
   } else {
     adb([
@@ -271,13 +274,11 @@ function waitForChild(child) {
 }
 
 async function capture(renderer) {
-  const pkg = renderer === 'public' ? PUBLIC_PACKAGE : ANDROIDX_PACKAGE;
+  const pkg = renderer === 'androidx' ? ANDROIDX_PACKAGE : PUBLIC_PACKAGE;
   console.log(`\n=== Perfetto: ${renderer} / ${options.edges} / ${options.radiusPx}px ===`);
   console.log('Workload: deterministic in-app auto-scroll');
 
   startRenderer(renderer);
-  // Both apps have already been animating during startup. Reset stats only
-  // after the workload has reached steady state.
   sleep(500);
   resetFrameStats(pkg);
 
@@ -315,10 +316,10 @@ async function capture(renderer) {
       if (sdk >= 33) {
         console.log('Public AGSL slices: EdgeFade.progressive.recordContent / drawSharp / recordStrip.* / drawStrip.*');
       } else {
-        console.log(
-          'Public GLES slices: EdgeFade.progressive.gles.draw / recordContent / render / source / horizontal / vertical / drawSharp / drawOutput'
-        );
+        console.log('Public GLES slices: EdgeFade.progressive.gles.draw / source / horizontal / vertical / drawOutput');
       }
+    } else if (renderer === 'compute') {
+      console.log('Compute slices: EdgeFade.progressive.compute.source / copy.* / horizontal.* / vertical.* / present.*');
     }
     return localTrace;
   } finally {
@@ -326,7 +327,11 @@ async function capture(renderer) {
   }
 }
 
-const renderers = options.renderer === 'both' ? ['public', 'androidx'] : [options.renderer];
+const renderers = options.renderer === 'both'
+  ? ['public', 'androidx']
+  : options.renderer === 'all'
+    ? ['public', 'compute', 'androidx']
+    : [options.renderer];
 const traces = [];
 for (const renderer of renderers) {
   traces.push(await capture(renderer));
@@ -335,4 +340,4 @@ for (const renderer of renderers) {
 
 console.log('\nPerfetto capture complete.');
 for (const trace of traces) console.log(`  ${trace}`);
-console.log('Both traces used the same deterministic 4.2s triangular auto-scroll workload.');
+console.log('Every trace used the same deterministic 4.2s triangular auto-scroll workload.');

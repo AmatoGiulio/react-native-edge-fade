@@ -21,6 +21,12 @@ import java.util.WeakHashMap
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
+ * `mode="blur-compute"` is an INTERNAL benchmark selector. It exercises the
+ * API 33+ exact GLES 3.1 compute experiment without changing the public routing
+ * contract. It is intentionally vertical-only until visual/performance gates
+ * prove that the same exact signal can be delivered faster than the AGSL gold
+ * master.
+ *
  * A zero blur radius is a platform-independent identity transform. It bypasses
  * backend selection entirely, so `blurRadius=0` never becomes Mask even on an
  * Android release that cannot execute either progressive backend.
@@ -70,8 +76,9 @@ internal object EdgeFadeProgressiveBlurEffect {
   fun apply(view: EdgeFadeView) {
     val state = states[view] ?: return
     val requested = state.requestedMode
+    val computeRequested = requested == COMPUTE_MODE
 
-    if (requested != "blur") {
+    if (requested != "blur" && !computeRequested) {
       clearProgressive(view)
       view.mode = requested
       state.identityAnnounced = false
@@ -81,9 +88,9 @@ internal object EdgeFadeProgressiveBlurEffect {
 
     // Radius zero is not a degraded blur. It is the exact identity transform and
     // therefore does not require API 31, GLES, RuntimeShader, layout readiness,
-    // or any other blur capability. Keep the requested public mode as `blur` so
-    // the host can draw the children directly and a later 0 -> N update can
-    // select the appropriate backend normally.
+    // or any other blur capability. Keep the host mode as `blur` so the host can
+    // draw the children directly and a later 0 -> N update can select the
+    // requested exact backend normally.
     if (view.blurRadius <= 0f) {
       clearProgressive(view)
       view.mode = "blur"
@@ -96,7 +103,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
     state.identityAnnounced = false
 
-    val fallbackReason = progressiveFallbackReason(view)
+    val fallbackReason = progressiveFallbackReason(view, computeRequested)
     if (fallbackReason != null) {
       clearProgressive(view)
       view.mode = "mask"
@@ -108,6 +115,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
 
     val applied = when {
+      computeRequested && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33Compute.apply(view)
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.apply(view)
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.apply(view)
       else -> false
@@ -118,13 +126,20 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.mode = "blur"
       state.lastFallbackReason = null
 
-      val backend = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "agsl33" else "gles31"
+      val backend = when {
+        computeRequested -> "compute33"
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> "agsl33"
+        else -> "gles31"
+      }
       if (state.announcedBackend != backend) {
         state.announcedBackend = backend
-        if (backend == "agsl33") {
-          Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
-        } else {
-          Log.i(
+        when (backend) {
+          "compute33" -> Log.i(
+            TAG,
+            "Using experimental exact GLES 3.1 compute blur on API 33+ (tiled shared-memory H/V Gaussian).",
+          )
+          "agsl33" -> Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
+          else -> Log.i(
             TAG,
             "Using GLES 3.0 continuous progressive blur on API 31-32 (HardwareRenderer -> SurfaceTexture -> H/V Gaussian).",
           )
@@ -137,8 +152,10 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
-  private fun progressiveFallbackReason(view: EdgeFadeView): String? = when {
+  private fun progressiveFallbackReason(view: EdgeFadeView, computeRequested: Boolean): String? = when {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"
+    computeRequested && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ->
+      "exact compute benchmark requires API 33+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
     view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
     view.blurRadius > BlurLabGeometry.MAX_RADIUS_PX ->
@@ -150,6 +167,12 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.overlayColorLeft != null ||
       view.overlayColorRight != null -> "overlay color is not part of pure progressive blur"
     !supportsCurves(view) -> "curve cannot be represented by the progressive radius mask"
+    computeRequested && (view.fadeLeft > 0f || view.fadeRight > 0f) ->
+      "exact compute benchmark currently supports top/bottom edges only"
+    computeRequested && !EdgeFadeExactComputeRenderer.isSupported(view) ->
+      "exact compute benchmark requires OpenGL ES 3.1+"
+    computeRequested && containsWebView(view) ->
+      "WebView capture has not passed the exact compute regression gate"
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
       !EdgeFadeGlesProgressiveRenderer.isSupported(view) -> "requires OpenGL ES 3.0"
     Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && containsWebView(view) ->
@@ -161,7 +184,10 @@ internal object EdgeFadeProgressiveBlurEffect {
   private fun clearProgressive(view: EdgeFadeView) {
     view.progressiveBlurActive = false
     when {
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.clear(view)
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+        Api33.clear(view)
+        Api33Compute.clear(view)
+      }
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.clear(view)
     }
   }
@@ -217,6 +243,19 @@ internal object EdgeFadeProgressiveBlurEffect {
     canvas: Canvas,
     recordChildren: (Canvas) -> Unit,
   ): Boolean {
+    val computeRequested = states[view]?.requestedMode == COMPUTE_MODE
+    if (computeRequested) {
+      val renderer = Api33Compute.rendererFor(view) ?: return false
+      return try {
+        renderer.draw(canvas, recordChildren)
+      } catch (error: RuntimeException) {
+        Log.w(TAG, "Exact compute draw failed; using mask fallback.", error)
+        Api33Compute.clear(view)
+        view.progressiveBlurActive = false
+        false
+      }
+    }
+
     val renderer = Api33.rendererFor(view) ?: return false
     return try {
       renderer.draw(canvas, recordChildren)
@@ -296,6 +335,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()
 
     fun apply(view: EdgeFadeView): Boolean {
+      Api33Compute.clear(view)
       // The rejected full-view implementation used View.setRenderEffect(). Make
       // the ownership transition explicit so no stale effect can survive.
       view.setRenderEffect(null)
@@ -331,6 +371,46 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  private object Api33Compute {
+    private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeExactComputeRenderer>()
+
+    fun apply(view: EdgeFadeView): Boolean {
+      Api33.clear(view)
+      view.setRenderEffect(null)
+
+      val existing = renderers[view]
+      val renderer = existing ?: try {
+        EdgeFadeExactComputeRenderer(view)
+      } catch (error: RuntimeException) {
+        Log.w(TAG, "Exact compute renderer creation failed; using mask fallback.", error)
+        return false
+      }
+
+      return try {
+        if (!renderer.prepare()) {
+          if (existing == null) renderer.release()
+          return false
+        }
+        if (existing == null) renderers[view] = renderer
+        true
+      } catch (error: RuntimeException) {
+        renderers.remove(view)
+        renderer.release()
+        Log.w(TAG, "Exact compute configuration failed; using mask fallback.", error)
+        false
+      }
+    }
+
+    fun rendererFor(view: EdgeFadeView): EdgeFadeExactComputeRenderer? = renderers[view]
+
+    fun clear(view: EdgeFadeView) {
+      view.setRenderEffect(null)
+      renderers.remove(view)?.release()
+    }
+  }
+
+  private const val COMPUTE_MODE = "blur-compute"
   private const val TAG = "EdgeFadeProgressive"
 
   // Shared by every API 33+ edge-local strip. `origin` maps local strip
