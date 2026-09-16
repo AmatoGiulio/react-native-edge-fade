@@ -38,7 +38,9 @@ function resolveCycleMs(value: string | string[] | undefined) {
 function resolveImageRenderer(
   value: string | string[] | undefined
 ): GalleryStressImageRenderer {
-  return firstParam(value) === 'native' ? 'native' : 'expo';
+  const renderer = firstParam(value);
+  if (renderer === 'native' || renderer === 'solid') return renderer;
+  return 'expo';
 }
 
 export default function GalleryEntry() {
