@@ -15,9 +15,10 @@ import kotlin.math.ceil
  *
  * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
  * the analytical/LUT edge mask, derives its own radius as
- * `maxRadius * intensity`, then runs the same AndroidX-derived separable
- * Gaussian kernel in H -> V order. There are no discrete blur levels, opacity
- * cross-fades, frost grading, lift, tint or material post-processing here.
+ * `maxRadius * intensity`, then runs the separable Gaussian kernel in H -> V
+ * order. The performance branch bounds source fetches for large physical radii;
+ * there are still no discrete blur levels, opacity cross-fades, frost grading,
+ * lift, tint or material post-processing here.
  *
  * Strips are only a work-culling optimization: they bound GPU work to regions
  * where the radius can be non-zero. They do not quantize the blur field. Each
@@ -77,8 +78,8 @@ internal class EdgeFadeProgressiveStripRenderer(
   private class Strip(var band: Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    val horizontal = RuntimeShader(BlurLabShaders.pass(vertical = false))
-    val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true))
+    val horizontal = RuntimeShader(EdgeFadeAgslFastBlurShaders.pass(vertical = false))
+    val vertical = RuntimeShader(EdgeFadeAgslFastBlurShaders.pass(vertical = true))
 
     fun release() {
       node.setRenderEffect(null)
