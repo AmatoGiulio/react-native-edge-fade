@@ -18,15 +18,19 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * Benchmark-only renderer used to test whether the expensive part of the API
- * 33+ path is the true per-pixel variable-radius Gaussian itself.
+ * Benchmark-only calibrated native Gaussian pyramid.
  *
- * Vertical fades use five native uniform Gaussian levels and progressively
- * replace the previous level through curve-shaped alpha masks. The masks follow
- * the same EdgeFade presence curve/progression contract, but radius is sampled at
- * five points instead of being evaluated continuously per pixel. There is no
- * frost saturation/lift/tint. This branch intentionally targets the Gallery
- * vertical benchmark only; unsupported geometry returns false to the host.
+ * The continuous AGSL reference interprets EdgeFade radius as a Gaussian with
+ * sigma ~= radius / 2. Android's native RenderEffect blur converts its public
+ * radius to Skia sigma with a different scale, so feeding the same radius into
+ * both paths over-blurs the native pyramid. Each native level here inverts the
+ * platform radius->sigma conversion so its Gaussian matches the corresponding
+ * continuous reference sample.
+ *
+ * Between samples we interpolate in variance space (sigma^2), rather than
+ * linearly in radius. A mixture of two Gaussians is still only an approximation
+ * of a true intermediate Gaussian, but matching second moment removes the most
+ * obvious strength/plateau error while retaining the fast native blur path.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressivePyramidRenderer(
@@ -120,7 +124,10 @@ internal class EdgeFadeProgressivePyramidRenderer(
 
     if (!announced) {
       announced = true
-      Log.i(TAG, "Using native Gaussian pyramid benchmark path (5 uniform levels, curve-shaped interpolation).")
+      Log.i(
+        TAG,
+        "Using native Gaussian pyramid benchmark path (5 calibrated levels, continuous-sigma matched, variance interpolation).",
+      )
     }
     return true
   }
@@ -231,10 +238,11 @@ internal class EdgeFadeProgressivePyramidRenderer(
   private fun configureBand(state: BandState, key: Key) {
     val source = state.band.source
     state.levels.forEachIndexed { index, level ->
-      val radius = (key.radius * LEVEL_FRACTIONS[index]).coerceAtLeast(0.01f)
+      val targetRadius = key.radius * LEVEL_FRACTIONS[index]
+      val nativeRadius = nativeRadiusForContinuous(targetRadius)
       level.node.setPosition(0, 0, source.width, source.height)
       level.node.setRenderEffect(
-        RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP),
+        RenderEffect.createBlurEffect(nativeRadius, nativeRadius, Shader.TileMode.CLAMP),
       )
       level.maskPaint.shader = levelMask(key, state.band, index)
     }
@@ -247,7 +255,12 @@ internal class EdgeFadeProgressivePyramidRenderer(
     val depth = if (topEdge) key.top else key.bottom
     val lo = if (levelIndex == 0) 0f else LEVEL_FRACTIONS[levelIndex - 1]
     val hi = LEVEL_FRACTIONS[levelIndex]
-    val range = (hi - lo).coerceAtLeast(0.0001f)
+
+    val loSigma = if (lo <= 0f) 0f else continuousSigma(key.radius * lo)
+    val hiSigma = continuousSigma(key.radius * hi)
+    val loVariance = loSigma * loSigma
+    val hiVariance = hiSigma * hiSigma
+    val varianceRange = (hiVariance - loVariance).coerceAtLeast(0.0001f)
 
     val colors = IntArray(MASK_SAMPLES)
     val positions = FloatArray(MASK_SAMPLES)
@@ -258,7 +271,11 @@ internal class EdgeFadeProgressivePyramidRenderer(
       val outward = if (depth <= 0f) 0f else (1f - distance / depth).coerceIn(0f, 1f)
       val curveT = (outward / key.progression).coerceIn(0f, 1f)
       val presence = EdgeFadeCurves.presenceAt(curve, curveT).coerceIn(0f, 1f)
-      val alpha = ((presence - lo) / range).coerceIn(0f, 1f)
+
+      val targetSigma = continuousSigma(key.radius * presence)
+      val targetVariance = targetSigma * targetSigma
+      val alpha = ((targetVariance - loVariance) / varianceRange).coerceIn(0f, 1f)
+
       positions[index] = position
       colors[index] = Color.argb((alpha * 255f).roundToInt(), 255, 255, 255)
     }
@@ -272,6 +289,25 @@ internal class EdgeFadeProgressivePyramidRenderer(
       positions,
       Shader.TileMode.CLAMP,
     )
+  }
+
+  /** Matches BlurLabShaders: no blur below one pixel, otherwise sigma=radius/2. */
+  private fun continuousSigma(radius: Float): Float = when {
+    radius < 1f -> 0f
+    radius < 2f -> 1f
+    else -> radius * 0.5f
+  }
+
+  /**
+   * Android HWUI converts RenderEffect blur radius to Skia sigma as
+   * sigma ~= 0.57735 * radius + 0.5. Invert that transform so every native
+   * pyramid sample has the same sigma as the continuous reference sample.
+   */
+  private fun nativeRadiusForContinuous(targetRadius: Float): Float {
+    val sigma = continuousSigma(targetRadius)
+    if (sigma <= 0f) return MIN_NATIVE_RADIUS
+    return ((sigma - PLATFORM_SIGMA_OFFSET) / PLATFORM_RADIUS_TO_SIGMA)
+      .coerceAtLeast(MIN_NATIVE_RADIUS)
   }
 
   private fun buildBands(key: Key): List<Band> {
@@ -335,6 +371,9 @@ internal class EdgeFadeProgressivePyramidRenderer(
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
     private const val MASK_SAMPLES = 33
+    private const val PLATFORM_RADIUS_TO_SIGMA = 0.57735f
+    private const val PLATFORM_SIGMA_OFFSET = 0.5f
+    private const val MIN_NATIVE_RADIUS = 0.01f
     private val LEVEL_FRACTIONS = floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)
   }
 }
