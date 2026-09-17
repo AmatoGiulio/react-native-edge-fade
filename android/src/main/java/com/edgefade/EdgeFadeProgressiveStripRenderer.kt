@@ -6,6 +6,7 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
@@ -26,10 +27,10 @@ import kotlin.math.ceil
  * across the inner strip boundary. Top/bottom own the corners; left/right own
  * only the remaining center span, making four-edge output disjoint by geometry.
  *
- * The renderer is invoked directly from EdgeFadeView.dispatchDraw(). It records
- * the React children once, draws the sharp content with the edge bands clipped
- * out, then draws the filtered strips into those empty bands. No ViewOverlay,
- * SRC replacement layer or forced host hardware layer is involved.
+ * This benchmark branch additionally specializes the vertical-only `smooth`
+ * case by evaluating the radius curve directly inside the two Gaussian passes.
+ * That removes the separate mask shader evaluation while preserving the same
+ * analytical smooth curve and strip geometry.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
@@ -78,25 +79,25 @@ internal class EdgeFadeProgressiveStripRenderer(
   private class Strip(var band: Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    // The official build must not compile or run the port's Gaussian shaders.
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    var fastHorizontal: RuntimeShader? = null
+    var fastVertical: RuntimeShader? = null
 
     fun release() {
       node.setRenderEffect(null)
       node.discardDisplayList()
+      fastHorizontal = null
+      fastVertical = null
     }
   }
 
-  // Api33.renderers is a WeakHashMap keyed by EdgeFadeView. Keeping a strong
-  // host reference in the value would create value -> key retention and defeat
-  // the weak-key lifecycle if React Native ever skips an explicit drop callback.
   private val hostRef = WeakReference(host)
   private val content = RenderNode("EdgeFade.Progressive.content")
   private var key: Key? = null
   private var strips = emptyList<Strip>()
+  private var fastPathAnnounced = false
 
-  /** Compile/configure shaders before the selector commits to this backend. */
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val width = host.width
@@ -120,9 +121,6 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     if (key == next) return true
 
-    // Radius 0 is the identity transform, not a fallback. Drop any filtered
-    // strip resources from the previous non-zero frame and let draw() render
-    // the React children directly, with no mask and no blur passes.
     if (next.radius <= 0f) {
       strips.forEach { it.release() }
       strips = emptyList()
@@ -137,19 +135,12 @@ internal class EdgeFadeProgressiveStripRenderer(
     return true
   }
 
-  /**
-   * @return true only if this renderer owned the frame. false tells the host to
-   * draw Mask instead, so an empty/invalid renderer can never blank the content.
-   */
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val host = hostRef.get() ?: return false
     if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return false
 
     Trace.beginSection("EdgeFade.progressive.strip.draw")
     try {
-      // Re-evaluate geometry before inspecting strips. Layout/prop updates can
-      // reach draw between selector transactions; never let a stale empty list
-      // suppress the child scene for a frame.
       val prepared = tracePhase("EdgeFade.progressive.prepare") {
         prepare()
       }
@@ -160,9 +151,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         return true
       }
 
-      // Materialize the child scene once. The sharp base and every filtered
-      // strip reference this same recording, so the expensive blur work stays
-      // edge-local while content identity is identical across all passes.
       tracePhase("EdgeFade.progressive.recordContent") {
         content.setPosition(0, 0, host.width, host.height)
         content.setUseCompositingLayer(true, null)
@@ -174,8 +162,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
-      // Draw sharp content exactly once, excluding every edge band. Those bands
-      // remain empty at this stage; no later replacement blend is necessary.
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
         try {
@@ -186,9 +172,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
-      // Fill the empty edge bands with their true progressive Gaussian output.
-      // Visible ownership is already disjoint by geometry, while each source is
-      // expanded by maxRadius + one paired bilinear tap for correct sampling.
       for (strip in strips) {
         val src = strip.band.source
         tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
@@ -239,6 +222,11 @@ internal class EdgeFadeProgressiveStripRenderer(
   private fun configureStrip(strip: Strip, key: Key) {
     val source = strip.band.source
     strip.node.setPosition(0, 0, source.width, source.height)
+
+    if (usesIntegratedVertical(key, strip.band.edge)) {
+      configureIntegratedVertical(strip, key, source)
+      return
+    }
 
     val topCurve = curveUniforms(key.curveTop)
     val bottomCurve = curveUniforms(key.curveBottom)
@@ -295,6 +283,48 @@ internal class EdgeFadeProgressiveStripRenderer(
     )
   }
 
+  private fun configureIntegratedVertical(strip: Strip, key: Key, source: Rect) {
+    val bottomEdge = strip.band.edge == EDGE_BOTTOM
+    val horizontal = strip.fastHorizontal ?: RuntimeShader(
+      EdgeFadeFastVerticalShaders.pass(verticalBlur = false, bottomEdge = bottomEdge),
+    ).also { strip.fastHorizontal = it }
+    val vertical = strip.fastVertical ?: RuntimeShader(
+      EdgeFadeFastVerticalShaders.pass(verticalBlur = true, bottomEdge = bottomEdge),
+    ).also { strip.fastVertical = it }
+
+    val depth = if (bottomEdge) key.bottom else key.top
+    for (shader in arrayOf(horizontal, vertical)) {
+      shader.setFloatUniform("blurRadius", key.radius)
+      shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
+      shader.setFloatUniform("originY", source.top.toFloat())
+      shader.setFloatUniform("viewHeight", key.height.toFloat())
+      shader.setFloatUniform("edgeDepth", depth)
+      shader.setFloatUniform("progression", key.progression)
+    }
+
+    strip.node.setRenderEffect(
+      RenderEffect.createChainEffect(
+        RenderEffect.createRuntimeShaderEffect(vertical, "content"),
+        RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
+      ),
+    )
+
+    if (!fastPathAnnounced) {
+      fastPathAnnounced = true
+      Log.i(
+        TAG,
+        "Using integrated vertical smooth AGSL fast path (no separate mask shader eval).",
+      )
+    }
+  }
+
+  private fun usesIntegratedVertical(key: Key, edge: Int): Boolean =
+    key.left <= 0f &&
+      key.right <= 0f &&
+      key.curveTop == "smooth" &&
+      key.curveBottom == "smooth" &&
+      (edge == EDGE_TOP || edge == EDGE_BOTTOM)
+
   private fun curveUniforms(curve: String): CurveUniforms {
     val preset = EdgeFadeCurves.agslPresetParams(curve)
     if (preset != null) {
@@ -304,18 +334,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     val alpha = requireNotNull(EdgeFadeCurves.parseCustomLUT(curve)) {
       "Unsupported progressive curve: $curve"
     }
-    // The public mask outputs radius presence, while serialized custom curves
-    // carry alpha (inner=1 -> outer=0). Convert once on configuration; the GPU
-    // linearly interpolates these 32 samples exactly like EdgeFade mask mode.
     val presence = FloatArray(alpha.size) { index -> (1f - alpha[index]).coerceIn(0f, 1f) }
     return CurveUniforms(1f, 0f, 1f, presence)
   }
 
-  /**
-   * Output ownership is disjoint before RenderEffects are allocated:
-   * top/bottom own the full-width corners; side strips own only the center span.
-   * Each source rect then grows by max radius + one paired bilinear tap.
-   */
   private fun bands(key: Key): List<Band> {
     val width = key.width
     val height = key.height
@@ -338,7 +360,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       result += Band(edge, visible, source)
     }
 
-    // Top owns overlap with bottom if pathological depths cover the whole view.
     add(EDGE_TOP, Rect(0, 0, width, top))
     val bottomTop = (height - bottom).coerceAtLeast(top)
     add(EDGE_BOTTOM, Rect(0, bottomTop, width, height))
@@ -347,7 +368,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     val centerBottom = (height - bottom).coerceAtLeast(centerTop)
     if (centerBottom > centerTop) {
       add(EDGE_LEFT, Rect(0, centerTop, left, centerBottom))
-      // Left owns pathological horizontal overlap.
       val rightLeft = (width - right).coerceAtLeast(left)
       add(EDGE_RIGHT, Rect(rightLeft, centerTop, width, centerBottom))
     }
@@ -389,6 +409,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (value.isFinite()) value else fallback
 
   private companion object {
+    private const val TAG = "EdgeFadeProgressive"
     private val EMPTY_LUT = FloatArray(EdgeFadeCurves.LUT_SIZE)
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
