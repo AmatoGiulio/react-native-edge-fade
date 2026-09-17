@@ -9,9 +9,8 @@ const PACKAGE = 'com.edgefadeexample';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'benchmark-results', 'gallery-renderers');
 const BASE_SCRIPT = path.join(ROOT, 'scripts', 'benchmark-gallery-renderers.mjs');
-const TARGET_HZ = 90;
-const TOLERANCE_HZ = 5;
 const REQUIRED_RENDERERS = ['off', 'agsl', 'androidx'];
+const TOLERANCE_HZ = 5;
 
 function parseArgs(argv) {
   const out = {
@@ -19,30 +18,32 @@ function parseArgs(argv) {
     radiusPx: 80,
     cycleMs: 4200,
     image: 'expo',
-    maxAttempts: 3,
     forwarded: [],
   };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    const take = () => argv[++i];
     if (arg === '--serial') {
-      const value = argv[++i];
+      const value = take();
       out.serial = value;
       out.forwarded.push(arg, value);
     } else if (arg === '--radius-px') {
-      const value = argv[++i];
+      const value = take();
       out.radiusPx = Number(value);
       out.forwarded.push(arg, value);
     } else if (arg === '--cycle-ms') {
-      const value = argv[++i];
+      const value = take();
       out.cycleMs = Number(value);
       out.forwarded.push(arg, value);
     } else if (arg === '--image') {
-      const value = argv[++i];
+      const value = take();
       out.image = value;
       out.forwarded.push(arg, value);
     } else if (arg === '--max-attempts') {
-      out.maxAttempts = Number(argv[++i]);
+      // Kept for CLI compatibility with the previous wrapper. The new runner
+      // locks refresh instead of retrying whole matrices.
+      take();
     } else {
       out.forwarded.push(arg);
       if (
@@ -54,15 +55,12 @@ function parseArgs(argv) {
           '--refresh-tolerance-hz',
         ].includes(arg)
       ) {
-        out.forwarded.push(argv[++i]);
+        out.forwarded.push(take());
       }
     }
   }
 
   if (!out.serial) throw new Error('--serial is required');
-  if (!Number.isInteger(out.maxAttempts) || out.maxAttempts < 1 || out.maxAttempts > 5) {
-    throw new Error('--max-attempts must be in 1..5');
-  }
   return out;
 }
 
@@ -110,13 +108,28 @@ function readRefreshRate() {
   return null;
 }
 
-function isTargetHz(hz) {
-  return Number.isFinite(hz) && Math.abs(hz - TARGET_HZ) <= TOLERANCE_HZ;
+function sameHz(a, b) {
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= TOLERANCE_HZ;
+}
+
+function readSetting(key) {
+  const value = shell(`settings get system ${key}`);
+  return value === 'null' || value === '' ? null : value;
+}
+
+function writeSetting(key, value) {
+  if (value == null) shell(`settings delete system ${key}`);
+  else shell(`settings put system ${key} ${value}`);
+}
+
+function lockRefresh(hz) {
+  writeSetting('peak_refresh_rate', `${hz}.0`);
+  writeSetting('min_refresh_rate', `${hz}.0`);
 }
 
 function launchPreflightGallery() {
   shell(`am force-stop ${PACKAGE}`);
-  sleep(300);
+  sleep(250);
   const uri =
     `edgefade:///gallery-renderer-test?renderer=off` +
     `&radiusPx=${options.radiusPx}&cycleMs=${options.cycleMs}&image=${options.image}`;
@@ -129,30 +142,27 @@ function launchPreflightGallery() {
   }
 }
 
-function waitForStable90Hz() {
+function waitForLockedRefresh(targetHz) {
   launchPreflightGallery();
   let consecutive = 0;
   let last = null;
-
-  for (let probe = 1; probe <= 30; probe++) {
-    sleep(500);
+  for (let probe = 1; probe <= 16; probe++) {
+    sleep(400);
     const hz = readRefreshRate();
     last = hz;
-    if (isTargetHz(hz)) consecutive += 1;
-    else consecutive = 0;
-
+    consecutive = sameHz(hz, targetHz) ? consecutive + 1 : 0;
     process.stdout.write(
-      `\rpreflight refresh: ${hz ?? 'n/a'}Hz (${consecutive}/3 stable @ ${TARGET_HZ}Hz)   `,
+      `\rrefresh lock: ${hz ?? 'n/a'}Hz (${consecutive}/2 stable @ ${targetHz}Hz)   `,
     );
-
-    if (consecutive >= 3) {
+    if (consecutive >= 2) {
       process.stdout.write('\n');
+      shell(`am force-stop ${PACKAGE}`);
       return true;
     }
   }
-
   process.stdout.write('\n');
-  console.log(`Preflight did not settle at ${TARGET_HZ}Hz (last=${last ?? 'n/a'}Hz).`);
+  shell(`am force-stop ${PACKAGE}`);
+  console.log(`Could not hold ${targetHz}Hz (last=${last ?? 'n/a'}Hz).`);
   return false;
 }
 
@@ -169,27 +179,19 @@ function newestReport(afterMs) {
   return candidates[0]?.full ?? null;
 }
 
-function reportIsUsable(report) {
-  if (!isTargetHz(report?.device?.targetRefreshHz)) return false;
-
+function reportMatchesRefresh(report, targetHz) {
+  if (!sameHz(report?.device?.targetRefreshHz, targetHz)) return false;
   for (const renderer of REQUIRED_RENDERERS) {
     const rows = report.results.filter((row) => row.renderer === renderer);
     if (!rows.length || rows.some((row) => row.valid === false)) return false;
-    if (
-      rows.some(
-        (row) => !isTargetHz(row.refreshHzStart) || !isTargetHz(row.refreshHzEnd),
-      )
-    ) {
+    if (rows.some((row) => !sameHz(row.refreshHzStart, targetHz) || !sameHz(row.refreshHzEnd, targetHz))) {
       return false;
     }
   }
   return true;
 }
 
-for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
-  console.log(`\n=== Scale-space benchmark attempt ${attempt}/${options.maxAttempts} ===`);
-  if (!waitForStable90Hz()) continue;
-
+function runMatrix(targetHz) {
   const started = Date.now();
   const result = spawnSync(process.execPath, [BASE_SCRIPT, ...options.forwarded], {
     cwd: ROOT,
@@ -197,26 +199,46 @@ for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
     stdio: 'inherit',
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) {
-    console.log(`Matrix exited with status ${result.status}; retrying if possible.`);
-    continue;
-  }
-
+  if (result.status !== 0) return null;
   const reportPath = newestReport(started);
-  if (!reportPath) {
-    console.log('Could not locate the report produced by this attempt.');
-    continue;
-  }
-
+  if (!reportPath) return null;
   const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-  if (reportIsUsable(report)) {
-    console.log(`\nACCEPTED 90Hz REPORT: ${reportPath}`);
-    process.exit(0);
-  }
-
-  console.log(`Rejected mixed-refresh report: ${reportPath}`);
+  return reportMatchesRefresh(report, targetHz) ? reportPath : null;
 }
 
-throw new Error(
-  `Could not obtain a stable ${TARGET_HZ}Hz off/agsl/androidx matrix after ${options.maxAttempts} attempts.`,
-);
+const original = {
+  peak: readSetting('peak_refresh_rate'),
+  min: readSetting('min_refresh_rate'),
+};
+
+// 60Hz is deliberate. This A/B compares absolute renderer cost and visual
+// fidelity; forcing the lower stable mode prevents the OnePlus adaptive display
+// from oscillating between 60/90Hz based on workload. Original user settings are
+// restored unconditionally when the script exits.
+const targetHz = 60;
+
+try {
+  console.log(`Locking display to ${targetHz}Hz for a single comparable matrix...`);
+  lockRefresh(targetHz);
+  sleep(500);
+
+  if (!waitForLockedRefresh(targetHz)) {
+    throw new Error(`Device did not honor the temporary ${targetHz}Hz refresh lock.`);
+  }
+
+  const reportPath = runMatrix(targetHz);
+  if (!reportPath) {
+    throw new Error(
+      `Matrix was not fully ${targetHz}Hz despite the refresh lock. ` +
+        'No result was accepted.',
+    );
+  }
+
+  console.log(`\nACCEPTED SAME-REFRESH REPORT: ${reportPath}`);
+} finally {
+  writeSetting('peak_refresh_rate', original.peak);
+  writeSetting('min_refresh_rate', original.min);
+  console.log(
+    `Restored refresh settings: peak=${original.peak ?? 'default'} min=${original.min ?? 'default'}`,
+  );
+}
