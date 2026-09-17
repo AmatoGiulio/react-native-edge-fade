@@ -23,7 +23,7 @@ class ProgressiveNativePyramidContract(unittest.TestCase):
             "floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)",
             renderer,
         )
-        self.assertIn("5 uniform levels", renderer)
+        self.assertIn("5 calibrated levels", renderer)
         self.assertIn("RenderEffect.createBlurEffect", renderer)
         self.assertIn("Shader.TileMode.CLAMP", renderer)
         self.assertNotIn("RuntimeShader", renderer)
