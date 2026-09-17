@@ -41,6 +41,26 @@ class ExampleBlurContract(unittest.TestCase):
         self.assertEqual(native_max, example_max)
         self.assertEqual(native_max, 150.0)
 
+    def test_gallery_defaults_come_from_the_blur_lab_profile(self):
+        presets = read("example/src/fade/presets.ts")
+        limits = read("example/src/fade/limits.ts")
+        context = read("example/src/fade/FadeContext.tsx")
+
+        for contract in (
+            "top: 92",
+            "bottom: 112",
+            "blurRadius: 24",
+            "progression: 1",
+            "curve: 'smooth'",
+        ):
+            self.assertIn(contract, presets)
+
+        self.assertIn("BLUR_LAB_DEFAULTS.blurRadius", limits)
+        self.assertIn("BLUR_LAB_DEFAULTS.top", context)
+        self.assertIn("BLUR_LAB_DEFAULTS.bottom", context)
+        self.assertIn("BLUR_LAB_DEFAULTS.progression", context)
+        self.assertIn("preset === 'default' ? 'smooth' : dialCurve", context)
+
     def test_panel_derives_its_android_blur_range_from_limits(self):
         panel = read("example/src/components/FadePanel.tsx")
         self.assertIn("import { MAX_DEMO_BLUR } from '@/fade/limits';", panel)
