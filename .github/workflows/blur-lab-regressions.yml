@@ -13,6 +13,8 @@ on:
       - 'android/src/**/EdgeFadeViewManager.kt'
       - 'android/build.gradle'
       - 'src/BlurLabNativeComponent.ts'
+      - 'example/src/fade/limits.ts'
+      - 'example/src/components/FadePanel.tsx'
       - 'example/app/progressive-blur.tsx'
       - 'example/app/progressive-blur-perf.tsx'
       - 'example/app/progressive-blur-smoke.tsx'
@@ -21,6 +23,7 @@ on:
       - 'scripts/capture-progressive-perfetto.mjs'
       - 'scripts/smoke-progressive-release.mjs'
       - 'tests/native/test_blur_lab_regressions.py'
+      - 'tests/native/test_example_blur_contract.py'
       - 'tests/native/test_progressive_public_backend.py'
       - 'tests/native/test_gles_shader_source_contract.py'
       - 'tests/native/test_progressive_perf_scene.py'
@@ -56,6 +59,7 @@ jobs:
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_blur_lab_regressions.py --compile-shaders
       - name: Check public backend contracts and compile mask
         run: |
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_example_blur_contract.py
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_shader_source_contract.py
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_descendant_invalidation.py
