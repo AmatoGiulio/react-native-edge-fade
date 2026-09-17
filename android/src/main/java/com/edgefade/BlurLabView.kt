@@ -11,7 +11,7 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 
-/** Internal progressive-blur testbed. It compares only AGSL and AndroidX-style engines. */
+/** Internal progressive-blur testbed. */
 internal class BlurLabView(context: Context) : FrameLayout(context) {
   val contentHost = EdgeFadeView(context)
   var backend = "agsl"
@@ -38,8 +38,6 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   private var clipW = -1
   private var clipH = -1
   private var clipRadius = -1f
-  // View.draw already paints our background. Record children only, so a
-  // translucent parent background is never composited twice.
   private val recordContent: (Canvas) -> Unit = { target -> drawChildren(target) }
   private val scrollListener = ViewTreeObserver.OnScrollChangedListener {
     if (isProgressive(configuredActive) && hasBands() && radiusPx > 0f) invalidate()
@@ -50,11 +48,13 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   }
 
   private fun hasBands() = topDepth > 0f || bottomDepth > 0f || leftDepth > 0f || rightDepth > 0f
-  private fun isProgressive(active: String) = active == "agsl" || active == "androidx"
+
+  private fun isProgressive(active: String) =
+    active == "agsl" || active == "androidx" || active == "gaussian-scale"
 
   private fun activeBackend(hardware: Boolean): String = when {
     backend == "off" -> "off"
-    backend != "agsl" && backend != "androidx" -> "off"
+    backend != "agsl" && backend != "androidx" && backend != "gaussian-scale" -> "off"
     Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "off"
     backend == "androidx" && !AndroidxBlurAdapter.available -> "off"
     else -> backend
@@ -91,8 +91,6 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
 
   private fun configureHost(active: String) {
     configuredActive = active
-    // The lab host is always visually neutral. Progressive output is drawn by
-    // BlurLabRenderer; when disabled we show the unmodified child scene.
     contentHost.mode = "mask"
     contentHost.fadeTop = 0f
     contentHost.fadeBottom = 0f
@@ -156,12 +154,10 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
       if (Build.VERSION.SDK_INT >= 33 && isProgressive(active) &&
           width > 0 && height > 0 && hasBands() && radiusPx > 0f) {
         val engine = renderer ?: BlurLabRenderer().also { renderer = it }
-        // Prepare before drawing anything: failed shader compilation disables
-        // this research backend without substituting a different blur algorithm.
         try {
           engine.prepare(this, active)
-        } catch (error: IllegalArgumentException) {
-          Log.w("EdgeFade.BlurLab", "Progressive shader unavailable", error)
+        } catch (error: RuntimeException) {
+          Log.w("EdgeFade.BlurLab", "Progressive renderer unavailable", error)
           failedBackend = active
           failureMessage = (error.message ?: error.javaClass.simpleName).take(2000)
           active = "off"
@@ -170,7 +166,6 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
         if (isProgressive(active)) engine.draw(canvas, this, recordContent)
         else drawChildren(canvas)
       } else {
-        // Zero radius / no edges / disabled backend is a genuine unmodified draw.
         drawChildren(canvas)
       }
       report(active, canvas.isHardwareAccelerated)
