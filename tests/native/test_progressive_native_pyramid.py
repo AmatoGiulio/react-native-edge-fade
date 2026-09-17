@@ -17,12 +17,13 @@ class ProgressiveNativePyramidContract(unittest.TestCase):
         self.assertIn("pyramid.prepare()", shim)
         self.assertIn("pyramid.draw(canvas, recordChildren)", shim)
 
-    def test_pyramid_uses_four_native_uniform_blurs(self):
+    def test_pyramid_uses_five_native_uniform_blurs(self):
         renderer = read("EdgeFadeProgressivePyramidRenderer.kt")
         self.assertIn(
-            "floatArrayOf(0.25f, 0.5f, 0.75f, 1f)",
+            "floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)",
             renderer,
         )
+        self.assertIn("5 uniform levels", renderer)
         self.assertIn("RenderEffect.createBlurEffect", renderer)
         self.assertIn("Shader.TileMode.CLAMP", renderer)
         self.assertNotIn("RuntimeShader", renderer)
