@@ -18,15 +18,15 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * Benchmark-only hybrid renderer used to test whether the expensive part of the
- * API 33+ path is the true per-pixel variable-radius Gaussian itself.
+ * Benchmark-only renderer used to test whether the expensive part of the API
+ * 33+ path is the true per-pixel variable-radius Gaussian itself.
  *
- * Vertical-only fades use four native uniform Gaussian levels and progressively
+ * Vertical fades use four native uniform Gaussian levels and progressively
  * replace the previous level through curve-shaped alpha masks. The masks follow
  * the same EdgeFade presence curve/progression contract, but radius is sampled at
  * four points instead of being evaluated continuously per pixel. There is no
- * frost saturation/lift/tint. Non-vertical configurations delegate unchanged to
- * the production progressive strip renderer.
+ * frost saturation/lift/tint. This branch intentionally targets the Gallery
+ * vertical benchmark only; unsupported geometry returns false to the host.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressivePyramidRenderer(
@@ -83,22 +83,15 @@ internal class EdgeFadeProgressivePyramidRenderer(
   }
 
   private val hostRef = WeakReference(host)
-  private val generic = EdgeFadeProgressiveStripRenderer(host)
   private val content = RenderNode("EdgeFade.Pyramid.content")
   private var key: Key? = null
   private var bands = emptyList<BandState>()
-  private var pyramidActive = false
   private var announced = false
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
-    if (!eligible(host)) {
-      if (pyramidActive) releasePyramid()
-      pyramidActive = false
-      return generic.prepare()
-    }
+    if (!eligible(host)) return false
 
-    pyramidActive = true
     val width = host.width
     val height = host.height
     if (width <= 0 || height <= 0) return false
@@ -135,11 +128,7 @@ internal class EdgeFadeProgressivePyramidRenderer(
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val host = hostRef.get() ?: return false
     if (!canvas.isHardwareAccelerated || host.width <= 0 || host.height <= 0) return false
-
-    if (!eligible(host)) {
-      pyramidActive = false
-      return generic.draw(canvas, recordChildren)
-    }
+    if (!eligible(host)) return false
 
     Trace.beginSection("EdgeFade.pyramid.draw")
     try {
@@ -161,20 +150,24 @@ internal class EdgeFadeProgressivePyramidRenderer(
         }
       }
 
-      // Sharp output owns everything except the fade bands.
       tracePhase("EdgeFade.pyramid.drawSharp") {
         val save = canvas.save()
         try {
-          bands.forEach { canvas.clipOutRect(it.band.visible.left, it.band.visible.top, it.band.visible.right, it.band.visible.bottom) }
+          bands.forEach {
+            canvas.clipOutRect(
+              it.band.visible.left,
+              it.band.visible.top,
+              it.band.visible.right,
+              it.band.visible.bottom,
+            )
+          }
           canvas.drawRenderNode(content)
         } finally {
           canvas.restoreToCount(save)
         }
       }
 
-      for (state in bands) {
-        drawBand(canvas, state)
-      }
+      for (state in bands) drawBand(canvas, state)
       return true
     } finally {
       Trace.endSection()
@@ -182,14 +175,12 @@ internal class EdgeFadeProgressivePyramidRenderer(
   }
 
   private fun drawBand(canvas: Canvas, state: BandState) {
-    val band = state.band
-    val visible = band.visible
-    val source = band.source
+    val visible = state.band.visible
+    val source = state.band.source
 
     // Radius level zero is the original sharp content. Every subsequent native
-    // blur replaces it progressively. Because each level mask is 1 past its own
-    // interval, this cascade linearly interpolates only the two neighboring
-    // radius samples at any given pixel.
+    // blur replaces it progressively. Because each mask is fully opaque past its
+    // interval, any pixel only interpolates its two neighboring radius samples.
     val baseSave = canvas.save()
     try {
       canvas.clipRect(visible.left, visible.top, visible.right, visible.bottom)
@@ -243,8 +234,7 @@ internal class EdgeFadeProgressivePyramidRenderer(
   private fun configureBand(state: BandState, key: Key) {
     val source = state.band.source
     state.levels.forEachIndexed { index, level ->
-      val fraction = LEVEL_FRACTIONS[index]
-      val radius = (key.radius * fraction).coerceAtLeast(0.01f)
+      val radius = (key.radius * LEVEL_FRACTIONS[index]).coerceAtLeast(0.01f)
       level.node.setPosition(0, 0, source.width, source.height)
       level.node.setRenderEffect(
         RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP),
@@ -268,8 +258,8 @@ internal class EdgeFadeProgressivePyramidRenderer(
       val position = index.toFloat() / (MASK_SAMPLES - 1).toFloat()
       val y = visible.top + visible.height * position
       val distance = if (topEdge) y else key.height - y
-      val normalizedOutward = if (depth <= 0f) 0f else (1f - distance / depth).coerceIn(0f, 1f)
-      val curveT = (normalizedOutward / key.progression).coerceIn(0f, 1f)
+      val outward = if (depth <= 0f) 0f else (1f - distance / depth).coerceIn(0f, 1f)
+      val curveT = (outward / key.progression).coerceIn(0f, 1f)
       val presence = EdgeFadeCurves.presenceAt(curve, curveT).coerceIn(0f, 1f)
       val alpha = ((presence - lo) / range).coerceIn(0f, 1f)
       positions[index] = position
@@ -295,13 +285,16 @@ internal class EdgeFadeProgressivePyramidRenderer(
 
     fun add(edge: Int, visible: Rect) {
       if (visible.isEmpty) return
-      val source = Rect(
-        0,
-        (visible.top - pad).coerceAtLeast(0),
-        key.width,
-        (visible.bottom + pad).coerceAtMost(key.height),
+      result += Band(
+        edge = edge,
+        visible = visible,
+        source = Rect(
+          0,
+          (visible.top - pad).coerceAtLeast(0),
+          key.width,
+          (visible.bottom + pad).coerceAtMost(key.height),
+        ),
       )
-      result += Band(edge, visible, source)
     }
 
     add(EDGE_TOP, Rect(0, 0, key.width, top))
@@ -325,8 +318,6 @@ internal class EdgeFadeProgressivePyramidRenderer(
 
   fun release() {
     releasePyramid()
-    generic.release()
-    pyramidActive = false
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {
