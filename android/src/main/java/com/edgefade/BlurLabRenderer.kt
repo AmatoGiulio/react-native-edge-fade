@@ -7,7 +7,7 @@ import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
 
-/** Strip-local two-pass experiment. Mutable shader state is owned by each strip of each view. */
+/** Strip-local progressive blur testbed. */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class BlurLabRenderer {
   private class Key(
@@ -15,6 +15,7 @@ internal class BlurLabRenderer {
     val top: Float, val bottom: Float, val left: Float, val right: Float,
     val radius: Float, val progression: Float, val curve: String, val backend: String,
   )
+
   private class Strip(var band: BlurLabGeometry.Band) {
     val node = RenderNode("EdgeFade.BlurLab.strip")
     val mask = RuntimeShader(BlurLabShaders.mask)
@@ -22,6 +23,12 @@ internal class BlurLabRenderer {
     var vertical: RuntimeShader? = null
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
+
+  // `agsl` uses the variance-decomposed experiment when the Gallery geometry is
+  // eligible. `androidx` remains the untouched continuous reference.
+  private val variance = BlurLabVarianceRenderer()
+  private var useVariance = false
+
   private val content = RenderNode("EdgeFade.BlurLab.content")
   private var key: Key? = null
   private var strips = emptyList<Strip>()
@@ -29,6 +36,22 @@ internal class BlurLabRenderer {
   private var curveSamples = FloatArray(32)
 
   fun prepare(view: BlurLabView, backend: String) {
+    val nextUsesVariance = backend == "agsl" && variance.isEligible(view)
+    if (nextUsesVariance) {
+      if (!useVariance) {
+        releaseClassic()
+        useVariance = true
+      }
+      variance.prepare(view)
+      return
+    }
+
+    if (useVariance) {
+      variance.release()
+      useVariance = false
+      key = null
+    }
+
     val w = view.width; val h = view.height
     val t = BlurLabGeometry.edge(view.topDepth, h)
     val b = BlurLabGeometry.edge(view.bottomDepth, h)
@@ -46,6 +69,11 @@ internal class BlurLabRenderer {
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
+    if (useVariance) {
+      variance.draw(canvas, view, record)
+      return
+    }
+
     content.setPosition(0, 0, view.width, view.height)
     // Materialize once so strip references do not replay WebView's draw
     // functor. This full-view buffer is an explicit experimental cost.
@@ -132,10 +160,17 @@ internal class BlurLabRenderer {
     canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
   }
 
-  fun release() {
+  private fun releaseClassic() {
     strips.forEach { it.release() }
     strips = emptyList()
+    content.setUseCompositingLayer(false, null)
     content.discardDisplayList()
     key = null
+  }
+
+  fun release() {
+    variance.release()
+    useVariance = false
+    releaseClassic()
   }
 }
