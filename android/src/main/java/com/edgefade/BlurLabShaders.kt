@@ -23,9 +23,19 @@
 package com.edgefade
 
 internal object BlurLabShaders {
-  // Pure progressive Gaussian source generation. There is deliberately no
-  // saturation, lift, tint, opacity cross-fade or material grading in either
-  // pass: the only spatially varying quantity is the Gaussian radius itself.
+  /**
+   * Benchmark-only continuous-radius fixed-cost Gaussian approximation.
+   *
+   * The exact progressive kernel is retained for radii below 32px so the
+   * sharp -> blur onset remains identical to the reference. Above that point,
+   * a 65-point normalized Gaussian is collapsed into 16 bilinear tap pairs per
+   * side. Because sigma = radius / 2 and every fixed sample position scales with
+   * radius, the normalized weights are constant while the blur radius remains
+   * fully continuous per pixel.
+   *
+   * This bounds each pass to 33 texture evaluations (center + 16 symmetric
+   * pairs) instead of a loop whose sample count grows with radius.
+   */
   fun pass(vertical: Boolean): String {
     val offset = if (vertical) "float2(0.0, d)" else "float2(d, 0.0)"
     val axis = if (vertical) "y" else "x"
@@ -35,46 +45,204 @@ internal object BlurLabShaders {
       uniform shader mask;
       uniform float blurRadius;
       uniform float2 extent;
-      const float maxRadius = 150.0;
+      const float exactRadiusLimit = 32.0;
+
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
+
       float inside(float2 p) {
         return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
       }
+
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
         float radius = blurRadius * intensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
+
         if (r >= 1.0) {
-          float sigma = max(radius / 2.0, 1.0);
-          float weightSum = 1.0;
           float4 result = sampled;
-          for (float i = 1.0; i < maxRadius; i += 2.0) {
-            if (i >= r) break;
-            float low = gaussian(i, sigma);
-            float high = gaussian(i + 1.0, sigma);
-            float weight = low + high;
-            float d = i + high / weight;
-            float2 offset = $offset;
-            float2 a = coord - offset;
-            float2 b = coord + offset;
-            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
-            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+          float weightSum = 1.0;
+
+          if (radius < exactRadiusLimit) {
+            // Exact reference behavior in the visually sensitive inner ramp.
+            float sigma = max(radius / 2.0, 1.0);
+            for (float i = 1.0; i < exactRadiusLimit; i += 2.0) {
+              if (i >= r) break;
+              float low = gaussian(i, sigma);
+              float high = gaussian(i + 1.0, sigma);
+              float weight = low + high;
+              float d = i + high / weight;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            float odd = mod(r, 2.0) * (1.0 - step(exactRadiusLimit, r));
+            if (odd > 0.0) {
+              float weight = gaussian(r, sigma);
+              float d = r;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+          } else {
+            // 65 nominal samples across [-radius, +radius], collapsed to
+            // 16 bilinear pairs on each side. Constants are the normalized
+            // Gaussian weights for sigma=radius/2.
+            {
+              float weight = 1.990266719;
+              float d = radius * 0.046829224;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.951808703;
+              float d = radius * 0.109268190;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.884447292;
+              float d = radius * 0.171707160;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.791230659;
+              float d = radius * 0.234146135;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.676253924;
+              float d = radius * 0.296585116;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.544361172;
+              float d = radius * 0.359024107;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.400808321;
+              float d = radius * 0.421463108;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.250919385;
+              float d = radius * 0.483902122;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 1.099767045;
+              float d = radius * 0.546341150;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.951903335;
+              float d = radius * 0.608780195;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.811158571;
+              float d = radius * 0.671219257;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.680517720;
+              float d = radius * 0.733658340;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.562074491;
+              float d = radius * 0.796097445;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.457055641;
+              float d = radius * 0.858536573;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.365902206;
+              float d = radius * 0.920975726;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
+            {
+              float weight = 0.288391021;
+              float d = radius * 0.983414907;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
           }
-          float odd = mod(r, 2.0) * (1.0 - step(maxRadius, r));
-          if (odd > 0.0) {
-            float weight = gaussian(r, sigma);
-            float d = r;
-            float2 offset = $offset;
-            float2 a = coord - offset;
-            float2 b = coord + offset;
-            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
-            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
-          }
+
           sampled = result / weightSum;
         }
+
         return half4(sampled);
       }
     """.trimIndent()
