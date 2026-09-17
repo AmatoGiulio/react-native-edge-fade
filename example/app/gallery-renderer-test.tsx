@@ -9,7 +9,7 @@ import {
 } from '@/screens/GalleryScreen';
 import type NativeBlurLabType from '../../src/BlurLabNativeComponent';
 
-type Renderer = 'off' | 'public' | 'agsl' | 'androidx';
+type Renderer = 'off' | 'public' | 'agsl' | 'androidx' | 'gaussian-scale';
 
 const MAX_RADIUS_PX = 150;
 const DEFAULT_RADIUS_PX = 80;
@@ -23,7 +23,12 @@ function first(value: string | string[] | undefined) {
 
 function rendererFrom(value: string | string[] | undefined): Renderer {
   const renderer = first(value);
-  if (renderer === 'off' || renderer === 'agsl' || renderer === 'androidx') {
+  if (
+    renderer === 'off' ||
+    renderer === 'agsl' ||
+    renderer === 'androidx' ||
+    renderer === 'gaussian-scale'
+  ) {
     return renderer;
   }
   return 'public';
@@ -81,7 +86,11 @@ export default function GalleryRendererTestRoute() {
   const gallery = <GalleryScreen stress={stress} />;
   const accessibilityLabel = `gallery-renderer requested=${renderer} active=${active}`;
 
-  if (renderer === 'agsl' || renderer === 'androidx') {
+  if (
+    renderer === 'agsl' ||
+    renderer === 'androidx' ||
+    renderer === 'gaussian-scale'
+  ) {
     const NativeBlurLab = require('../../src/BlurLabNativeComponent')
       .default as typeof NativeBlurLabType;
 
@@ -107,7 +116,11 @@ export default function GalleryRendererTestRoute() {
           onBackendChange={({ nativeEvent }) => {
             const next = nativeEvent.active;
             setActive(
-              next === 'agsl' || next === 'androidx' ? next : 'pending'
+              next === 'agsl' ||
+                next === 'androidx' ||
+                next === 'gaussian-scale'
+                ? next
+                : 'pending'
             );
           }}
         >
