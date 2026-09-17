@@ -364,7 +364,11 @@ internal class EdgeFadeProgressiveStripRenderer(
   private fun setContentLayerEnabled(enabled: Boolean) {
     if (contentLayerEnabled == enabled) return
     contentLayerEnabled = enabled
-    content.setUseCompositingLayer(enabled, null)
+    if (enabled) {
+      content.setUseCompositingLayer(true, null)
+    } else {
+      content.setUseCompositingLayer(false, null)
+    }
   }
 
   private fun containsWebView(parent: ViewGroup): Boolean {
