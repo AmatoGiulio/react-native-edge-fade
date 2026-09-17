@@ -4,21 +4,21 @@ import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.blur.BlurRadiusSpec
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 
-/** Calls the official binary; no ComposeView or composable UI is involved. */
+/**
+ * Benchmark-only adapter that preserves the public progressive RenderNode/
+ * strip plumbing while removing the progressive Gaussian itself.
+ *
+ * A zero-offset RenderEffect is intentionally used instead of returning null so
+ * HWUI still traverses an effect-bearing strip node. This isolates the cost of
+ * scene materialization, RenderNode replay, strip recording and compositing
+ * from the cost of AndroidX's progressive blur shaders.
+ */
 internal object AndroidxBlurAdapter {
   const val available = true
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  @Suppress("UNUSED_PARAMETER")
   fun create(width: Int, height: Int, radiusPx: Float, mask: Shader): RenderEffect =
-    BlurRadiusSpec.shader(maxRadius = radiusPx.dp) { mask }
-      // Native geometry/radius were already converted from dp to px by the
-      // manager. Density(1f) deliberately prevents a second density conversion.
-      .createRenderEffect(Size(width.toFloat(), height.toFloat()), Density(1f), TileMode.Clamp)
-      .asAndroidRenderEffect()
+    RenderEffect.createOffsetEffect(0f, 0f)
 }
