@@ -6,12 +6,18 @@ package com.edgefade
  * pass, eliminating the separate RuntimeShader mask lookup used by
  * BlurRadiusSpec.shader()/the generic AGSL path.
  *
+ * This benchmark variant also compiles a radius-specific loop-bound bucket so
+ * the GPU program does not carry the full 150px static loop bound when a much
+ * smaller maximum radius is requested.
+ *
  * This keeps the same smooth presence function used by EdgeFade:
  *   t = ((1 - distance / depth) / progression).clamp(0..1)
  *   intensity = 1 - (1 - t)^3
  */
 internal object EdgeFadeFastVerticalShaders {
-  fun pass(verticalBlur: Boolean, bottomEdge: Boolean): String {
+  fun pass(verticalBlur: Boolean, bottomEdge: Boolean, maxRadiusPx: Int): String {
+    require(maxRadiusPx in 1..150) { "maxRadiusPx must be in 1..150" }
+
     val offset = if (verticalBlur) "float2(0.0, d)" else "float2(d, 0.0)"
     val axis = if (verticalBlur) "y" else "x"
     val distance = if (bottomEdge) {
@@ -28,7 +34,7 @@ internal object EdgeFadeFastVerticalShaders {
       uniform float viewHeight;
       uniform float edgeDepth;
       uniform float progression;
-      const float maxRadius = 150.0;
+      const float maxRadius = ${maxRadiusPx}.0;
 
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
