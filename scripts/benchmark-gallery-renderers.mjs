@@ -110,12 +110,55 @@ function launch(renderer) {
 }
 
 function verifyRenderer(renderer) {
-  shell('uiautomator dump /sdcard/gallery-renderer.xml >/dev/null 2>&1', false);
-  const xml = shell('cat /sdcard/gallery-renderer.xml', false);
   const expected = `gallery-renderer requested=${renderer} active=${renderer}`;
-  if (!xml.includes(expected)) {
-    throw new Error(`Renderer verification failed. Expected: ${expected}`);
+  const preferredPath = '/data/local/tmp/gallery-renderer.xml';
+  const defaultPath = '/sdcard/window_dump.xml';
+  let lastDiagnostic = '';
+
+  // Android 16 can return from `uiautomator dump` before the requested output
+  // file is visible (and some builds still use the legacy default path). Retry
+  // and inspect both the requested path and the path reported by uiautomator.
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    try {
+      shell(`rm -f ${preferredPath} ${defaultPath}`, false);
+    } catch {
+      // Cleanup is best-effort only.
+    }
+
+    let dumpOutput = '';
+    try {
+      dumpOutput = shell(`uiautomator dump ${preferredPath}`, false);
+    } catch (error) {
+      lastDiagnostic = `attempt ${attempt}: ${error.message}`;
+      sleep(350);
+      continue;
+    }
+
+    const reportedPath =
+      dumpOutput.match(/(?:dumped to:|to:)\s*(\S+\.xml)/i)?.[1] ?? null;
+    const candidates = [...new Set([reportedPath, preferredPath, defaultPath].filter(Boolean))];
+
+    for (const remotePath of candidates) {
+      try {
+        const xml = shell(`cat ${remotePath}`, false);
+        if (xml.includes(expected)) return;
+        lastDiagnostic =
+          `attempt ${attempt}: hierarchy found at ${remotePath}, ` +
+          `but missing '${expected}'`;
+      } catch (error) {
+        lastDiagnostic = `attempt ${attempt}: ${remotePath}: ${error.message}`;
+      }
+    }
+
+    if (dumpOutput.trim()) {
+      lastDiagnostic += ` | uiautomator: ${dumpOutput.trim()}`;
+    }
+    sleep(350);
   }
+
+  throw new Error(
+    `Renderer verification failed. Expected: ${expected}\n${lastDiagnostic}`
+  );
 }
 
 function screenshot(renderer, runId) {
