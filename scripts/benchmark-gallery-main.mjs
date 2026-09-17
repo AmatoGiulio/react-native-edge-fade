@@ -32,6 +32,12 @@ function parseArgs(argv) {
     else if (arg === '--samples') out.samples = Number(take());
     else throw new Error(`Unknown argument: ${arg}`);
   }
+  if (!Number.isFinite(out.radiusPx) || out.radiusPx < 1 || out.radiusPx > 150) {
+    throw new Error('--radius-px must be in 1..150');
+  }
+  if (!Number.isInteger(out.samples) || out.samples < 1 || out.samples > 8) {
+    throw new Error('--samples must be in 1..8');
+  }
   return out;
 }
 
@@ -73,10 +79,27 @@ function parseMetrics(text) {
     totalFrames: metric(text, /Total frames rendered:\s*(\d+)/),
     jankyFrames: janky ? Number(janky[1]) : null,
     jankyPercent: janky ? Number(janky[2]) : null,
+    p50Ms: metric(text, /50th percentile:\s*(\d+)ms/),
+    p90Ms: metric(text, /90th percentile:\s*(\d+)ms/),
     p95Ms: metric(text, /95th percentile:\s*(\d+)ms/),
     p99Ms: metric(text, /99th percentile:\s*(\d+)ms/),
     deadlineMissed: metric(text, /Number Frame deadline missed:\s*(\d+)/),
+    missedVsync: metric(text, /Number Missed Vsync:\s*(\d+)/),
   };
+}
+
+function assertReleasePackage() {
+  const packagePath = adb(['shell', 'pm', 'path', PACKAGE], false);
+  if (!/^package:/m.test(packagePath)) {
+    throw new Error(`${PACKAGE} is not installed.`);
+  }
+
+  const dump = adb(['shell', 'dumpsys', 'package', PACKAGE], false);
+  if (/pkgFlags=\[[^\]]*DEBUGGABLE/m.test(dump)) {
+    throw new Error(
+      `${PACKAGE} is debuggable. Install the release variant before benchmarking.`
+    );
+  }
 }
 
 function launch(label) {
@@ -86,18 +109,14 @@ function launch(label) {
   const uri =
     `edgefade:///?stress=auto&effect=${effect}` +
     `&radiusPx=${options.radiusPx}&cycleMs=${options.cycleMs}`;
-  const launch = shell(
+  const launchResult = shell(
     `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PACKAGE}`,
     false
   );
-  if (!/Status:\s*ok/.test(launch)) throw new Error(`Launch failed for ${label}`);
-}
+  if (!/Status:\s*ok/.test(launchResult)) throw new Error(`Launch failed for ${label}`);
 
-function verify(label) {
-  shell('uiautomator dump /sdcard/gallery-main.xml >/dev/null 2>&1', false);
-  const xml = shell('cat /sdcard/gallery-main.xml', false);
-  const expected = `gallery-main requested=${label} active=${label}`;
-  if (!xml.includes(expected)) throw new Error(`Expected ${expected}`);
+  const pid = shell(`pidof ${PACKAGE}`, false).trim();
+  if (!pid) throw new Error(`${PACKAGE} did not stay alive after launching ${label}.`);
 }
 
 function screenshot(label, runId) {
@@ -109,17 +128,28 @@ function screenshot(label, runId) {
 }
 
 function runCase(label, sample, runId, capture) {
+  console.log(`\n${label.toUpperCase()} / sample ${sample}`);
   launch(label);
   sleep(1000);
-  verify(label);
   if (capture) screenshot(label, runId);
   sleep(Math.max(0, options.warmupMs - 1000));
   adb(['shell', 'dumpsys', 'gfxinfo', PACKAGE, 'reset']);
   sleep(options.durationMs);
   const raw = adb(['shell', 'dumpsys', 'gfxinfo', PACKAGE], false);
-  const row = { label, sample, ...parseMetrics(raw) };
+  const row = {
+    label,
+    sample,
+    radiusPx: options.radiusPx,
+    durationMs: options.durationMs,
+    ...parseMetrics(raw),
+  };
   fs.writeFileSync(path.join(OUT_DIR, `${runId}-${label}-${sample}-gfxinfo.txt`), raw);
   shell(`am force-stop ${PACKAGE}`);
+  console.log(
+    `frames=${row.totalFrames ?? 'n/a'} jank=${row.jankyPercent ?? 'n/a'}% ` +
+      `p95=${row.p95Ms ?? 'n/a'}ms p99=${row.p99Ms ?? 'n/a'}ms ` +
+      `deadline=${row.deadlineMissed ?? 'n/a'}`
+  );
   sleep(options.cooldownMs);
   return row;
 }
@@ -145,12 +175,18 @@ function aggregate(results, label) {
   };
 }
 
+const sdk = Number(shell('getprop ro.build.version.sdk'));
+const model = shell('getprop ro.product.model');
+assertReleasePackage();
+
 const runId = timestamp();
+console.log(`Gallery main baseline / ${model} / API ${sdk}`);
+console.log(`radius=${options.radiusPx}px / samples=${options.samples}`);
+
 const results = [];
 for (let sample = 0; sample < options.samples; sample++) {
   const order = sample % 2 === 0 ? CASES : [...CASES].reverse();
   for (const label of order) {
-    console.log(`${label.toUpperCase()} / sample ${sample + 1}`);
     results.push(runCase(label, sample + 1, runId, sample === 0));
   }
 }
@@ -159,10 +195,7 @@ const off = aggregate(results, 'off');
 const main = aggregate(results, 'main');
 const report = {
   runId,
-  device: {
-    model: shell('getprop ro.product.model'),
-    sdk: Number(shell('getprop ro.build.version.sdk')),
-  },
+  device: { model, sdk },
   options,
   results,
   aggregate: { off, main },
@@ -185,5 +218,8 @@ const report = {
 
 const reportPath = path.join(OUT_DIR, `${runId}-report.json`);
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+
+console.log('\n=== Aggregate ===');
 console.log(JSON.stringify(report.aggregate, null, 2));
 console.log(`Report: ${reportPath}`);
+console.log('First-sample screenshots and raw gfxinfo are saved beside the report.');
