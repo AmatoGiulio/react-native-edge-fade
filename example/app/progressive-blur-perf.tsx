@@ -1,5 +1,4 @@
 import {
-  PixelRatio,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,11 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { EdgeFadeView } from 'react-native-edge-fade';
+
+import {
+  ANDROID_PROGRESSIVE_BLUR_DENSITY,
+  ANDROID_PROGRESSIVE_BLUR_MAX_RADIUS_PX,
+} from '@/fade/limits';
 
 const ALBUMS = [
   '#37b9a7',
@@ -39,9 +43,10 @@ const TRACKS = Array.from({ length: 64 }, (_, i) => ({
   time: `${3 + (i % 3)}:${String((i * 13) % 60).padStart(2, '0')}`,
 }));
 
-const PERF_DEFAULT_TARGET_RADIUS_PX = 144;
-const PERF_MAX_RADIUS_PX = 150;
-const PERF_DENSITY = PixelRatio.get();
+const PERF_DEFAULT_TARGET_RADIUS_PX = Math.min(
+  144,
+  ANDROID_PROGRESSIVE_BLUR_MAX_RADIUS_PX
+);
 const PERF_AUTO_SCROLL_CYCLE_MS = 4200;
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -50,7 +55,10 @@ function resolveRadiusPx(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number.parseFloat(raw ?? '');
   if (!Number.isFinite(parsed)) return PERF_DEFAULT_TARGET_RADIUS_PX;
-  return Math.min(PERF_MAX_RADIUS_PX, Math.max(1, parsed));
+  return Math.min(
+    ANDROID_PROGRESSIVE_BLUR_MAX_RADIUS_PX,
+    Math.max(1, parsed)
+  );
 }
 
 export default function ProgressiveBlurPerfRoute() {
@@ -64,8 +72,8 @@ export default function ProgressiveBlurPerfRoute() {
   const effectEnabled = params.effect !== 'off';
   const autoScroll = params.workload === 'auto';
   const targetRadiusPx = resolveRadiusPx(params.radiusPx);
-  const radiusDp = targetRadiusPx / PERF_DENSITY;
-  const actualRadiusPx = radiusDp * PERF_DENSITY;
+  const radiusDp = targetRadiusPx / ANDROID_PROGRESSIVE_BLUR_DENSITY;
+  const actualRadiusPx = radiusDp * ANDROID_PROGRESSIVE_BLUR_DENSITY;
 
   // Keep the renderer comparison independent of adb input delivery and the JS
   // event loop. The stress workload is driven from Reanimated's UI-thread frame
