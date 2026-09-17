@@ -22,10 +22,7 @@ internal class BlurLabRenderer {
     var vertical: RuntimeShader? = null
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
-
   private val content = RenderNode("EdgeFade.BlurLab.content")
-  private val scaleSpace = BlurLabScaleSpaceRenderer()
-  private var scaleSpaceActive = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var curveKey: String? = null
@@ -39,41 +36,16 @@ internal class BlurLabRenderer {
     val r = BlurLabGeometry.edge(view.rightDepth, w)
     val radius = BlurLabGeometry.radius(view.radiusPx)
     val progression = BlurLabGeometry.finite(view.progression, 1f).coerceIn(0.05f, 1f)
-    val next = Key(w, h, t, b, l, r, radius, progression, view.curve, backend)
-
-    // Benchmark-only: AGSL becomes the scale-space candidate for the exact
-    // Gallery geometry. AndroidX remains untouched as the continuous reference.
-    if (backend == "agsl" && scaleSpace.isEligible(view)) {
-      strips.forEach { it.release() }
-      strips = emptyList()
-      if (!scaleSpace.prepare(view)) {
-        throw RuntimeException("Scale-space renderer could not prepare")
-      }
-      scaleSpaceActive = true
-      key = next
-      return
-    }
-
-    if (scaleSpaceActive) {
-      scaleSpace.release()
-      scaleSpaceActive = false
-    }
-
     val old = key
     // No Key/list/uniform allocations during unchanged scrolling.
     if (old != null && old.width == w && old.height == h &&
         old.top == t && old.bottom == b && old.left == l && old.right == r &&
         old.radius == radius && old.progression == progression &&
         old.curve == view.curve && old.backend == backend) return
-    configure(next)
+    configure(Key(w, h, t, b, l, r, radius, progression, view.curve, backend))
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
-    if (scaleSpaceActive) {
-      if (!scaleSpace.draw(canvas, view, record)) record(canvas)
-      return
-    }
-
     content.setPosition(0, 0, view.width, view.height)
     // Materialize once so strip references do not replay WebView's draw
     // functor. This full-view buffer is an explicit experimental cost.
@@ -161,8 +133,6 @@ internal class BlurLabRenderer {
   }
 
   fun release() {
-    scaleSpace.release()
-    scaleSpaceActive = false
     strips.forEach { it.release() }
     strips = emptyList()
     content.discardDisplayList()
