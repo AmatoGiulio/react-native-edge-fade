@@ -20,4 +20,6 @@ export const MAX_DEMO_BLUR =
       )
     : 100;
 
-export const DEFAULT_DEMO_BLUR = Math.min(40, MAX_DEMO_BLUR);
+// Match the Blur Lab starting point so the Gallery and Lab open with the same
+// progressive-blur strength.
+export const DEFAULT_DEMO_BLUR = Math.min(24, MAX_DEMO_BLUR);
