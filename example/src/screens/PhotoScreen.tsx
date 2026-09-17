@@ -1,6 +1,13 @@
 import { useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
@@ -72,7 +79,9 @@ export function PhotoScreen() {
             curve={curve}
             mode={mode}
             blurRadius={blurRadius}
-            color={tint}
+            color={
+              Platform.OS === 'ios' || mode === 'overlay' ? tint : undefined
+            }
             background={t.bg}
           />
           <Animated.View

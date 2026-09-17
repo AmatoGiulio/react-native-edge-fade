@@ -17,7 +17,7 @@ import java.util.WeakHashMap
  * true spatially-varying Gaussian whose radius is driven continuously by the
  * edge mask. The implementation is selected only by platform capability:
  *
- * - API 33+: AndroidX-derived AGSL / RuntimeShader edge-local renderer.
+ * - API 33+: official AndroidX when compiled in, otherwise the AGSL port.
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
@@ -118,10 +118,16 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.mode = "blur"
       state.lastFallbackReason = null
 
-      val backend = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "agsl33" else "gles31"
+      val backend = when {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "gles31"
+        AndroidxBlurAdapter.available -> "androidx33"
+        else -> "agsl33"
+      }
       if (state.announcedBackend != backend) {
         state.announcedBackend = backend
-        if (backend == "agsl33") {
+        if (backend == "androidx33") {
+          Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
+        } else if (backend == "agsl33") {
           Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
         } else {
           Log.i(
@@ -143,7 +149,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
     view.blurRadius > BlurLabGeometry.MAX_RADIUS_PX ->
       "blurRadius ${view.blurRadius}px exceeds ${BlurLabGeometry.MAX_RADIUS_PX}px"
-    view.fadeRadius > 0f -> "fadeRadius is not supported by progressive blur"
     view.overlayColor != null ||
       view.overlayColorTop != null ||
       view.overlayColorBottom != null ||

@@ -1,9 +1,9 @@
 {
   "extends": "../tsconfig",
   "compilerOptions": {
-    // Drop the strict-api customConditions used by the library so example
-    // code can use the standard react-native typings.
-    "customConditions": [],
+    // Keep the existing example on RN's compatibility typings during the
+    // SDK 58 preview migration. The library is checked against the public API.
+    "customConditions": ["react-native-legacy-deep-imports"],
     // Feature-based source layout under src/, addressed with the `@/` alias.
     // Paths resolve relative to this tsconfig (no baseUrl needed on TS 5+);
     // Metro resolves the same tsconfig paths automatically on Expo SDK 49+.

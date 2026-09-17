@@ -293,10 +293,11 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertNotIn("private val host: EdgeFadeView", agsl)
         self.assertNotIn("private val host: EdgeFadeView", gles)
 
-    def test_consumer_build_remains_compose_and_ndk_free(self):
+    def test_default_consumer_build_keeps_compose_opt_in_and_no_ndk(self):
         gradle = read(ROOT / "android/build.gradle")
-        self.assertNotIn("androidx.compose.ui:ui-graphics", gradle)
-        self.assertNotIn("compileSdkMinor", gradle)
+        self.assertIn('(findProperty("edgeFadeAndroidxBlur") ?: "false").toBoolean()', gradle)
+        self.assertIn('main.java.srcDir(useAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")', gradle)
+        self.assertIn('if (useAndroidxBlur) {\n    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"', gradle)
         self.assertNotIn("externalNativeBuild", gradle)
         self.assertIn('compileSdkVersion getExtOrDefault("compileSdkVersion")', gradle)
 

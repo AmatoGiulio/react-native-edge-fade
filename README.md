@@ -50,7 +50,7 @@ Building edge fades from scratch means juggling `MaskedView`, `LinearGradient`, 
 </EdgeFadeView>
 ```
 
-On Android, `mode="blur"` uses the spatial progressive Gaussian renderer on API 33+ when the requested configuration can be represented correctly. Unsupported configurations and API < 33 fall back to `mask`; the library does not substitute a lower-quality blur algorithm. Web also falls back to `mask`. iOS keeps its native blur implementation.
+On Android, `mode="blur"` uses a spatial progressive Gaussian on supported configurations: AGSL on API 33+ and GLES on API 31–32. Compatible builds can opt into the official AndroidX implementation on API 33+; see the [SDK 58 integration notes](docs/androidx-blur-build.md). Unsupported configurations and API < 31 fall back to `mask`. Web also falls back to `mask`. iOS keeps its native blur implementation. This experimental branch has not yet restored every blur fallback supported by `main`.
 
 ## Installation
 

@@ -1,3 +1,4 @@
+import { DEFAULT_DEMO_BLUR } from './limits';
 /**
  * Shared edge-fade tuning state for the demo, split into two contexts for
  * performance:
@@ -95,7 +96,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   const bottom = useSharedValue(110);
   const left = useSharedValue(0);
   const right = useSharedValue(0);
-  const blur = useSharedValue(40);
+  const blur = useSharedValue(DEFAULT_DEMO_BLUR);
   const radius = useSharedValue(0);
   const frostSat = useSharedValue(0.9);
   const frostLift = useSharedValue(1.03);
@@ -144,7 +145,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     bottom.set(110);
     left.set(0);
     right.set(0);
-    blur.set(40);
+    blur.set(DEFAULT_DEMO_BLUR);
     radius.set(0);
     frostSat.set(0.9);
     frostLift.set(1.03);
@@ -226,7 +227,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     'worklet';
     return blur.get();
   }, [blur]);
-  const blurRadius = useThrottledMirror(readBlur, 28);
+  const blurRadius = useThrottledMirror(readBlur, DEFAULT_DEMO_BLUR);
 
   const readFrostSat = useCallback((): number => {
     'worklet';

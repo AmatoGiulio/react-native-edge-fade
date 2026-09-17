@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireProgressiveBackend } from './progressive-backend.mjs';
 
 const PUBLIC_PACKAGE = 'com.edgefadeexample';
 const ANDROIDX_PACKAGE = 'com.edgefade.androidxref';
@@ -15,6 +16,7 @@ fs.mkdirSync(RESULTS_DIR, { recursive: true });
 function parseArgs(argv) {
   const options = {
     renderer: 'both',
+    publicBackend: 'auto',
     edges: 'vertical',
     radiusPx: 98,
     durationMs: 12000,
@@ -31,6 +33,7 @@ function parseArgs(argv) {
     };
     switch (arg) {
       case '--renderer': options.renderer = value(); break;
+      case '--public-backend': options.publicBackend = value(); break;
       case '--edges': options.edges = value(); break;
       case '--radius-px': options.radiusPx = Number(value()); break;
       case '--duration-ms': options.durationMs = Number(value()); break;
@@ -48,6 +51,9 @@ function parseArgs(argv) {
 
   if (!['public', 'androidx', 'both'].includes(options.renderer)) {
     throw new Error('--renderer must be public, androidx or both');
+  }
+  if (!['auto', 'agsl', 'androidx', 'gles'].includes(options.publicBackend)) {
+    throw new Error('--public-backend must be auto, agsl, androidx or gles');
   }
   if (!['vertical', 'four'].includes(options.edges)) {
     throw new Error('--edges must be vertical or four');
@@ -163,14 +169,9 @@ function startRenderer(renderer) {
     adb(['shell', `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PUBLIC_PACKAGE}`]);
     sleep(1800);
     const logcat = adb(['logcat', '-d'], { trim: false });
-    const activation = sdk >= 33
-      ? 'EdgeFadeProgressive: Using pure progressive AGSL blur on API 33+'
-      : 'EdgeFadeProgressive: Using GLES 3.0 continuous progressive blur on API 31-32';
-    if (!logcat.includes(activation)) {
-      throw new Error(
-        `Public Progressive activation was not observed for ${sdk >= 33 ? 'AGSL' : 'GLES'}; refusing to capture the wrong backend.`
-      );
-    }
+    const backend = requireProgressiveBackend(logcat, sdk, options.publicBackend);
+    console.log(`Verified public backend: ${backend}`);
+    return backend;
   } else {
     adb([
       'shell', 'am', 'start', '-W', '-n', ANDROIDX_ACTIVITY,
@@ -275,7 +276,7 @@ async function capture(renderer) {
   console.log(`\n=== Perfetto: ${renderer} / ${options.edges} / ${options.radiusPx}px ===`);
   console.log('Workload: deterministic in-app auto-scroll');
 
-  startRenderer(renderer);
+  const activeBackend = startRenderer(renderer) ?? 'androidx-reference';
   // Both apps have already been animating during startup. Reset stats only
   // after the workload has reached steady state.
   sleep(500);
@@ -310,10 +311,19 @@ async function capture(renderer) {
     }
 
     adb(['pull', remoteTrace, localTrace]);
+    const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+    const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: ROOT, encoding: 'utf8' });
+    fs.writeFileSync(`${localTrace}.json`, JSON.stringify({
+      renderer, activeBackend, sdk, options,
+      // This identifies the checkout at capture time, not the installed APK.
+      captureCheckout: revision.status === 0 ? revision.stdout.trim() : null,
+      captureCheckoutDirty: status.status === 0 ? status.stdout.trim().length > 0 : null,
+      packageInfo: adb(['shell', 'dumpsys', 'package', pkg]),
+    }, null, 2));
     console.log(`Trace: ${localTrace}`);
     if (renderer === 'public') {
       if (sdk >= 33) {
-        console.log('Public AGSL slices: EdgeFade.progressive.recordContent / drawSharp / recordStrip.* / drawStrip.*');
+        console.log(`Public ${activeBackend} slices: EdgeFade.progressive.recordContent / drawSharp / recordStrip.* / drawStrip.*`);
       } else {
         console.log(
           'Public GLES slices: EdgeFade.progressive.gles.draw / recordContent / render / source / horizontal / vertical / drawSharp / drawOutput'

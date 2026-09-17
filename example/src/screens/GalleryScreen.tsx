@@ -27,7 +27,9 @@ const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
 const STRESS_VIEWPORT_SPAN = 4;
 
-const AnimatedFlashList = Animated.createAnimatedComponent(FlashList);
+const AnimatedFlashList = Animated.createAnimatedComponent(
+  FlashList<CatalogItem>
+);
 
 export type GalleryStressImageRenderer = 'expo' | 'native' | 'solid';
 
@@ -151,14 +153,16 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         const phase = (elapsed % stressCycleMs) / stressCycleMs;
         const position = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
         scrollTo(listRef, 0, travel * position, false);
-      }, [
+      },
+      [
         contentHeight,
         listRef,
         stressActive,
         stressCycleMs,
         stressOriginMs,
         viewportHeight,
-      ]),
+      ]
+    ),
     stressActive
   );
 

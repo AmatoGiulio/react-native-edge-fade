@@ -1,19 +1,19 @@
 import {
   codegenNativeComponent,
   type ColorValue,
+  type CodegenTypes,
   type ViewProps,
 } from 'react-native';
-import type { Float } from 'react-native/Libraries/Types/CodegenTypesNamespace';
 
 // Flat native props produced by the JS normalization layer.
 // Sizes are in dp (0 = edge disabled). Curves are preset names or
 // comma-separated alpha stop strings (from cubicBezier / stops serialization).
 // mode: "mask" | "overlay" | "blur"
 interface NativeProps extends ViewProps {
-  fadeTop?: Float;
-  fadeBottom?: Float;
-  fadeLeft?: Float;
-  fadeRight?: Float;
+  fadeTop?: CodegenTypes.Float;
+  fadeBottom?: CodegenTypes.Float;
+  fadeLeft?: CodegenTypes.Float;
+  fadeRight?: CodegenTypes.Float;
   curveTop?: string;
   curveBottom?: string;
   curveLeft?: string;
@@ -21,19 +21,19 @@ interface NativeProps extends ViewProps {
   /** "mask" | "overlay" | "blur" */
   mode?: string;
   /** Max blur radius (dp) at the outer edge, blur mode only. */
-  blurRadius?: Float;
+  blurRadius?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
-  frostSaturation?: Float;
+  frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
-  frostLift?: Float;
+  frostLift?: CodegenTypes.Float;
   /** Fraction of the band over which the blur radius ramps (blur mode). */
-  frostProgression?: Float;
+  frostProgression?: CodegenTypes.Float;
   overlayColor?: ColorValue;
   overlayColorTop?: ColorValue;
   overlayColorBottom?: ColorValue;
   overlayColorLeft?: ColorValue;
   overlayColorRight?: ColorValue;
-  fadeRadius?: Float;
+  fadeRadius?: CodegenTypes.Float;
 }
 
 export default codegenNativeComponent<NativeProps>('EdgeFadeView');

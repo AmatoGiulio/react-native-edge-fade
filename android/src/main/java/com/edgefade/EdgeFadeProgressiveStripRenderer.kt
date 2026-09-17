@@ -15,8 +15,9 @@ import kotlin.math.ceil
  *
  * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
  * the analytical/LUT edge mask, derives its own radius as
- * `maxRadius * intensity`, then runs the same AndroidX-derived separable
- * Gaussian kernel in H -> V order. There are no discrete blur levels, opacity
+ * `maxRadius * intensity`, then uses the official AndroidX effect when opted in,
+ * or the attributed port of its separable Gaussian kernel in H -> V order.
+ * There are no discrete blur levels, opacity
  * cross-fades, frost grading, lift, tint or material post-processing here.
  *
  * Strips are only a work-culling optimization: they bound GPU work to regions
@@ -77,8 +78,9 @@ internal class EdgeFadeProgressiveStripRenderer(
   private class Strip(var band: Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    val horizontal = RuntimeShader(BlurLabShaders.pass(vertical = false))
-    val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true))
+    // The official build must not compile or run the port's Gaussian shaders.
+    val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
+    val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
 
     fun release() {
       node.setRenderEffect(null)
@@ -271,6 +273,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveBottomLut", bottomCurve.lut)
     strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
     strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
+
+    if (AndroidxBlurAdapter.available) {
+      strip.node.setRenderEffect(
+        AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask),
+      )
+      return
+    }
 
     for (shader in arrayOf(strip.horizontal, strip.vertical)) {
       shader.setInputShader("mask", strip.mask)

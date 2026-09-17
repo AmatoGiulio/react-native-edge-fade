@@ -1,5 +1,10 @@
 # Progressive blur experiment
 
+> Historical experiment notes. For the SDK 58 preview integration of the
+> official Compose binary and current build selection, see
+> [androidx-blur-build.md](androidx-blur-build.md). Several fallback and validation
+> descriptions below predate the API 31 GLES implementation.
+
 Branch: `experiment/androidx-progressive-blur`
 Baseline: `445bcb1caa43e5392d3b55ca298b44b4937ffe61` (`main`, 0.2.2).
 Status: RELEASE-CANDIDATE EXPERIMENT, NOT A RELEASE.

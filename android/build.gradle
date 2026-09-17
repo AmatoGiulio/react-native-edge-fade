@@ -27,29 +27,38 @@ buildscript {
 }
 
 apply plugin: "com.android.library"
-apply plugin: "kotlin-android"
+def agpVersion = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.').take(2).collect { it as int }
+def builtInKotlin = agpVersion[0] >= 9 && (findProperty("android.builtInKotlin") ?: "true").toBoolean()
+if (!builtInKotlin) {
+  apply plugin: "kotlin-android"
+}
 apply plugin: "com.facebook.react"
 
-// Compose UI 1.13.0-alpha03 requires AGP 9.1+ and compileSdk 37.1.
-// Expo SDK 57 currently evaluates its Gradle modules against the AGP 8.x DSL,
-// so pulling that alpha into a React Native/Expo consumer makes the whole app
-// toolchain incompatible before Edge Fade even compiles. The official binary
-// stays in the isolated androidx-reference harness. The API 33+ public candidate
-// uses the dependency-free, attributed AGSL port and does not raise consumer
-// SDK/AGP requirements.
+// Opt in only in consumers with a compatible toolchain. The default keeps the
+// dependency-free renderer and the existing SDK requirements.
+def useAndroidxBlur = (findProperty("edgeFadeAndroidxBlur") ?: "false").toBoolean()
+if (useAndroidxBlur && (agpVersion[0] < 9 || (agpVersion[0] == 9 && agpVersion[1] < 1))) {
+  throw new GradleException("edgeFadeAndroidxBlur requires AGP 9.1+ and compileSdk 37.1 in the app. Leave it disabled on older toolchains.")
+}
 
 android {
   namespace "com.edgefade"
   compileSdkVersion getExtOrDefault("compileSdkVersion")
+  if (useAndroidxBlur) {
+    compileSdk = 37
+    compileSdkMinor = 1
+  }
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
-    targetSdkVersion getExtOrDefault("targetSdkVersion")
+    // AGP 9 removed targetSdk from the library DSL; the app owns this value.
+    if (agpVersion[0] < 9) {
+      targetSdkVersion getExtOrDefault("targetSdkVersion")
+    }
   }
 
-  // Never compile the Compose-dependent adapter into an RN/Expo consumer.
   sourceSets {
-    main.java.srcDir("src/noAndroidxBlur/java")
+    main.java.srcDir(useAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")
   }
 
   buildFeatures {
@@ -75,4 +84,7 @@ android {
 dependencies {
   implementation "com.facebook.react:react-android"
   implementation "androidx.core:core-ktx:1.13.1"
+  if (useAndroidxBlur) {
+    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"
+  }
 }

@@ -41,14 +41,11 @@ class ProgressivePerfScene(unittest.TestCase):
             "workload?: string",
             "const autoScroll = params.workload === 'auto'",
             "PERF_AUTO_SCROLL_CYCLE_MS = 4200",
-            "requestAnimationFrame(tick)",
-            "cancelAnimationFrame(frame)",
-            "scrollRef.current?.scrollTo({",
-            "y: maxOffset * position",
-            "animated: false",
+            "useFrameCallback(",
+            "scrollTo(scrollRef, 0, maxOffset * position, false)",
             "onContentSizeChange",
-            "viewportHeightRef.current",
-            "contentHeightRef.current",
+            "viewportHeight.value",
+            "contentHeight.value",
             "Auto workload",
         ):
             self.assertIn(contract, source)
@@ -152,14 +149,13 @@ class ProgressivePerfScene(unittest.TestCase):
     def test_api31_perfetto_uses_auto_scroll_and_reports_recent_gfx_activity(self):
         script = read(PERFETTO_NODE)
         for contract in (
-            "renderer === 'public' && sdk < 33",
-            "workload=${workload}",
+            "workload=auto",
             "dumpsys', 'gfxinfo', pkg, 'reset'",
             "dumpsys', 'gfxinfo', pkg, 'framestats'",
             "IntendedVsync",
-            "function reportRecentFrameActivity(pkg)",
-            "Auto workload diagnostic",
-            "Steady-state acceptance still comes from EdgeFade.progressive.gles slices",
+            "function recentFrameActivity(pkg)",
+            "Steady-state diagnostic",
+            "requireProgressiveBackend(logcat, sdk, options.publicBackend)",
         ):
             self.assertIn(contract, script)
         self.assertNotIn("Refusing to treat this trace as a steady-state benchmark", script)

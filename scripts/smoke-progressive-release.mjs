@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { requireProgressiveBackend } from './progressive-backend.mjs';
 
 const PACKAGE = 'com.edgefadeexample';
 const ADB_MAX_BUFFER = 64 * 1024 * 1024;
@@ -14,6 +15,7 @@ function parseArgs(argv) {
     swipes: 10,
     settleMs: 5200,
     allowEmulator: false,
+    expectedBackend: 'auto',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -24,6 +26,9 @@ function parseArgs(argv) {
     switch (arg) {
       case '--serial':
         options.serial = value();
+        break;
+      case '--expected-backend':
+        options.expectedBackend = value();
         break;
       case '--edges':
         options.edges = value();
@@ -43,6 +48,9 @@ function parseArgs(argv) {
   }
   if (!['vertical', 'four'].includes(options.edges)) {
     throw new Error('--edges must be vertical or four');
+  }
+  if (!['auto', 'agsl', 'androidx', 'gles'].includes(options.expectedBackend)) {
+    throw new Error('--expected-backend must be auto, agsl, androidx or gles');
   }
   if (!Number.isFinite(options.swipes) || options.swipes < 1) {
     throw new Error('--swipes must be >= 1');
@@ -224,6 +232,7 @@ if (/FATAL EXCEPTION|AndroidRuntime: FATAL|Fatal signal/i.test(logcat)) {
   failures.push('fatal Android/native exception observed');
 }
 for (const [needle, message] of [
+  ['fadeRadius is not supported by progressive blur', 'rounded corners incorrectly fell back to Mask'],
   ['Progressive strip draw failed; using mask fallback.', 'API 33+ progressive draw failure observed'],
   ['Progressive strip shader creation failed', 'API 33+ progressive shader creation failure observed'],
   ['Progressive strip configuration failed', 'API 33+ progressive configuration failure observed'],
@@ -246,19 +255,26 @@ if (!logcat.includes(ZERO_RADIUS_IDENTITY_LOG)) {
 
 let backendSummary;
 if (sdk >= 33) {
-  if (!logcat.includes('Using pure progressive AGSL blur on API 33+')) {
-    failures.push('API 33+ Public Progressive activation log was not observed');
+  try {
+    const active = requireProgressiveBackend(logcat, sdk, options.expectedBackend);
+    backendSummary = `33+ ${active} Public Progressive activation + 0px identity + radius recovery`;
+  } catch (error) {
+    failures.push(error.message);
   }
-  backendSummary = '33+ AGSL Public Progressive activation + 0px identity + radius recovery';
 } else if (sdk >= 31) {
-  if (!logcat.includes('Using GLES 3.0 continuous progressive blur on API 31-32')) {
-    failures.push('API 31-32 GLES continuous progressive activation log was not observed');
+  try {
+    requireProgressiveBackend(logcat, sdk, options.expectedBackend);
+  } catch (error) {
+    failures.push(error.message);
   }
   if (/Progressive unavailable; using mask fallback: requires API 31\+/i.test(logcat)) {
     failures.push('API 31-32 incorrectly took the API <31 Mask fallback');
   }
   backendSummary = '31-32 GLES continuous progressive activation + 0px identity + radius recovery';
 } else {
+  if (options.expectedBackend !== 'auto') {
+    failures.push(`Expected ${options.expectedBackend}, but progressive blur requires API 31+`);
+  }
   if (!logcat.includes('Progressive unavailable; using mask fallback: requires API 31+')) {
     failures.push('API <31 did not explicitly report the required nonzero Mask fallback');
   }

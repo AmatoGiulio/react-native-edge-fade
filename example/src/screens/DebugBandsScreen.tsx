@@ -9,7 +9,7 @@
  */
 
 import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { EdgeFadeView } from 'react-native-edge-fade';
 
@@ -71,7 +71,7 @@ export function DebugBandsScreen() {
         curve={curve}
         mode={mode}
         blurRadius={blurRadius}
-        color={tint}
+        color={Platform.OS === 'ios' || mode === 'overlay' ? tint : undefined}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView

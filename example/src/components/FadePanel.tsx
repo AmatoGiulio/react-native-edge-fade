@@ -1,3 +1,4 @@
+import { MAX_DEMO_BLUR } from '@/fade/limits';
 import { useCallback, useState, type ReactNode } from 'react';
 import {
   Platform,
@@ -55,9 +56,9 @@ function fmt2(v: number): string {
   return v.toFixed(2);
 }
 
-function fmtPx(v: number): string {
+function fmtDp(v: number): string {
   'worklet';
-  return `${Math.round(v)}px`;
+  return `${Math.round(v)}dp`;
 }
 
 function NativeIcon({
@@ -446,38 +447,42 @@ export function FadePanel() {
       />
 
       <DialRow
-        label="radius"
+        label="corner radius"
         value={radius}
         min={0}
         max={48}
         step={1}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
       />
 
-      <DialRow
-        label="saturation"
-        value={frostSat}
-        min={0.5}
-        max={1.6}
-        step={0.05}
-        format={fmt2}
-        tint={scheme}
-        {...dialSurface}
-        disabled={mode !== 'blur'}
-      />
-      <DialRow
-        label="lift"
-        value={frostLift}
-        min={0.7}
-        max={1.2}
-        step={0.02}
-        format={fmt2}
-        tint={scheme}
-        {...dialSurface}
-        disabled={mode !== 'blur'}
-      />
+      {Platform.OS === 'ios' && (
+        <>
+          <DialRow
+            label="saturation"
+            value={frostSat}
+            min={0.5}
+            max={1.6}
+            step={0.05}
+            format={fmt2}
+            tint={scheme}
+            {...dialSurface}
+            disabled={mode !== 'blur'}
+          />
+          <DialRow
+            label="lift"
+            value={frostLift}
+            min={0.7}
+            max={1.2}
+            step={0.02}
+            format={fmt2}
+            tint={scheme}
+            {...dialSurface}
+            disabled={mode !== 'blur'}
+          />
+        </>
+      )}
       <DialRow
         label="transition"
         value={frostProg}
@@ -490,60 +495,66 @@ export function FadePanel() {
         disabled={mode !== 'blur'}
       />
 
-      <SwitchRow
-        label="frost tint"
-        value={frostOn}
-        onValueChange={onFrostToggle}
-        palette={t}
-        scheme={scheme}
-        rowBg={rowBg}
-      />
-
-      {Platform.OS === 'ios' ? (
-        <TintColorRowIOS
-          tint={tint}
-          setTint={setTint}
-          disabled={!frostOn}
-          rowBg={rowBg}
-          palette={t}
-          scheme={scheme}
-        />
-      ) : (
-        <View style={rowStyle}>
-          <Text
-            style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
-          >
-            tint color
-          </Text>
-          <View style={s.flex} />
-          <ThemedMenu
-            actions={tintMenuActions}
-            onSelect={(id) => {
-              if (frostOn) setTint(id);
-            }}
+      {(Platform.OS === 'ios' || mode === 'overlay') && (
+        <>
+          <SwitchRow
+            label="frost tint"
+            value={frostOn}
+            onValueChange={onFrostToggle}
             palette={t}
             scheme={scheme}
-          >
-            <View style={s.rowInline}>
+            rowBg={rowBg}
+          />
+
+          {Platform.OS === 'ios' ? (
+            <TintColorRowIOS
+              tint={tint}
+              setTint={setTint}
+              disabled={!frostOn}
+              rowBg={rowBg}
+              palette={t}
+              scheme={scheme}
+            />
+          ) : (
+            <View style={rowStyle}>
               <Text
                 style={[s.monoLabel, { color: frostOn ? t.text : t.faintText }]}
               >
-                {currentTintLabel}
+                tint color
               </Text>
-              <Text
-                style={[
-                  s.tintDot,
-                  { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
-                ]}
+              <View style={s.flex} />
+              <ThemedMenu
+                actions={tintMenuActions}
+                onSelect={(id) => {
+                  if (frostOn) setTint(id);
+                }}
+                palette={t}
+                scheme={scheme}
               >
-                {'\u25CF'}
-              </Text>
-              <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
+                <View style={s.rowInline}>
+                  <Text
+                    style={[
+                      s.monoLabel,
+                      { color: frostOn ? t.text : t.faintText },
+                    ]}
+                  >
+                    {currentTintLabel}
+                  </Text>
+                  <Text
+                    style={[
+                      s.tintDot,
+                      { color: frostOn ? (tint ?? DEFAULT_TINT) : t.faintText },
+                    ]}
+                  >
+                    {'\u25CF'}
+                  </Text>
+                  <NativeIcon name={UnfoldMore} size={16} color={t.faintText} />
+                </View>
+              </ThemedMenu>
             </View>
-          </ThemedMenu>
-        </View>
+          )}
+        </>
       )}
-
       <SwitchRow
         label="auto demo"
         value={autoDemo}
@@ -638,7 +649,7 @@ export function FadePanel() {
         min={0}
         max={320}
         step={2}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
       />
@@ -648,7 +659,7 @@ export function FadePanel() {
         min={0}
         max={320}
         step={2}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
       />
@@ -658,7 +669,7 @@ export function FadePanel() {
         min={0}
         max={320}
         step={2}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
       />
@@ -668,17 +679,17 @@ export function FadePanel() {
         min={0}
         max={320}
         step={2}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
       />
       <DialRow
-        label="blur"
+        label="blur amount"
         value={blur}
         min={0}
-        max={100}
+        max={MAX_DEMO_BLUR}
         step={1}
-        format={fmtPx}
+        format={fmtDp}
         tint={scheme}
         {...dialSurface}
         disabled={mode !== 'blur'}

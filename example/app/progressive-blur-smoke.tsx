@@ -71,6 +71,7 @@ export default function ProgressiveBlurSmokeRoute() {
           right={fourEdges ? 48 : 0}
           curve={curve}
           blurRadius={radiusDp}
+          radius={step % 2 === 0 ? 24 : 0}
         >
           <ScrollView
             testID="progressive-release-smoke-scroll"
