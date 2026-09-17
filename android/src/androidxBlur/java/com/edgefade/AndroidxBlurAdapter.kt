@@ -7,18 +7,17 @@ import androidx.annotation.RequiresApi
 
 /**
  * Benchmark-only adapter that preserves the public progressive RenderNode/
- * strip plumbing while removing the progressive Gaussian itself.
+ * strip plumbing while removing RenderEffect itself.
  *
- * A zero-offset RenderEffect is intentionally used instead of returning null so
- * HWUI still traverses an effect-bearing strip node. This isolates the cost of
- * scene materialization, RenderNode replay, strip recording and compositing
- * from the cost of AndroidX's progressive blur shaders.
+ * Returning null keeps scene materialization, RenderNode replay, strip
+ * recording and strip compositing intact, but prevents HWUI from creating an
+ * effect-bearing offscreen pass for each strip. This isolates pure plumbing
+ * from RenderEffect overhead.
  */
 internal object AndroidxBlurAdapter {
   const val available = true
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   @Suppress("UNUSED_PARAMETER")
-  fun create(width: Int, height: Int, radiusPx: Float, mask: Shader): RenderEffect =
-    RenderEffect.createOffsetEffect(0f, 0f)
+  fun create(width: Int, height: Int, radiusPx: Float, mask: Shader): RenderEffect? = null
 }
