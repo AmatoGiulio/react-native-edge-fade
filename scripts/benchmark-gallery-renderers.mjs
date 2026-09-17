@@ -109,55 +109,68 @@ function launch(renderer) {
   if (!/Status:\s*ok/.test(result)) throw new Error(`Launch failed for ${renderer}`);
 }
 
+function rendererLogs() {
+  return adb(
+    [
+      'logcat',
+      '-d',
+      '-s',
+      'EdgeFadeProgressive:I',
+      'EdgeFade.BlurLab:I',
+      '*:S',
+    ],
+    false
+  );
+}
+
 function verifyRenderer(renderer) {
-  const expected = `gallery-renderer requested=${renderer} active=${renderer}`;
-  const preferredPath = '/data/local/tmp/gallery-renderer.xml';
-  const defaultPath = '/sdcard/window_dump.xml';
   let lastDiagnostic = '';
 
-  // Android 16 can return from `uiautomator dump` before the requested output
-  // file is visible (and some builds still use the legacy default path). Retry
-  // and inspect both the requested path and the path reported by uiautomator.
-  for (let attempt = 1; attempt <= 6; attempt++) {
-    try {
-      shell(`rm -f ${preferredPath} ${defaultPath}`, false);
-    } catch {
-      // Cleanup is best-effort only.
-    }
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    if (renderer === 'off') {
+      const activities = shell('dumpsys activity activities', false);
+      const onRoute =
+        activities.includes('gallery-renderer-test') &&
+        activities.includes('renderer=off');
+      if (onRoute) return;
+      lastDiagnostic = `attempt ${attempt}: gallery-renderer-test?renderer=off not active`;
+    } else {
+      const logs = rendererLogs();
 
-    let dumpOutput = '';
-    try {
-      dumpOutput = shell(`uiautomator dump ${preferredPath}`, false);
-    } catch (error) {
-      lastDiagnostic = `attempt ${attempt}: ${error.message}`;
-      sleep(350);
-      continue;
-    }
+      if (renderer === 'public') {
+        const activated =
+          logs.includes('Using official AndroidX progressive blur on API 33+') ||
+          logs.includes('Using pure progressive AGSL blur on API 33+') ||
+          logs.includes('Using GLES 3.0 continuous progressive blur on API 31-32');
+        if (activated) return;
 
-    const reportedPath =
-      dumpOutput.match(/(?:dumped to:|to:)\s*(\S+\.xml)/i)?.[1] ?? null;
-    const candidates = [...new Set([reportedPath, preferredPath, defaultPath].filter(Boolean))];
+        lastDiagnostic = `attempt ${attempt}: public progressive activation log not found`;
+        if (/Progressive unavailable|draw failed|frame unavailable|fallback/i.test(logs)) {
+          throw new Error(
+            `Public renderer failed during activation.\n${logs.trim()}`
+          );
+        }
+      } else {
+        const expected = `Renderer active: requested=${renderer} active=${renderer}`;
+        if (logs.includes(expected)) return;
 
-    for (const remotePath of candidates) {
-      try {
-        const xml = shell(`cat ${remotePath}`, false);
-        if (xml.includes(expected)) return;
-        lastDiagnostic =
-          `attempt ${attempt}: hierarchy found at ${remotePath}, ` +
-          `but missing '${expected}'`;
-      } catch (error) {
-        lastDiagnostic = `attempt ${attempt}: ${remotePath}: ${error.message}`;
+        const disabled = `Renderer active: requested=${renderer} active=off`;
+        if (logs.includes(disabled)) {
+          throw new Error(
+            `${renderer} renderer was requested but native reported active=off.\n${logs.trim()}`
+          );
+        }
+        lastDiagnostic = `attempt ${attempt}: missing '${expected}'`;
       }
     }
 
-    if (dumpOutput.trim()) {
-      lastDiagnostic += ` | uiautomator: ${dumpOutput.trim()}`;
-    }
     sleep(350);
   }
 
+  const logs = renderer === 'off' ? '' : rendererLogs();
   throw new Error(
-    `Renderer verification failed. Expected: ${expected}\n${lastDiagnostic}`
+    `Renderer verification failed for ${renderer}.\n${lastDiagnostic}` +
+      (logs.trim() ? `\n${logs.trim()}` : '')
   );
 }
 
