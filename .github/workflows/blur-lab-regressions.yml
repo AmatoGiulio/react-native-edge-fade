@@ -18,12 +18,15 @@ on:
       - 'example/app/progressive-blur.tsx'
       - 'example/app/progressive-blur-perf.tsx'
       - 'example/app/progressive-blur-smoke.tsx'
+      - 'example/app/gallery-renderer-test.tsx'
       - 'scripts/benchmark-progressive-vs-androidx.mjs'
       - 'scripts/benchmark-progressive-androidx-envelope.mjs'
+      - 'scripts/benchmark-gallery-renderers.mjs'
       - 'scripts/capture-progressive-perfetto.mjs'
       - 'scripts/smoke-progressive-release.mjs'
       - 'tests/native/test_blur_lab_regressions.py'
       - 'tests/native/test_example_blur_contract.py'
+      - 'tests/native/test_gallery_renderer_matrix.py'
       - 'tests/native/test_progressive_public_backend.py'
       - 'tests/native/test_gles_shader_source_contract.py'
       - 'tests/native/test_progressive_perf_scene.py'
@@ -60,6 +63,7 @@ jobs:
       - name: Check public backend contracts and compile mask
         run: |
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_example_blur_contract.py
+          "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gallery_renderer_matrix.py
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_public_backend.py --compile-shaders
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_gles_shader_source_contract.py
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_descendant_invalidation.py
@@ -68,6 +72,7 @@ jobs:
         run: |
           node --check scripts/benchmark-progressive-vs-androidx.mjs
           node --check scripts/benchmark-progressive-androidx-envelope.mjs
+          node --check scripts/benchmark-gallery-renderers.mjs
           node --check scripts/capture-progressive-perfetto.mjs
           node --check scripts/smoke-progressive-release.mjs
           "$RUNNER_TEMP/blur-lab-venv/bin/python" tests/native/test_progressive_perf_scene.py
