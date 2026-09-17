@@ -2,6 +2,7 @@ package com.edgefade
 
 import android.graphics.Canvas
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresApi
 
 /**
@@ -13,13 +14,25 @@ internal class EdgeFadeProgressiveStripRenderer(
   host: EdgeFadeView,
 ) {
   private val pyramid = EdgeFadeProgressivePyramidRenderer(host)
+  private var announced = false
 
-  fun prepare(): Boolean = pyramid.prepare()
+  fun prepare(): Boolean {
+    val prepared = pyramid.prepare()
+    if (prepared && !announced) {
+      announced = true
+      Log.i(TAG, "Using native five-level Gaussian pyramid on API 33+ (edge-local RenderEffect blur).")
+    }
+    return prepared
+  }
 
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean =
     pyramid.draw(canvas, recordChildren)
 
   fun release() {
     pyramid.release()
+  }
+
+  private companion object {
+    private const val TAG = "EdgeFadeProgressive"
   }
 }
