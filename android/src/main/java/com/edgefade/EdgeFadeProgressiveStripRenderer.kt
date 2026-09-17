@@ -26,10 +26,10 @@ import kotlin.math.ceil
  * across the inner strip boundary. Top/bottom own the corners; left/right own
  * only the remaining center span, making four-edge output disjoint by geometry.
  *
- * The renderer is invoked directly from EdgeFadeView.dispatchDraw(). It records
- * the React children once, draws the sharp content with the edge bands clipped
- * out, then draws the filtered strips into those empty bands. No ViewOverlay,
- * SRC replacement layer or forced host hardware layer is involved.
+ * This benchmark branch renders filtered strips at half resolution and scales
+ * them back to the visible band. Geometry, mask coordinates and blur radius are
+ * all scaled together so the full-resolution visual radius remains unchanged.
+ * The sharp base and the recorded React scene remain full resolution.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
@@ -186,14 +186,15 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
-      // Fill the empty edge bands with their true progressive Gaussian output.
-      // Visible ownership is already disjoint by geometry, while each source is
-      // expanded by maxRadius + one paired bilinear tap for correct sampling.
+      // Filter only the edge-local source at half resolution. The source rect
+      // itself remains padded in full-resolution coordinates; scaling the
+      // recording and radius together preserves the same sampling footprint.
       for (strip in strips) {
         val src = strip.band.source
         tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
           val rc = strip.node.beginRecording()
           try {
+            rc.scale(STRIP_SCALE, STRIP_SCALE)
             rc.translate(-src.left.toFloat(), -src.top.toFloat())
             rc.drawRenderNode(content)
           } finally {
@@ -212,6 +213,7 @@ internal class EdgeFadeProgressiveStripRenderer(
               visible.bottom.toFloat(),
             )
             canvas.translate(src.left.toFloat(), src.top.toFloat())
+            canvas.scale(1f / STRIP_SCALE, 1f / STRIP_SCALE)
             canvas.drawRenderNode(strip.node)
           } finally {
             canvas.restoreToCount(save)
@@ -238,18 +240,33 @@ internal class EdgeFadeProgressiveStripRenderer(
 
   private fun configureStrip(strip: Strip, key: Key) {
     val source = strip.band.source
-    strip.node.setPosition(0, 0, source.width, source.height)
+    val width = scaledWidth(source.width)
+    val height = scaledHeight(source.height)
+    strip.node.setPosition(0, 0, width, height)
 
     val topCurve = curveUniforms(key.curveTop)
     val bottomCurve = curveUniforms(key.curveBottom)
     val leftCurve = curveUniforms(key.curveLeft)
     val rightCurve = curveUniforms(key.curveRight)
 
-    strip.mask.setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())
-    strip.mask.setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())
+    strip.mask.setFloatUniform(
+      "origin",
+      source.left * STRIP_SCALE,
+      source.top * STRIP_SCALE,
+    )
+    strip.mask.setFloatUniform(
+      "viewSize",
+      key.width * STRIP_SCALE,
+      key.height * STRIP_SCALE,
+    )
     strip.mask.setFloatUniform(
       "edges",
-      floatArrayOf(key.top, key.bottom, key.left, key.right),
+      floatArrayOf(
+        key.top * STRIP_SCALE,
+        key.bottom * STRIP_SCALE,
+        key.left * STRIP_SCALE,
+        key.right * STRIP_SCALE,
+      ),
     )
     strip.mask.setFloatUniform("progression", key.progression)
     strip.mask.setFloatUniform(
@@ -274,17 +291,18 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
     strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
 
+    val scaledRadius = key.radius * STRIP_SCALE
     if (AndroidxBlurAdapter.available) {
       strip.node.setRenderEffect(
-        AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask),
+        AndroidxBlurAdapter.create(width, height, scaledRadius, strip.mask),
       )
       return
     }
 
     for (shader in arrayOf(strip.horizontal, strip.vertical)) {
       shader.setInputShader("mask", strip.mask)
-      shader.setFloatUniform("blurRadius", key.radius)
-      shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
+      shader.setFloatUniform("blurRadius", scaledRadius)
+      shader.setFloatUniform("extent", width.toFloat(), height.toFloat())
     }
 
     strip.node.setRenderEffect(
@@ -355,6 +373,12 @@ internal class EdgeFadeProgressiveStripRenderer(
     return result
   }
 
+  private fun scaledWidth(width: Int): Int =
+    ceil(width * STRIP_SCALE).toInt().coerceAtLeast(1)
+
+  private fun scaledHeight(height: Int): Int =
+    ceil(height * STRIP_SCALE).toInt().coerceAtLeast(1)
+
   private fun clipOut(canvas: Canvas, rect: Rect) {
     canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
   }
@@ -389,6 +413,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (value.isFinite()) value else fallback
 
   private companion object {
+    private const val STRIP_SCALE = 0.5f
     private val EMPTY_LUT = FloatArray(EdgeFadeCurves.LUT_SIZE)
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
