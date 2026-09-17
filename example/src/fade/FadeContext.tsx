@@ -1,4 +1,5 @@
 import { DEFAULT_DEMO_BLUR } from './limits';
+import { BLUR_LAB_DEFAULTS, DEFAULT_BEZIER } from './presets';
 /**
  * Shared edge-fade tuning state for the demo, split into two contexts for
  * performance:
@@ -61,7 +62,8 @@ export interface FadeStore {
   /**
    * Auto-demo: when on, the top/bottom fade region gently breathes on a loop so
    * the effect is self-evident without any interaction (used for the hero / video
-   * preview). Turning it off cancels the loop and eases the region back to 110.
+   * preview). Turning it off cancels the loop and eases the region back to the
+   * Blur Lab default geometry.
    */
   autoDemo: boolean;
   setAutoDemo: (on: boolean) => void;
@@ -86,21 +88,21 @@ const FadeStoreContext = createContext<FadeStore | null>(null);
 const FadeRenderContext = createContext<FadeRender | null>(null);
 
 export function FadeProvider({ children }: { children: ReactNode }) {
-  // Default curve — the steep-shouldered S Giulio picked: stays sharp inside,
-  // then dives to fully faded near the edge.
-  const x1 = useSharedValue(0.78);
-  const y1 = useSharedValue(0.14);
-  const x2 = useSharedValue(0.15);
-  const y2 = useSharedValue(0.78);
-  const top = useSharedValue(110);
-  const bottom = useSharedValue(110);
-  const left = useSharedValue(0);
-  const right = useSharedValue(0);
+  // Start from the same visual profile as Blur Lab so the Gallery is the real
+  // public-API comparison surface rather than a separately tuned approximation.
+  const x1 = useSharedValue(DEFAULT_BEZIER.x1);
+  const y1 = useSharedValue(DEFAULT_BEZIER.y1);
+  const x2 = useSharedValue(DEFAULT_BEZIER.x2);
+  const y2 = useSharedValue(DEFAULT_BEZIER.y2);
+  const top = useSharedValue(BLUR_LAB_DEFAULTS.top);
+  const bottom = useSharedValue(BLUR_LAB_DEFAULTS.bottom);
+  const left = useSharedValue(BLUR_LAB_DEFAULTS.left);
+  const right = useSharedValue(BLUR_LAB_DEFAULTS.right);
   const blur = useSharedValue(DEFAULT_DEMO_BLUR);
   const radius = useSharedValue(0);
   const frostSat = useSharedValue(0.9);
   const frostLift = useSharedValue(1.03);
-  const frostProg = useSharedValue(1);
+  const frostProg = useSharedValue(BLUR_LAB_DEFAULTS.progression);
 
   const [mode, setMode] = useState<EdgeFadeMode>('blur');
   // No frost tint by default: a pure content-derived Gaussian blur that adapts
@@ -127,8 +129,8 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     } else {
       cancelAnimation(top);
       cancelAnimation(bottom);
-      top.set(withTiming(110));
-      bottom.set(withTiming(110));
+      top.set(withTiming(BLUR_LAB_DEFAULTS.top));
+      bottom.set(withTiming(BLUR_LAB_DEFAULTS.bottom));
     }
     return () => {
       cancelAnimation(top);
@@ -137,19 +139,19 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   }, [autoDemo, top, bottom]);
 
   const reset = useCallback(() => {
-    x1.set(0.78);
-    y1.set(0.14);
-    x2.set(0.15);
-    y2.set(0.78);
-    top.set(110);
-    bottom.set(110);
-    left.set(0);
-    right.set(0);
+    x1.set(DEFAULT_BEZIER.x1);
+    y1.set(DEFAULT_BEZIER.y1);
+    x2.set(DEFAULT_BEZIER.x2);
+    y2.set(DEFAULT_BEZIER.y2);
+    top.set(BLUR_LAB_DEFAULTS.top);
+    bottom.set(BLUR_LAB_DEFAULTS.bottom);
+    left.set(BLUR_LAB_DEFAULTS.left);
+    right.set(BLUR_LAB_DEFAULTS.right);
     blur.set(DEFAULT_DEMO_BLUR);
     radius.set(0);
     frostSat.set(0.9);
     frostLift.set(1.03);
-    frostProg.set(1);
+    frostProg.set(BLUR_LAB_DEFAULTS.progression);
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
@@ -245,7 +247,10 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     'worklet';
     return frostProg.get();
   }, [frostProg]);
-  const frostProgression = useThrottledMirror(readFrostProg, 1);
+  const frostProgression = useThrottledMirror(
+    readFrostProg,
+    BLUR_LAB_DEFAULTS.progression
+  );
 
   const render = useMemo<FadeRender>(
     () => ({
