@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "android/src/main/java/com/edgefade"
+GALLERY = ROOT / "example/src/screens/GalleryScreen.tsx"
 
 
 def read(path: Path) -> str:
@@ -21,6 +22,14 @@ class ProgressiveFastVerticalShaderContract(unittest.TestCase):
         self.assertIn('AndroidxBlurAdapter.create(', renderer)
         self.assertIn('BlurLabShaders.pass(vertical = false)', renderer)
         self.assertIn('EdgeFadeFastVerticalShaders.pass(', renderer)
+
+    def test_gallery_stress_is_guaranteed_to_enter_the_fast_path(self):
+        gallery = read(GALLERY)
+        self.assertIn('const edgeLeft = stressActive ? 0 : left;', gallery)
+        self.assertIn('const edgeRight = stressActive ? 0 : right;', gallery)
+        self.assertIn("const edgeCurve = stressActive ? 'smooth' : curve;", gallery)
+        self.assertIn('const edgeProgression = stressActive ? 1 : frostProgression;', gallery)
+        self.assertIn('const STRESS_TOP_BOTTOM_DP = 110;', gallery)
 
     def test_fast_shader_integrates_smooth_radius_without_mask_eval(self):
         shader = read(NATIVE / "EdgeFadeFastVerticalShaders.kt")
