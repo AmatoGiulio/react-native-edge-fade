@@ -33,7 +33,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
-import type { CubicBezierCurve, EdgeFadeMode } from 'react-native-edge-fade';
+import type { EdgeFadeCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 import { useDialCurve, useThrottledMirror } from '@/components/dial';
 
@@ -77,7 +77,7 @@ export interface FadeStore {
 }
 
 export interface FadeRender {
-  curve: CubicBezierCurve;
+  curve: EdgeFadeCurve;
   blurRadius: number;
   frostSaturation: number;
   frostLift: number;
@@ -224,7 +224,11 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  const curve = useDialCurve(x1, y1, x2, y2);
+  const dialCurve = useDialCurve(x1, y1, x2, y2);
+  // The default preset uses the same native `smooth` curve string as Blur Lab.
+  // Once a preset/manual edit changes it, the panel's cubic curve is used.
+  const curve: EdgeFadeCurve = preset === 'default' ? 'smooth' : dialCurve;
+
   const readBlur = useCallback((): number => {
     'worklet';
     return blur.get();
