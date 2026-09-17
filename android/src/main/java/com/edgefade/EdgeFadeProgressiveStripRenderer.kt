@@ -18,8 +18,8 @@ import kotlin.math.ceil
  * the analytical/LUT edge mask, derives its own radius as
  * `maxRadius * intensity`, then uses the official AndroidX effect when opted in,
  * or the attributed port of its separable Gaussian kernel in H -> V order.
- * There are no discrete blur levels, opacity
- * cross-fades, frost grading, lift, tint or material post-processing here.
+ * There are no discrete blur levels, opacity cross-fades, frost grading, lift,
+ * tint or material post-processing here.
  *
  * Strips are only a work-culling optimization: they bound GPU work to regions
  * where the radius can be non-zero. They do not quantize the blur field. Each
@@ -27,10 +27,11 @@ import kotlin.math.ceil
  * across the inner strip boundary. Top/bottom own the corners; left/right own
  * only the remaining center span, making four-edge output disjoint by geometry.
  *
- * This benchmark branch additionally specializes the vertical-only `smooth`
- * case by evaluating the radius curve directly inside the two Gaussian passes.
- * That removes the separate mask shader evaluation while preserving the same
- * analytical smooth curve and strip geometry.
+ * This benchmark branch specializes the vertical-only `smooth` case by
+ * evaluating the radius curve directly inside the two Gaussian passes. The
+ * specialized shaders are compiled with a 32/64/96/128/150px loop-bound bucket
+ * chosen from the requested radius, reducing static shader size while keeping
+ * the exact requested radius as a runtime uniform.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
@@ -83,12 +84,14 @@ internal class EdgeFadeProgressiveStripRenderer(
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     var fastHorizontal: RuntimeShader? = null
     var fastVertical: RuntimeShader? = null
+    var fastBucket: Int = 0
 
     fun release() {
       node.setRenderEffect(null)
       node.discardDisplayList()
       fastHorizontal = null
       fastVertical = null
+      fastBucket = 0
     }
   }
 
@@ -285,14 +288,30 @@ internal class EdgeFadeProgressiveStripRenderer(
 
   private fun configureIntegratedVertical(strip: Strip, key: Key, source: Rect) {
     val bottomEdge = strip.band.edge == EDGE_BOTTOM
-    val horizontal = strip.fastHorizontal ?: RuntimeShader(
-      EdgeFadeFastVerticalShaders.pass(verticalBlur = false, bottomEdge = bottomEdge),
-    ).also { strip.fastHorizontal = it }
-    val vertical = strip.fastVertical ?: RuntimeShader(
-      EdgeFadeFastVerticalShaders.pass(verticalBlur = true, bottomEdge = bottomEdge),
-    ).also { strip.fastVertical = it }
+    val bucket = radiusBucket(key.radius)
 
+    if (strip.fastBucket != bucket || strip.fastHorizontal == null || strip.fastVertical == null) {
+      strip.fastHorizontal = RuntimeShader(
+        EdgeFadeFastVerticalShaders.pass(
+          verticalBlur = false,
+          bottomEdge = bottomEdge,
+          maxRadiusPx = bucket,
+        ),
+      )
+      strip.fastVertical = RuntimeShader(
+        EdgeFadeFastVerticalShaders.pass(
+          verticalBlur = true,
+          bottomEdge = bottomEdge,
+          maxRadiusPx = bucket,
+        ),
+      )
+      strip.fastBucket = bucket
+    }
+
+    val horizontal = requireNotNull(strip.fastHorizontal)
+    val vertical = requireNotNull(strip.fastVertical)
     val depth = if (bottomEdge) key.bottom else key.top
+
     for (shader in arrayOf(horizontal, vertical)) {
       shader.setFloatUniform("blurRadius", key.radius)
       shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
@@ -313,7 +332,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       fastPathAnnounced = true
       Log.i(
         TAG,
-        "Using integrated vertical smooth AGSL fast path (no separate mask shader eval).",
+        "Using integrated vertical smooth AGSL fast path (no separate mask shader eval, bucket=${bucket}px).",
       )
     }
   }
@@ -324,6 +343,14 @@ internal class EdgeFadeProgressiveStripRenderer(
       key.curveTop == "smooth" &&
       key.curveBottom == "smooth" &&
       (edge == EDGE_TOP || edge == EDGE_BOTTOM)
+
+  private fun radiusBucket(radius: Float): Int = when {
+    radius <= 32f -> 32
+    radius <= 64f -> 64
+    radius <= 96f -> 96
+    radius <= 128f -> 128
+    else -> 150
+  }
 
   private fun curveUniforms(curve: String): CurveUniforms {
     val preset = EdgeFadeCurves.agslPresetParams(curve)
