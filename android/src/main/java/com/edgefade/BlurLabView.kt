@@ -74,6 +74,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
       reportedRequested = backend
       reportedActive = active
       reportedReason = reason
+      Log.i("EdgeFade.BlurLab", "Renderer active: requested=$backend active=$active")
       onBackendChange?.invoke(backend, active, reason, AndroidxBlurAdapter.available)
     }
   }
