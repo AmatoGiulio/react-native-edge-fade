@@ -1,5 +1,7 @@
 import { PixelRatio, Platform } from 'react-native';
 
+import { BLUR_LAB_DEFAULTS } from './presets';
+
 /**
  * Canonical progressive-blur envelope for the Expo example.
  *
@@ -20,6 +22,7 @@ export const MAX_DEMO_BLUR =
       )
     : 100;
 
-// Match the Blur Lab starting point so the Gallery and Lab open with the same
-// progressive-blur strength.
-export const DEFAULT_DEMO_BLUR = Math.min(24, MAX_DEMO_BLUR);
+export const DEFAULT_DEMO_BLUR = Math.min(
+  BLUR_LAB_DEFAULTS.blurRadius,
+  MAX_DEMO_BLUR
+);
