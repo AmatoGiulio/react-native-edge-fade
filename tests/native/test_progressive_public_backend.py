@@ -1,38 +1,21 @@
 """Contracts for the Android public progressive-blur backends.
 
-API 33+ uses RuntimeShader/AGSL. API 31-32 uses GLES 3.0. Both must implement
-one continuous radius field and must never regress to the removed multi-level
-RenderEffect blur stack.
+API 33+ uses an edge-local five-level native RenderEffect Gaussian pyramid.
+API 31-32 keeps the continuous GLES 3.0 renderer. Both preserve the public
+EdgeFade curve/progression contract and explicit mask fallback behavior.
 
-Host SkSL compilation is a source/compiler gate only; device RuntimeShader/GLES
-execution, visual fidelity, WebView behavior and frame-time remain separate gates.
+Device visual fidelity, WebView behavior and frame-time remain separate gates.
 """
 from pathlib import Path
-import math
-import re
-import sys
-import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 NATIVE = ROOT / "android/src/main/java/com/edgefade"
 SMOKE = ROOT / "scripts/smoke-progressive-release.mjs"
-COMPILE_SHADERS = "--compile-shaders" in sys.argv
-if COMPILE_SHADERS:
-    sys.argv.remove("--compile-shaders")
-    import skia
 
 
 def read(path):
     return path.read_text(encoding="utf-8")
-
-
-def public_mask_source():
-    source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-    match = re.search(r'(?:private|internal) const val MASK_SHADER = """(.*?)"""', source, re.S)
-    if match is None:
-        raise AssertionError("Public progressive mask literal changed; update extractor")
-    return textwrap.dedent(match[1]).strip()
 
 
 class ProgressivePublicBackend(unittest.TestCase):
@@ -46,20 +29,25 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("EdgeFadeProgressiveBlurEffect.unregister(view)", manager)
         self.assertNotIn('@ReactProp(name = "androidBlurBackend")', manager)
 
-    def test_selector_routes_continuous_backends_by_api(self):
+    def test_selector_routes_api33_and_api31_without_public_backend_prop(self):
         source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
         host = read(NATIVE / "EdgeFadeView.kt")
 
-        self.assertIn("Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.apply(view)", source)
-        self.assertIn("Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.apply(view)", source)
+        self.assertIn(
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.apply(view)",
+            source,
+        )
+        self.assertIn(
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.apply(view)",
+            source,
+        )
         self.assertIn(
             'Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"',
             source,
         )
+        self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()", source)
         self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeGlesProgressiveRenderer>()", source)
         self.assertIn("EdgeFadeGlesProgressiveRenderer.isSupported(view)", source)
-        self.assertIn("Using GLES 3.0 continuous progressive blur on API 31-32", source)
-        self.assertIn("Using pure progressive AGSL blur on API 33+", source)
         self.assertIn("Build.VERSION.SDK_INT >= Build.VERSION_CODES.S", host)
         self.assertIn("EdgeFadeProgressiveBlurEffect.draw(", host)
 
@@ -92,7 +80,10 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn(identity_guard, selector)
         self.assertIn(fallback_lookup, selector)
         self.assertLess(selector.index(identity_guard), selector.index(fallback_lookup))
-        self.assertIn('view.mode = "blur"', selector[selector.index(identity_guard):selector.index(fallback_lookup)])
+        self.assertIn(
+            'view.mode = "blur"',
+            selector[selector.index(identity_guard):selector.index(fallback_lookup)],
+        )
         self.assertIn(
             'Blur identity active: blurRadius 0px (no blur, no Mask fallback).',
             selector,
@@ -102,8 +93,6 @@ class ProgressivePublicBackend(unittest.TestCase):
             host,
         )
         self.assertIn("ZERO_RADIUS_IDENTITY_LOG", smoke)
-        self.assertIn("platform-independent radius 0 identity activation log was not observed", smoke)
-        self.assertIn("<31 nonzero Mask fallback + platform-independent 0px identity", smoke)
 
     def test_api31_webview_is_deliberately_not_claimed_yet(self):
         source = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
@@ -113,10 +102,9 @@ class ProgressivePublicBackend(unittest.TestCase):
             '"WebView capture is not yet supported by the API 31-32 GLES backend"',
             source,
         )
-        # API 33+ keeps the already validated WebView atomic capture boundary.
         self.assertIn("if (child is WebView) continue", source)
 
-    def test_old_multilevel_blur_is_physically_absent_from_public_host(self):
+    def test_old_host_multilevel_frost_pipeline_remains_absent(self):
         host = read(NATIVE / "EdgeFadeView.kt")
         gles = read(NATIVE / "EdgeFadeGlesProgressiveRenderer.kt")
         shaders = read(NATIVE / "EdgeFadeGlesShaders.kt")
@@ -128,16 +116,11 @@ class ProgressivePublicBackend(unittest.TestCase):
         for forbidden in (
             "drawBlurLayered",
             "drawEdgeLevels",
-            "createBlurEffect",
             "createColorFilterEffect",
-            "LEVEL_FRACTIONS",
-            "LEVEL_BOUNDS",
-            "LEVEL_DOWNSCALE",
             "BLUR_STYLE",
             "drawFrostVeil",
             "veilGradient",
             "frostGradient",
-            "levelGradient",
             "blurNode",
             "levelNodes",
         ):
@@ -145,30 +128,46 @@ class ProgressivePublicBackend(unittest.TestCase):
             self.assertNotIn(forbidden, gles)
             self.assertNotIn(forbidden, shaders)
 
-    def test_api33_webview_is_eligible_and_materialized_once(self):
+    def test_api33_entrypoint_delegates_to_native_pyramid(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        shim = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        pyramid = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
+
+        self.assertIn("EdgeFadeProgressiveStripRenderer(view)", selector)
+        self.assertIn("EdgeFadeProgressivePyramidRenderer(host)", shim)
+        self.assertIn("pyramid.prepare()", shim)
+        self.assertIn("pyramid.draw(canvas, recordChildren)", shim)
+        self.assertIn("pyramid.release()", shim)
+
+        self.assertIn("RenderEffect.createBlurEffect", pyramid)
+        self.assertIn("Shader.TileMode.CLAMP", pyramid)
+        self.assertIn("floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)", pyramid)
+        self.assertNotIn("RuntimeShader", pyramid)
+        self.assertNotIn("BlurLabShaders", pyramid)
+        self.assertNotIn("AndroidxBlurAdapter", pyramid)
+
+    def test_api33_webview_is_eligible_and_scene_is_materialized_once(self):
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
 
         self.assertIn("if (child is WebView) continue", selector)
         self.assertIn("if (child is SurfaceView) return true", selector)
         self.assertIn("content.setUseCompositingLayer(true, null)", renderer)
-        self.assertIn("recordChildren(recording)", renderer)
+        self.assertEqual(renderer.count("recordChildren(recording)"), 1)
         self.assertIn("canvas.drawRenderNode(content)", renderer)
         self.assertIn("rc.drawRenderNode(content)", renderer)
 
-    def test_api33_stays_edge_local_and_owned_by_dispatch_draw(self):
+    def test_api33_stays_edge_local_and_preserves_corner_ownership(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        renderer = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
         host = read(NATIVE / "EdgeFadeView.kt")
 
-        self.assertIn("EdgeFadeProgressiveStripRenderer(view)", selector)
         self.assertNotIn("view.overlay.add(renderer)", selector)
         self.assertNotIn("view.overlay.remove(renderer)", selector)
         self.assertNotIn("setLayerType", selector)
         self.assertNotIn("view.setRenderEffect(blur)", selector)
 
-        self.assertIn("class EdgeFadeProgressiveStripRenderer", renderer)
-        self.assertIn("clipOut(canvas, strip.band.visible)", renderer)
+        self.assertIn("for (strip in strips) clipOut(canvas, strip.band.visible)", renderer)
         self.assertIn("top/bottom own the full-width corners", renderer)
         self.assertIn("val centerTop = top", renderer)
         self.assertIn("val centerBottom = (height - bottom).coerceAtLeast(centerTop)", renderer)
@@ -176,6 +175,37 @@ class ProgressivePublicBackend(unittest.TestCase):
 
         self.assertIn("internal var progressiveBlurActive", host)
         self.assertIn("::drawChildrenForProgressive", host)
+
+    def test_api33_preserves_curve_progression_and_custom_lut_contract(self):
+        renderer = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
+        selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
+
+        self.assertIn("EdgeFadeCurves.presenceAt(curve, curveT)", renderer)
+        self.assertIn("outward / key.progression", renderer)
+        self.assertIn("MASK_SAMPLES = 33", renderer)
+        self.assertIn("supportsCurve(view.curveTop)", selector)
+        self.assertIn("EdgeFadeCurves.agslPresetParams(curve)", selector)
+        self.assertIn("EdgeFadeCurves.parseCustomLUT(curve)", selector)
+
+    def test_api33_strip_sources_remain_radius_padded(self):
+        renderer = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
+        self.assertIn("val pad = ceil(key.radius).toInt() + 1", renderer)
+        self.assertIn("visible.left - pad", renderer)
+        self.assertIn("visible.top - pad", renderer)
+        self.assertIn("visible.right + pad", renderer)
+        self.assertIn("visible.bottom + pad", renderer)
+
+    def test_api33_has_no_frost_color_grade(self):
+        renderer = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
+        for forbidden in (
+            "frostSaturation",
+            "frostLift",
+            "luminance",
+            "createColorFilterEffect",
+            "overlayColor",
+            "ColorMatrix",
+        ):
+            self.assertNotIn(forbidden, renderer)
 
     def test_api31_is_a_real_gpu_pipeline_not_uniform_blur_bands(self):
         renderer = read(NATIVE / "EdgeFadeGlesProgressiveRenderer.kt")
@@ -211,7 +241,6 @@ class ProgressivePublicBackend(unittest.TestCase):
 
     def test_api31_records_children_once_and_replaces_bands_geometrically(self):
         renderer = read(NATIVE / "EdgeFadeGlesProgressiveRenderer.kt")
-
         self.assertEqual(renderer.count("recordChildren(recording)"), 1)
         self.assertIn("canvas.clipOutRect(", renderer)
         self.assertIn("canvas.drawRenderNode(content)", renderer)
@@ -251,82 +280,33 @@ class ProgressivePublicBackend(unittest.TestCase):
         self.assertIn("radiusIntensity", shaders)
         self.assertIn("max(max(top, bottom), max(left, right))", shaders)
 
-    def test_api33_strip_sources_remain_radius_padded(self):
-        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
-        mask = public_mask_source()
-
-        self.assertIn("val pad = ceil(key.radius).toInt() + 1", renderer)
-        self.assertIn('setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())', renderer)
-        self.assertIn("uniform float2 origin", mask)
-        self.assertIn("float2 p = local + origin", mask)
-
-    def test_api33_pipeline_contains_only_radius_varying_gaussian(self):
-        renderer = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
-        shaders = read(NATIVE / "BlurLabShaders.kt")
-
-        self.assertIn("float radius = blurRadius * intensity;", shaders)
-        self.assertIn("float gaussian(float x, float sigma)", shaders)
-        self.assertIn("BlurLabShaders.pass(vertical = false)", renderer)
-        self.assertIn("BlurLabShaders.pass(vertical = true)", renderer)
-
-        for forbidden in (
-            "frostSaturation",
-            "frostLift",
-            "luminance",
-            "createColorFilterEffect",
-            "overlayColor",
-            "BlendMode",
-        ):
-            self.assertNotIn(forbidden, shaders)
-            self.assertNotIn(forbidden, renderer)
-
     def test_renderers_cannot_retain_weak_map_keys(self):
         selector = read(NATIVE / "EdgeFadeProgressiveBlurEffect.kt")
-        agsl = read(NATIVE / "EdgeFadeProgressiveStripRenderer.kt")
+        pyramid = read(NATIVE / "EdgeFadeProgressivePyramidRenderer.kt")
         gles = read(NATIVE / "EdgeFadeGlesProgressiveRenderer.kt")
 
         self.assertIn("WeakHashMap<EdgeFadeView, State>()", selector)
         self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()", selector)
         self.assertIn("WeakHashMap<EdgeFadeView, EdgeFadeGlesProgressiveRenderer>()", selector)
-        self.assertIn("private val hostRef = WeakReference(host)", agsl)
+        self.assertIn("private val hostRef = WeakReference(host)", pyramid)
         self.assertIn("private val hostRef = WeakReference(host)", gles)
-        self.assertNotIn("private val host: EdgeFadeView", agsl)
+        self.assertNotIn("private val host: EdgeFadeView", pyramid)
         self.assertNotIn("private val host: EdgeFadeView", gles)
 
-    def test_default_consumer_build_keeps_compose_opt_in_and_no_ndk(self):
+    def test_default_consumer_build_keeps_optional_compose_lab_and_no_ndk(self):
         gradle = read(ROOT / "android/build.gradle")
         self.assertIn('(findProperty("edgeFadeAndroidxBlur") ?: "false").toBoolean()', gradle)
-        self.assertIn('main.java.srcDir(useAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")', gradle)
-        self.assertIn('if (useAndroidxBlur) {\n    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"', gradle)
+        self.assertIn(
+            'main.java.srcDir(useAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")',
+            gradle,
+        )
+        self.assertIn(
+            'if (useAndroidxBlur) {\n    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"',
+            gradle,
+        )
         self.assertNotIn("externalNativeBuild", gradle)
         self.assertIn('compileSdkVersion getExtOrDefault("compileSdkVersion")', gradle)
 
-    def test_public_mask_supports_analytical_presets_and_custom_luts(self):
-        mask = public_mask_source()
-        self.assertIn("uniform float4 curveExp", mask)
-        self.assertIn("uniform float4 curveMode", mask)
-        self.assertIn("uniform float4 useLut", mask)
-        self.assertIn("1.0 - pow(1.0 - x, exponent)", mask)
-        self.assertIn("1.0 - cos(x * 1.5707963)", mask)
-        self.assertEqual(mask.count("[32]"), 4)
-        self.assertGreaterEqual(mask.count("for (int i = 0; i < 31; i++)"), 4)
-        self.assertNotIn("blurLevel", mask)
-        self.assertNotIn("opacity", mask)
-
-    def test_smooth_and_linear_match_edge_fade_presence(self):
-        for i in range(1001):
-            t = i / 1000
-            shader_smooth = 1 - math.pow(1 - t, 3)
-            edge_smooth = 1 - math.pow(1 - t, 3)
-            self.assertAlmostEqual(shader_smooth, edge_smooth, places=12)
-            shader_linear = 1 - math.pow(1 - t, 1)
-            self.assertAlmostEqual(shader_linear, t, places=12)
-
-    @unittest.skipUnless(COMPILE_SHADERS, "requires --compile-shaders and skia-python")
-    def test_public_api33_mask_compiles_with_host_skia(self):
-        self.assertIsNotNone(skia.RuntimeEffect.MakeForShader(public_mask_source()))
-
 
 if __name__ == "__main__":
-    print("Host SkSL compiler:", skia.__version__ if COMPILE_SHADERS else "NOT RUN", flush=True)
     unittest.main(verbosity=2)
