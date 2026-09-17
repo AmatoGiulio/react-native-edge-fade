@@ -49,6 +49,12 @@ internal class EdgeFadeProgressiveStripRenderer(
   private val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
   private var key: Key? = null
 
+  /**
+   * Called by the selector on every relevant prop/layout transaction. Api33.apply
+   * deliberately clears a stale View effect before calling this method, so even
+   * an unchanged Key must reinstall the cached configuration here. draw() does
+   * not call prepare every frame once a configuration exists.
+   */
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val width = host.width
@@ -70,8 +76,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveRight = host.curveRight,
     )
 
-    if (key == next) return true
-
     if (next.radius <= 0f) {
       host.setRenderEffect(null)
       key = next
@@ -89,7 +93,7 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     Trace.beginSection("EdgeFade.progressive.fullView.draw")
     return try {
-      if (!prepare()) return false
+      if (key == null && !prepare()) return false
       recordChildren(canvas)
       true
     } finally {
