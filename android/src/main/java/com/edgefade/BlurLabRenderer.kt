@@ -7,7 +7,7 @@ import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.annotation.RequiresApi
 
-/** Strip-local two-pass experiment. Mutable shader state is owned by each strip of each view. */
+/** Strip-local progressive benchmark renderer. */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class BlurLabRenderer {
   private class Key(
@@ -15,6 +15,7 @@ internal class BlurLabRenderer {
     val top: Float, val bottom: Float, val left: Float, val right: Float,
     val radius: Float, val progression: Float, val curve: String, val backend: String,
   )
+
   private class Strip(var band: BlurLabGeometry.Band) {
     val node = RenderNode("EdgeFade.BlurLab.strip")
     val mask = RuntimeShader(BlurLabShaders.mask)
@@ -22,7 +23,10 @@ internal class BlurLabRenderer {
     var vertical: RuntimeShader? = null
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
+
   private val content = RenderNode("EdgeFade.BlurLab.content")
+  private val gaussianScale = BlurLabGaussianScaleRenderer()
+  private var gaussianScaleActive = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var curveKey: String? = null
@@ -36,24 +40,43 @@ internal class BlurLabRenderer {
     val r = BlurLabGeometry.edge(view.rightDepth, w)
     val radius = BlurLabGeometry.radius(view.radiusPx)
     val progression = BlurLabGeometry.finite(view.progression, 1f).coerceIn(0.05f, 1f)
+    val next = Key(w, h, t, b, l, r, radius, progression, view.curve, backend)
+
+    if (backend == "gaussian-scale" && gaussianScale.isEligible(view)) {
+      strips.forEach { it.release() }
+      strips = emptyList()
+      if (!gaussianScale.prepare(view)) {
+        throw RuntimeException("Gaussian scale-space renderer could not prepare")
+      }
+      gaussianScaleActive = true
+      key = next
+      return
+    }
+
+    if (gaussianScaleActive) {
+      gaussianScale.release()
+      gaussianScaleActive = false
+    }
+
     val old = key
-    // No Key/list/uniform allocations during unchanged scrolling.
     if (old != null && old.width == w && old.height == h &&
         old.top == t && old.bottom == b && old.left == l && old.right == r &&
         old.radius == radius && old.progression == progression &&
         old.curve == view.curve && old.backend == backend) return
-    configure(Key(w, h, t, b, l, r, radius, progression, view.curve, backend))
+    configure(next)
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
+    if (gaussianScaleActive) {
+      if (!gaussianScale.draw(canvas, view, record)) record(canvas)
+      return
+    }
+
     content.setPosition(0, 0, view.width, view.height)
-    // Materialize once so strip references do not replay WebView's draw
-    // functor. This full-view buffer is an explicit experimental cost.
     content.setUseCompositingLayer(true, null)
     val recording = content.beginRecording()
     try { record(recording) } finally { content.endRecording() }
 
-    // Replace bands, rather than drawing blur over sharp translucent pixels.
     val sharpSave = canvas.save()
     try {
       for (strip in strips) clipOut(canvas, strip.band.visible)
@@ -72,7 +95,6 @@ internal class BlurLabRenderer {
       try {
         val v = strip.band.visible
         canvas.clipRect(v.left, v.top, v.right, v.bottom)
-        // Disjoint output ownership; every mask still sees ALL four edges.
         for (previous in 0 until index) clipOut(canvas, strips[previous].band.visible)
         canvas.translate(src.left.toFloat(), src.top.toFloat())
         canvas.drawRenderNode(strip.node)
@@ -88,22 +110,23 @@ internal class BlurLabRenderer {
       (previous.remove(band.edge) ?: Strip(band)).also { it.band = band }
     }
     previous.values.forEach { it.release() }
-    // A changing radius/resized strip reuses its compiled shader objects.
+
     if (curveKey != next.curve) {
       curveSamples = FloatArray(32) {
         BlurLabGeometry.finite(EdgeFadeCurves.presenceAt(next.curve, it / 31f)).coerceIn(0f, 1f)
       }
       curveKey = next.curve
     }
+
     for (strip in strips) {
       val src = strip.band.source
       strip.node.setPosition(0, 0, src.width, src.height)
       strip.mask.setFloatUniform("origin", src.left.toFloat(), src.top.toFloat())
       strip.mask.setFloatUniform("viewSize", next.width.toFloat(), next.height.toFloat())
-      // Android takes FloatArray here, not vararg: do not spread the arrays.
       strip.mask.setFloatUniform("edges", edges)
       strip.mask.setFloatUniform("progression", next.progression)
       strip.mask.setFloatUniform("curve", curveSamples)
+
       val effect = if (next.backend == "androidx") {
         AndroidxBlurAdapter.create(src.width, src.height, next.radius, strip.mask)
       } else {
@@ -133,6 +156,8 @@ internal class BlurLabRenderer {
   }
 
   fun release() {
+    gaussianScale.release()
+    gaussianScaleActive = false
     strips.forEach { it.release() }
     strips = emptyList()
     content.discardDisplayList()
