@@ -143,6 +143,9 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
+  // Oversized radii are recoverable, not a capability failure. Both public
+  // progressive renderers clamp their effective radius to
+  // BlurLabGeometry.MAX_RADIUS_PX, matching AndroidX's 150px spatial-blur cap.
   private fun progressiveFallbackReason(view: EdgeFadeView): String? = when {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
