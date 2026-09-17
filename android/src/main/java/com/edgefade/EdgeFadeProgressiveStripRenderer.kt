@@ -6,6 +6,8 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
@@ -93,6 +95,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   // the weak-key lifecycle if React Native ever skips an explicit drop callback.
   private val hostRef = WeakReference(host)
   private val content = RenderNode("EdgeFade.Progressive.content")
+  private var contentLayerEnabled = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
 
@@ -126,7 +129,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (next.radius <= 0f) {
       strips.forEach { it.release() }
       strips = emptyList()
-      content.setUseCompositingLayer(false, null)
+      setContentLayerEnabled(false)
       content.discardDisplayList()
       key = next
       return true
@@ -160,12 +163,15 @@ internal class EdgeFadeProgressiveStripRenderer(
         return true
       }
 
-      // Materialize the child scene once. The sharp base and every filtered
-      // strip reference this same recording, so the expensive blur work stays
-      // edge-local while content identity is identical across all passes.
+      // WebView's Chromium draw functor must be replayed only once per frame,
+      // so those scenes retain a materialized content layer. Ordinary React
+      // content stays layer-less: forcing a full-viewport texture every frame
+      // adds large GPU/buffer bandwidth before the edge-local blur even starts.
+      // The same recorded RenderNode is still the single source for the sharp
+      // base and every strip, preserving pixel identity across all passes.
       tracePhase("EdgeFade.progressive.recordContent") {
         content.setPosition(0, 0, host.width, host.height)
-        content.setUseCompositingLayer(true, null)
+        setContentLayerEnabled(containsWebView(host))
         val recording = content.beginRecording()
         try {
           recordChildren(recording)
@@ -355,6 +361,21 @@ internal class EdgeFadeProgressiveStripRenderer(
     return result
   }
 
+  private fun setContentLayerEnabled(enabled: Boolean) {
+    if (contentLayerEnabled == enabled) return
+    contentLayerEnabled = enabled
+    content.setUseCompositingLayer(enabled, null)
+  }
+
+  private fun containsWebView(parent: ViewGroup): Boolean {
+    for (index in 0 until parent.childCount) {
+      val child = parent.getChildAt(index)
+      if (child is WebView) return true
+      if (child is ViewGroup && containsWebView(child)) return true
+    }
+    return false
+  }
+
   private fun clipOut(canvas: Canvas, rect: Rect) {
     canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
   }
@@ -362,7 +383,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   fun release() {
     strips.forEach { it.release() }
     strips = emptyList()
-    content.setUseCompositingLayer(false, null)
+    setContentLayerEnabled(false)
     content.discardDisplayList()
     key = null
   }
