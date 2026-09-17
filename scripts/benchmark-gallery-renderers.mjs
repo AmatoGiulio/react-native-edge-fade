@@ -95,6 +95,20 @@ function metrics(text) {
   };
 }
 
+function assertReleasePackage() {
+  const packagePath = adb(['shell', 'pm', 'path', PACKAGE], false);
+  if (!/^package:/m.test(packagePath)) {
+    throw new Error(`${PACKAGE} is not installed.`);
+  }
+
+  const dump = adb(['shell', 'dumpsys', 'package', PACKAGE], false);
+  if (/pkgFlags=\[[^\]]*DEBUGGABLE/m.test(dump)) {
+    throw new Error(
+      `${PACKAGE} is debuggable. Install the release variant before benchmarking.`
+    );
+  }
+}
+
 function launch(renderer) {
   adb(['logcat', '-c']);
   shell(`am force-stop ${PACKAGE}`);
@@ -124,50 +138,43 @@ function rendererLogs() {
 }
 
 function verifyRenderer(renderer) {
+  if (renderer === 'off') return;
+
   let lastDiagnostic = '';
 
   for (let attempt = 1; attempt <= 8; attempt++) {
-    if (renderer === 'off') {
-      const activities = shell('dumpsys activity activities', false);
-      const onRoute =
-        activities.includes('gallery-renderer-test') &&
-        activities.includes('renderer=off');
-      if (onRoute) return;
-      lastDiagnostic = `attempt ${attempt}: gallery-renderer-test?renderer=off not active`;
-    } else {
-      const logs = rendererLogs();
+    const logs = rendererLogs();
 
-      if (renderer === 'public') {
-        const activated =
-          logs.includes('Using official AndroidX progressive blur on API 33+') ||
-          logs.includes('Using pure progressive AGSL blur on API 33+') ||
-          logs.includes('Using GLES 3.0 continuous progressive blur on API 31-32');
-        if (activated) return;
+    if (renderer === 'public') {
+      const activated =
+        logs.includes('Using official AndroidX progressive blur on API 33+') ||
+        logs.includes('Using pure progressive AGSL blur on API 33+') ||
+        logs.includes('Using GLES 3.0 continuous progressive blur on API 31-32');
+      if (activated) return;
 
-        lastDiagnostic = `attempt ${attempt}: public progressive activation log not found`;
-        if (/Progressive unavailable|draw failed|frame unavailable|fallback/i.test(logs)) {
-          throw new Error(
-            `Public renderer failed during activation.\n${logs.trim()}`
-          );
-        }
-      } else {
-        const expected = `Renderer active: requested=${renderer} active=${renderer}`;
-        if (logs.includes(expected)) return;
-
-        const disabled = `Renderer active: requested=${renderer} active=off`;
-        if (logs.includes(disabled)) {
-          throw new Error(
-            `${renderer} renderer was requested but native reported active=off.\n${logs.trim()}`
-          );
-        }
-        lastDiagnostic = `attempt ${attempt}: missing '${expected}'`;
+      lastDiagnostic = `attempt ${attempt}: public progressive activation log not found`;
+      if (/Progressive unavailable|draw failed|frame unavailable|fallback/i.test(logs)) {
+        throw new Error(
+          `Public renderer failed during activation.\n${logs.trim()}`
+        );
       }
+    } else {
+      const expected = `Renderer active: requested=${renderer} active=${renderer}`;
+      if (logs.includes(expected)) return;
+
+      const disabled = `Renderer active: requested=${renderer} active=off`;
+      if (logs.includes(disabled)) {
+        throw new Error(
+          `${renderer} renderer was requested but native reported active=off.\n${logs.trim()}`
+        );
+      }
+      lastDiagnostic = `attempt ${attempt}: missing '${expected}'`;
     }
 
     sleep(350);
   }
 
-  const logs = renderer === 'off' ? '' : rendererLogs();
+  const logs = rendererLogs();
   throw new Error(
     `Renderer verification failed for ${renderer}.\n${lastDiagnostic}` +
       (logs.trim() ? `\n${logs.trim()}` : '')
@@ -234,6 +241,8 @@ function aggregate(results, renderer) {
     deadlineMissed: rows.reduce((sum, row) => sum + (row.deadlineMissed ?? 0), 0),
   };
 }
+
+assertReleasePackage();
 
 const sdk = Number(shell('getprop ro.build.version.sdk'));
 const model = shell('getprop ro.product.model');
