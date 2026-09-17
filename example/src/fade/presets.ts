@@ -8,16 +8,19 @@ export interface Bezier {
 }
 
 /**
- * Visual starting point shared with the Blur Lab.
- * The Gallery remains a real public EdgeFadeView; only its initial tuning is
- * aligned with the Lab reference.
+ * Canonical Blur Lab visual profile.
+ * Gallery defaults and the comparison lab must stay aligned to these values.
  */
 export const BLUR_LAB_DEFAULTS = {
   top: 92,
   bottom: 112,
   left: 0,
   right: 0,
+  allEdgeDepth: 48,
+  blurRadius: 24,
   progression: 1,
+  curve: 'smooth',
+  cornerRadius: 24,
 } as const;
 
 /** Exact cubic form of the Blur Lab `smooth` profile. */
