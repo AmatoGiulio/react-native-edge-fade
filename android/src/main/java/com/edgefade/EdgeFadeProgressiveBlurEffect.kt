@@ -147,8 +147,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
     view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
-    view.blurRadius > BlurLabGeometry.MAX_RADIUS_PX ->
-      "blurRadius ${view.blurRadius}px exceeds ${BlurLabGeometry.MAX_RADIUS_PX}px"
     view.overlayColor != null ||
       view.overlayColorTop != null ||
       view.overlayColorBottom != null ||
