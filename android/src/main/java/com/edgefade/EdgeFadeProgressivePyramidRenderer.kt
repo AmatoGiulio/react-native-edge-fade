@@ -21,10 +21,10 @@ import kotlin.math.roundToInt
  * Benchmark-only renderer used to test whether the expensive part of the API
  * 33+ path is the true per-pixel variable-radius Gaussian itself.
  *
- * Vertical fades use four native uniform Gaussian levels and progressively
+ * Vertical fades use five native uniform Gaussian levels and progressively
  * replace the previous level through curve-shaped alpha masks. The masks follow
  * the same EdgeFade presence curve/progression contract, but radius is sampled at
- * four points instead of being evaluated continuously per pixel. There is no
+ * five points instead of being evaluated continuously per pixel. There is no
  * frost saturation/lift/tint. This branch intentionally targets the Gallery
  * vertical benchmark only; unsupported geometry returns false to the host.
  */
@@ -120,7 +120,7 @@ internal class EdgeFadeProgressivePyramidRenderer(
 
     if (!announced) {
       announced = true
-      Log.i(TAG, "Using native Gaussian pyramid benchmark path (4 uniform levels, curve-shaped interpolation).")
+      Log.i(TAG, "Using native Gaussian pyramid benchmark path (5 uniform levels, curve-shaped interpolation).")
     }
     return true
   }
@@ -178,9 +178,6 @@ internal class EdgeFadeProgressivePyramidRenderer(
     val visible = state.band.visible
     val source = state.band.source
 
-    // Radius level zero is the original sharp content. Every subsequent native
-    // blur replaces it progressively. Because each mask is fully opaque past its
-    // interval, any pixel only interpolates its two neighboring radius samples.
     val baseSave = canvas.save()
     try {
       canvas.clipRect(visible.left, visible.top, visible.right, visible.bottom)
@@ -338,6 +335,6 @@ internal class EdgeFadeProgressivePyramidRenderer(
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
     private const val MASK_SAMPLES = 33
-    private val LEVEL_FRACTIONS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f)
+    private val LEVEL_FRACTIONS = floatArrayOf(0.2f, 0.4f, 0.6f, 0.8f, 1f)
   }
 }
