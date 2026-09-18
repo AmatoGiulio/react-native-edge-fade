@@ -151,15 +151,15 @@ function verify(renderer) {
       const expectedLog =
         `Renderer active: requested=${renderer} active=${renderer}`;
       const hwuiSpecific =
-        renderer === 'hwui-scaled' &&
         lastLogs.includes(
           'Using HWUI scaled continuous Gaussian benchmark path (0.75x strips).'
         );
 
-      if (
+      if (renderer === 'hwui-scaled') {
+        if (hwuiSpecific) return;
+      } else if (
         lastUi.includes(expectedUi) ||
-        lastLogs.includes(expectedLog) ||
-        hwuiSpecific
+        lastLogs.includes(expectedLog)
       ) {
         return;
       }
