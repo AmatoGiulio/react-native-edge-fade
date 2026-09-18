@@ -20,6 +20,8 @@ assert "BLEND_RADIUS_PX" not in renderer
 assert "BlurLabShaders.pass(false)" in renderer
 assert "BlurLabShaders.pass(true)" in renderer
 assert "rc.scale(zone.scale, zone.scale)" in renderer
+draw_body = renderer.split("fun draw(", 1)[1].split("private fun drawZone", 1)[0]
+assert "prepare(view)" not in draw_body, "draw() must preserve the switch radius selected by BlurLabRenderer.prepare()"
 assert 'backend == "hybrid-continuous"' in lab
 strip_release = lab.index("fun release() { node.setRenderEffect(null); node.discardDisplayList() }")
 switch_parser = lab.index("private fun hybridSwitchRadius")
