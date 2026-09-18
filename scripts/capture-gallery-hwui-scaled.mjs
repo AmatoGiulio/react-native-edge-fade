@@ -58,25 +58,53 @@ function launch(renderer) {
 }
 
 function verify(renderer) {
+  let lastUi = '';
   let lastLogs = '';
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const logs = adb(['logcat', '-d', '-s', 'EdgeFade.BlurLab:I', '*:S'], false);
-    lastLogs = logs;
 
-    const generic = `Renderer active: requested=${renderer} active=${renderer}`;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      shell('uiautomator dump /sdcard/edgefade-ui.xml >/dev/null 2>&1');
+      lastUi = shell('cat /sdcard/edgefade-ui.xml', false);
+
+      const expectedUi =
+        `gallery-renderer requested=${renderer} active=${renderer}`;
+      if (lastUi.includes(expectedUi)) return;
+
+      const disabledUi =
+        `gallery-renderer requested=${renderer} active=off`;
+      if (lastUi.includes(disabledUi)) {
+        throw new Error(
+          `${renderer} disabled according to UI state:\n${lastUi}`
+        );
+      }
+    } catch (error) {
+      // UIAutomator can transiently fail while the activity is settling.
+      if (String(error).includes('disabled according to UI state')) throw error;
+    }
+
+    lastLogs = adb(['logcat', '-d', '-s', 'EdgeFade.BlurLab:I', '*:S'], false);
+    const generic =
+      `Renderer active: requested=${renderer} active=${renderer}`;
     const backendSpecific =
       renderer === 'hwui-scaled' &&
-      logs.includes('Using HWUI scaled continuous Gaussian benchmark path (0.75x strips).');
+      lastLogs.includes(
+        'Using HWUI scaled continuous Gaussian benchmark path (0.75x strips).'
+      );
 
-    if (logs.includes(generic) || backendSpecific) return;
+    if (lastLogs.includes(generic) || backendSpecific) return;
 
-    const disabled = `Renderer active: requested=${renderer} active=off`;
-    if (logs.includes(disabled)) {
-      throw new Error(`${renderer} disabled:\n${logs}`);
+    const disabled =
+      `Renderer active: requested=${renderer} active=off`;
+    if (lastLogs.includes(disabled)) {
+      throw new Error(`${renderer} disabled:\n${lastLogs}`);
     }
-    sleep(250);
+
+    sleep(300);
   }
-  throw new Error(`Could not verify ${renderer}. BlurLab logs:\n${lastLogs}`);
+
+  throw new Error(
+    `Could not verify ${renderer}.\nUI dump:\n${lastUi}\nBlurLab logs:\n${lastLogs}`
+  );
 }
 
 function capture(renderer, stamp) {
