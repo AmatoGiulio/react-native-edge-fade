@@ -116,8 +116,9 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
   const contentHeight = useSharedValue(0);
   const stressOriginMs = useSharedValue(-1);
 
+  const stressMode = stress != null;
   const stressActive = stress?.autoScroll === true;
-  const imageRenderer = stressActive ? stress.imageRenderer : 'expo';
+  const imageRenderer = stressMode ? stress.imageRenderer : 'expo';
   const stressCycleMs = stress?.cycleMs ?? 4200;
 
   const renderItem = useCallback(
@@ -168,31 +169,31 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
 
   const topBandStyle = useAnimatedStyle(() => ({
     height: top.get(),
-    opacity: !stressActive && showBands && top.get() > 0 ? 1 : 0,
+    opacity: !stressMode && showBands && top.get() > 0 ? 1 : 0,
   }));
   const bottomBandStyle = useAnimatedStyle(() => ({
     height: bottom.get(),
-    opacity: !stressActive && showBands && bottom.get() > 0 ? 1 : 0,
+    opacity: !stressMode && showBands && bottom.get() > 0 ? 1 : 0,
   }));
 
-  const edgeTop = stressActive ? STRESS_TOP_BOTTOM_DP : top;
-  const edgeBottom = stressActive ? STRESS_TOP_BOTTOM_DP : bottom;
-  const edgeLeft = stressActive ? 0 : left;
-  const edgeRight = stressActive ? 0 : right;
-  const edgeRadius = stressActive ? 0 : radius;
-  const edgeCurve = stressActive ? 'smooth' : curve;
-  const edgeMode = stressActive ? 'blur' : mode;
-  const edgeBlurRadius = stressActive
+  const edgeTop = stressMode ? STRESS_TOP_BOTTOM_DP : top;
+  const edgeBottom = stressMode ? STRESS_TOP_BOTTOM_DP : bottom;
+  const edgeLeft = stressMode ? 0 : left;
+  const edgeRight = stressMode ? 0 : right;
+  const edgeRadius = stressMode ? 0 : radius;
+  const edgeCurve = stressMode ? 'smooth' : curve;
+  const edgeMode = stressMode ? 'blur' : mode;
+  const edgeBlurRadius = stressMode
     ? stress.effectEnabled
       ? stress.radiusDp
       : 0
     : blurRadius;
-  const edgeProgression = stressActive ? 1 : frostProgression;
+  const edgeProgression = stressMode ? 1 : frostProgression;
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
       <AnimatedEdgeFadeView
-        testID={stressActive ? 'gallery-stress-edge-fade' : undefined}
+        testID={stressMode ? 'gallery-stress-edge-fade' : undefined}
         top={edgeTop}
         bottom={edgeBottom}
         left={edgeLeft}
@@ -210,7 +211,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         ) : (
           <AnimatedFlashList
             ref={listRef}
-            testID={stressActive ? 'gallery-stress-list' : undefined}
+            testID={stressMode ? 'gallery-stress-list' : undefined}
             data={catalog}
             extraData={imageRenderer}
             numColumns={4}
@@ -219,7 +220,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.listContent}
             maintainVisibleContentPosition={
-              stressActive ? { disabled: true } : undefined
+              stressMode ? { disabled: true } : undefined
             }
             onLayout={(event) => {
               viewportHeight.value = event.nativeEvent.layout.height;
