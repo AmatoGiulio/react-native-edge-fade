@@ -222,7 +222,6 @@ internal class BlurLabHwuiScaledRenderer {
       )
     }
 
-    strip.composite.setInputShader("content", strip.vertical)
     strip.composite.setInputShader("mask", strip.mask)
     strip.composite.setFloatUniform("fullBlurRadius", key.radius)
 
