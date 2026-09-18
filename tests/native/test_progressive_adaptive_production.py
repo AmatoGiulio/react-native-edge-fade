@@ -37,14 +37,12 @@ assert "scaledRadius = key.radius * WORK_SCALE" in scaled
 assert "recording.scale(WORK_SCALE, WORK_SCALE)" in scaled
 assert "canvas.scale(1f / WORK_SCALE, 1f / WORK_SCALE)" in scaled
 assert "fullBlurRadius" in scaled
-assert "BlendMode.DST_OUT" in scaled
-assert "sharp * (1 - blurMix) + scaledBlur * blurMix" in scaled
-assert "SCALED_ERASE_SHADER" in scaled
-assert "val eraseMask = RuntimeShader" in scaled
-assert 'strip.eraseMask.setFloatUniform("origin", 0f, 0f)' in scaled
-assert 'strip.erase.setInputShader("mask", strip.eraseMask)' in scaled
-assert "mask.eval(coord).a" in scaled
-assert "mask.eval(coord * workScale)" not in scaled
+assert 'RenderNode("EdgeFade.Progressive.scaled.blurSource")' in scaled
+assert "host.background?.draw(recording)" in scaled
+assert "recording.drawRenderNode(blurSource)" in scaled
+assert "validated BlurLab renderer exactly" in scaled
+assert "DST_OUT" not in scaled
+assert "SCALED_ERASE_SHADER" not in scaled
 
 # Production parity: all four edges and all four independent curve uniforms.
 for token in (
