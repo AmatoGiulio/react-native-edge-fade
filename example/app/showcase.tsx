@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -8,124 +8,168 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 import { STILLS_ITEMS } from '@/data/catalog';
-import { useScheme } from '@/theme';
 
 const HERO = STILLS_ITEMS[0]!;
 const THUMBS = [STILLS_ITEMS[1]!, STILLS_ITEMS[8]!, STILLS_ITEMS[10]!];
 
 const OPEN_MS = 560;
+const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
 export default function ProgressiveShowcaseRoute() {
-  const scheme = useScheme();
-  const dark = scheme === 'dark';
+  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [open, setOpen] = useState(false);
+
   const progress = useSharedValue(0);
+  const bottomDepth = useSharedValue(118);
 
-  const cardWidth = Math.min(width - 36, 430);
-  const cardHeight = Math.min(height * 0.69, cardWidth * 1.48);
-  const bottomClosed = 12;
-  const bottomOpen = Math.min(cardHeight * 0.78, 440);
-  const bottom = useSharedValue(bottomClosed);
+  const openDepth = Math.min(height * 0.7, 560);
+  const dockClosedWidth = Math.min(width - 28, 420);
+  const dockOpenWidth = Math.min(width - 28, 440);
 
-  useEffect(() => {
-    bottom.value = withDelay(
-      320,
-      withTiming(bottomOpen, { duration: OPEN_MS, easing: EASE })
-    );
-  }, [bottom, bottomOpen]);
-
-  useEffect(() => {
-    progress.value = withDelay(
-      320,
-      withTiming(1, { duration: OPEN_MS, easing: EASE })
-    );
-    setOpen(true);
-  }, [progress]);
-
-  const cardStyle = useAnimatedStyle(() => ({
+  const dockStyle = useAnimatedStyle(() => ({
+    width: interpolate(
+      progress.value,
+      [0, 1],
+      [dockClosedWidth, dockOpenWidth]
+    ),
+    height: interpolate(progress.value, [0, 1], [68, 294]),
+    borderRadius: interpolate(progress.value, [0, 1], [24, 32]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [8, 0]) },
-      { scale: interpolate(progress.value, [0, 1], [0.992, 1]) },
+      { translateY: interpolate(progress.value, [0, 1], [0, -18]) },
     ],
   }));
 
-  const bodyStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.42, 1], [0, 0.16, 1]),
+  const collapsedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.2, 0.45], [1, 0.55, 0]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [18, 0]) },
+      { translateY: interpolate(progress.value, [0, 1], [0, -18]) },
+      { scale: interpolate(progress.value, [0, 0.5], [1, 0.96]) },
+    ],
+  }));
+
+  const expandedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.2, 0.48, 1], [0, 0.2, 1]),
+    transform: [
+      { translateY: interpolate(progress.value, [0, 1], [24, 0]) },
+      { scale: interpolate(progress.value, [0, 1], [0.985, 1]) },
+    ],
+  }));
+
+  const heroStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(progress.value, [0, 1], [1, 1.018]) },
+      { translateY: interpolate(progress.value, [0, 1], [0, -8]) },
     ],
   }));
 
   const toggle = () => {
     const next = !open;
     setOpen(next);
-    const duration = next ? OPEN_MS : 500;
+    const duration = next ? OPEN_MS : CLOSE_MS;
+
     progress.value = withTiming(next ? 1 : 0, {
       duration,
       easing: EASE,
     });
-    bottom.value = withTiming(next ? bottomOpen : bottomClosed, {
+
+    bottomDepth.value = withTiming(next ? openDepth : 118, {
       duration,
       easing: EASE,
     });
   };
 
   return (
-    <View style={[s.page, { backgroundColor: dark ? '#000' : '#f5f5f3' }]}>
+    <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
+
+      <AnimatedEdgeFadeView
+        mode="blur"
+        top={0}
+        bottom={bottomDepth}
+        left={0}
+        right={0}
+        curve="smooth"
+        blurRadius={150}
+        blurProgression={1}
+        style={StyleSheet.absoluteFill}
+      >
+        <Animated.View style={[StyleSheet.absoluteFill, heroStyle]}>
+          <Image
+            source={HERO.source}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            contentPosition="center"
+          />
+        </Animated.View>
+      </AnimatedEdgeFadeView>
+
+      <View pointerEvents="none" style={s.scrim} />
 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Close showcase"
         hitSlop={18}
         onPress={() => router.back()}
-        style={s.close}
+        style={[s.close, { top: insets.top + 8 }]}
       >
-        <Text style={[s.closeText, { color: dark ? '#fff' : '#111' }]}>×</Text>
+        <Text style={s.closeText}>×</Text>
       </Pressable>
 
       <Animated.View
         style={[
-          s.card,
-          {
-            width: cardWidth,
-            height: cardHeight,
-            backgroundColor: dark ? '#111' : '#fff',
-          },
-          cardStyle,
+          s.dock,
+          { bottom: insets.bottom + 12 },
+          dockStyle,
         ]}
       >
-        <AnimatedEdgeFadeView
-          mode="blur"
-          top={0}
-          bottom={bottom}
-          curve="smooth"
-          blurRadius={150}
-          blurProgression={1}
-          style={StyleSheet.absoluteFill}
+        <Animated.View
+          pointerEvents={open ? 'none' : 'auto'}
+          style={[s.collapsed, collapsedStyle]}
         >
-          <Image source={HERO.source} style={StyleSheet.absoluteFill} contentFit="cover" />
-        </AnimatedEdgeFadeView>
+          <View style={s.miniThumbs}>
+            {THUMBS.map((item) => (
+              <Image
+                key={item.id}
+                source={item.source}
+                style={s.miniThumb}
+                contentFit="cover"
+              />
+            ))}
+          </View>
 
-        <Animated.View pointerEvents="none" style={[s.copy, bodyStyle]}>
+          <View style={s.collapsedCopy}>
+            <Text style={s.collapsedEyebrow}>PROGRESSIVE BLUR</Text>
+            <Text style={s.collapsedLabel}>Open the edge</Text>
+          </View>
+
+          <View style={s.chevron}>
+            <Text style={s.chevronText}>↑</Text>
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          pointerEvents={open ? 'auto' : 'none'}
+          style={[s.expanded, expandedStyle]}
+        >
           <Text style={s.eyebrow}>PROGRESSIVE BLUR</Text>
           <Text style={s.title}>Beautifully soft.{"\n"}Native at the edge.</Text>
           <Text style={s.body}>
             A spatial Gaussian blur that grows into the content instead of
             hiding it behind a flat overlay.
           </Text>
+
           <View style={s.thumbRow}>
             {THUMBS.map((item) => (
               <Image
@@ -135,6 +179,12 @@ export default function ProgressiveShowcaseRoute() {
                 contentFit="cover"
               />
             ))}
+          </View>
+
+          <View style={s.metaRow}>
+            <Text style={s.meta}>150 PX</Text>
+            <Text style={s.meta}>NATIVE</Text>
+            <Text style={s.meta}>PROGRESSIVE</Text>
           </View>
         </Animated.View>
 
@@ -146,7 +196,10 @@ export default function ProgressiveShowcaseRoute() {
         />
       </Animated.View>
 
-      <Text style={[s.hint, { color: dark ? '#777' : '#999' }]}>
+      <Text
+        pointerEvents="none"
+        style={[s.hint, { bottom: insets.bottom + 94 }]}
+      >
         TAP TO {open ? 'COLLAPSE' : 'EXPAND'}
       </Text>
     </View>
@@ -156,70 +209,136 @@ export default function ProgressiveShowcaseRoute() {
 const s = StyleSheet.create({
   page: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
+    backgroundColor: '#000',
+  },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.08)',
   },
   close: {
     position: 'absolute',
-    top: 54,
-    right: 24,
-    zIndex: 10,
-    width: 40,
-    height: 40,
+    right: 18,
+    zIndex: 20,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeText: { fontSize: 32, fontWeight: '200', lineHeight: 34 },
-  card: {
-    borderRadius: 28,
+  closeText: {
+    color: '#fff',
+    fontSize: 30,
+    lineHeight: 32,
+    fontWeight: '200',
+  },
+  dock: {
+    position: 'absolute',
+    alignSelf: 'center',
     overflow: 'hidden',
   },
-  copy: {
-    position: 'absolute',
-    left: 26,
-    right: 26,
-    bottom: 28,
+  collapsed: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  miniThumbs: {
+    flexDirection: 'row',
+  },
+  miniThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    marginRight: -8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  collapsedCopy: {
+    flex: 1,
+    marginLeft: 18,
+  },
+  collapsedEyebrow: {
+    color: 'rgba(255,255,255,0.52)',
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 1.6,
+    fontWeight: '700',
+  },
+  collapsedLabel: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '650',
+    marginTop: 2,
+  },
+  chevron: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.09)',
+  },
+  chevronText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  expanded: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingBottom: 22,
   },
   eyebrow: {
-    color: '#fff',
-    opacity: 0.7,
-    fontSize: 10,
-    lineHeight: 13,
-    letterSpacing: 2.2,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 2.1,
     fontWeight: '700',
-    marginBottom: 10,
+    marginBottom: 9,
   },
   title: {
     color: '#fff',
-    fontSize: 34,
-    lineHeight: 35,
-    letterSpacing: -1.35,
+    fontSize: 32,
+    lineHeight: 33,
+    letterSpacing: -1.3,
     fontWeight: '700',
     maxWidth: 330,
   },
   body: {
-    color: 'rgba(255,255,255,0.72)',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 13,
-    maxWidth: 315,
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 12,
+    maxWidth: 310,
   },
   thumbRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 18,
+    marginTop: 17,
   },
   thumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    width: 46,
+    height: 46,
+    borderRadius: 11,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 16,
+  },
+  meta: {
+    color: 'rgba(255,255,255,0.42)',
+    fontSize: 8,
+    letterSpacing: 1.2,
+    fontWeight: '700',
   },
   hint: {
     position: 'absolute',
-    bottom: 32,
-    fontSize: 9,
-    letterSpacing: 1.8,
+    alignSelf: 'center',
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 8,
+    letterSpacing: 1.7,
     fontWeight: '700',
   },
 });
