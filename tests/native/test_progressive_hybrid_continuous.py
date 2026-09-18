@@ -21,7 +21,11 @@ assert "BlurLabShaders.pass(false)" in renderer
 assert "BlurLabShaders.pass(true)" in renderer
 assert "rc.scale(zone.scale, zone.scale)" in renderer
 draw_body = renderer.split("fun draw(", 1)[1].split("private fun drawZone", 1)[0]
-assert "prepare(view)" not in draw_body, "draw() must preserve the switch radius selected by BlurLabRenderer.prepare()"
+draw_code = "\n".join(
+    line for line in draw_body.splitlines()
+    if not line.lstrip().startswith("//")
+)
+assert "prepare(view)" not in draw_code, "draw() must preserve the switch radius selected by BlurLabRenderer.prepare()"
 assert 'backend == "hybrid-continuous"' in lab
 assert "hybridSwitchRadius" not in lab
 prepare_body = lab.split("fun prepare(view: BlurLabView, backend: String)", 1)[1].split("fun draw(", 1)[0]
