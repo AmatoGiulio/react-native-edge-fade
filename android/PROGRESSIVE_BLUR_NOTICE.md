@@ -26,11 +26,13 @@ maximum radius plus one paired bilinear tap so visible strip pixels have the
 same sampling neighborhood as the full-surface shader except at the actual view
 boundary.
 
-At high maximum radii the API 33+ production selector may render the entire
-progressive field at 0.75x working resolution, scaling geometry and Gaussian
-radius together before compositing over the native-resolution source. This is a
-whole-renderer resolution choice with hysteresis, not a spatial split between
-two blur implementations inside the same edge.
+At high maximum radii the API 33+ production selector may render validated
+top/bottom-only progressive fields at 0.75x working resolution, scaling
+geometry and Gaussian radius together before compositing over the
+native-resolution source. Mixed-axis fields (left/right combined with
+top/bottom) remain on the exact AndroidX/AGSL path because their 2-D corner
+gradients are measurably different after downsampling. This is a whole-renderer
+resolution choice with hysteresis, not a spatial split inside one edge.
 
 The AGSL port is NOT the Compose binary and is not presented as an official
 AndroidX integration. `androidx-reference/` is the isolated validation app that
