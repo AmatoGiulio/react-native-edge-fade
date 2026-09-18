@@ -23,12 +23,26 @@ internal class BlurLabRenderer {
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
   private val content = RenderNode("EdgeFade.BlurLab.content")
+  private val hybrid = BlurLabHybridResolutionRenderer()
+  private var hybridActive = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var curveKey: String? = null
   private var curveSamples = FloatArray(32)
 
   fun prepare(view: BlurLabView, backend: String) {
+    if (backend == "hybrid-continuous" && hybrid.isEligible(view)) {
+      strips.forEach { it.release() }
+      strips = emptyList()
+      if (!hybrid.prepare(view)) throw RuntimeException("Hybrid continuous renderer could not prepare")
+      hybridActive = true
+      return
+    }
+    if (hybridActive) {
+      hybrid.release()
+      hybridActive = false
+    }
+
     val w = view.width; val h = view.height
     val t = BlurLabGeometry.edge(view.topDepth, h)
     val b = BlurLabGeometry.edge(view.bottomDepth, h)
@@ -46,6 +60,11 @@ internal class BlurLabRenderer {
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
+    if (hybridActive) {
+      if (!hybrid.draw(canvas, view, record)) record(canvas)
+      return
+    }
+
     content.setPosition(0, 0, view.width, view.height)
     // Materialize once so strip references do not replay WebView's draw
     // functor. This full-view buffer is an explicit experimental cost.
@@ -133,6 +152,8 @@ internal class BlurLabRenderer {
   }
 
   fun release() {
+    hybrid.release()
+    hybridActive = false
     strips.forEach { it.release() }
     strips = emptyList()
     content.discardDisplayList()
