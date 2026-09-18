@@ -588,6 +588,46 @@ export function FadePanel() {
     </>
   );
 
+  const androidRendererSelector = Platform.OS === 'android' ? (
+    <View style={s.rendererSection}>
+      <Text style={[s.rendererLabel, { color: t.faintText }]}>blur renderer</Text>
+      <View
+        style={[
+          s.rendererSeg,
+          { backgroundColor: rowBg, opacity: mode === 'blur' ? 1 : 0.45 },
+        ]}
+      >
+        {BLUR_RENDERERS.map((renderer) => {
+          const selected = blurRenderer === renderer;
+          const disabled = mode !== 'blur';
+          return (
+            <Pressable
+              key={renderer}
+              accessibilityRole="button"
+              accessibilityLabel={`blur renderer ${renderer}`}
+              accessibilityState={{ selected, disabled }}
+              disabled={disabled}
+              style={[
+                s.rendererSegItem,
+                selected && { backgroundColor: t.controlActive },
+              ]}
+              onPress={() => setBlurRenderer(renderer)}
+            >
+              <Text
+                style={[
+                  s.rendererSegText,
+                  { color: selected ? t.text : t.faintText },
+                ]}
+              >
+                {renderer}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  ) : null;
+
   // The scrollable body is shared between platforms, but the *root* element
   // returned to react-native-screens differs (see below): on iOS the
   // ScrollView must be the screen's direct child, not wrapped in a `flex: 1`
@@ -617,45 +657,6 @@ export function FadePanel() {
           );
         })}
       </View>
-
-      {Platform.OS === 'android' && (
-        <View style={s.rendererSection}>
-          <Text style={[s.rendererLabel, { color: t.faintText }]}>renderer</Text>
-          <View
-            style={[
-              s.seg,
-              { backgroundColor: rowBg, opacity: mode === 'blur' ? 1 : 0.45 },
-            ]}
-          >
-            {BLUR_RENDERERS.map((renderer) => {
-              const selected = blurRenderer === renderer;
-              const disabled = mode !== 'blur';
-              return (
-                <Pressable
-                  key={renderer}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled }}
-                  disabled={disabled}
-                  style={[
-                    s.segItem,
-                    selected && { backgroundColor: t.controlActive },
-                  ]}
-                  onPress={() => setBlurRenderer(renderer)}
-                >
-                  <Text
-                    style={[
-                      s.segText,
-                      { color: selected ? t.text : t.faintText },
-                    ]}
-                  >
-                    {renderer}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      )}
 
       <View style={s.padWrap}>
         <BezierPlot
@@ -823,6 +824,8 @@ export function FadePanel() {
         </View>
       </View>
 
+      {androidRendererSelector}
+
       <ScrollView
         nestedScrollEnabled
         style={[s.scroll, { paddingTop: 0 }]}
@@ -932,7 +935,28 @@ const s = StyleSheet.create({
     fontSize: 14,
   },
   rendererSection: {
-    marginBottom: 6,
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  rendererSeg: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 3,
+    gap: 3,
+    minHeight: 44,
+  },
+  rendererSegItem: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rendererSegText: {
+    fontFamily: MONO,
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   rendererLabel: {
     fontFamily: MONO,
