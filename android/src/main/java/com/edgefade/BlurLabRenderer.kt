@@ -20,6 +20,8 @@ internal class BlurLabRenderer {
     val mask = RuntimeShader(BlurLabShaders.mask)
     var horizontal: RuntimeShader? = null
     var vertical: RuntimeShader? = null
+    var adaptiveHorizontal: RuntimeShader? = null
+    var adaptiveVertical: RuntimeShader? = null
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
   private val content = RenderNode("EdgeFade.BlurLab.content")
@@ -135,11 +137,24 @@ internal class BlurLabRenderer {
       val effect = if (next.backend == "androidx") {
         AndroidxBlurAdapter.create(src.width, src.height, next.radius, strip.mask)
       } else {
-        val horizontal = strip.horizontal ?: RuntimeShader(BlurLabShaders.pass(false)).also {
-          strip.horizontal = it
+        val adaptive = next.backend == "adaptive-taps"
+        val horizontal = if (adaptive) {
+          strip.adaptiveHorizontal ?: RuntimeShader(BlurLabShaders.passAdaptive(false)).also {
+            strip.adaptiveHorizontal = it
+          }
+        } else {
+          strip.horizontal ?: RuntimeShader(BlurLabShaders.pass(false)).also {
+            strip.horizontal = it
+          }
         }
-        val vertical = strip.vertical ?: RuntimeShader(BlurLabShaders.pass(true)).also {
-          strip.vertical = it
+        val vertical = if (adaptive) {
+          strip.adaptiveVertical ?: RuntimeShader(BlurLabShaders.passAdaptive(true)).also {
+            strip.adaptiveVertical = it
+          }
+        } else {
+          strip.vertical ?: RuntimeShader(BlurLabShaders.pass(true)).also {
+            strip.vertical = it
+          }
         }
         for (shader in arrayOf(horizontal, vertical)) {
           shader.setInputShader("mask", strip.mask)
