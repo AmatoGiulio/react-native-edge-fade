@@ -9,8 +9,11 @@ view = (ANDROID / "BlurLabView.kt").read_text()
 route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
 gallery = (ROOT / "example/src/screens/GalleryScreen.tsx").read_text()
 capture = (ROOT / "scripts/capture-gallery-hybrid-continuous.mjs").read_text()
+sweep = (ROOT / "scripts/capture-gallery-hybrid-switch-sweep.mjs").read_text()
 
-assert "SWITCH_RADIUS_PX = 48f" in renderer
+assert "DEFAULT_SWITCH_RADIUS_PX = 48f" in renderer
+assert "switchRadius: Float" in renderer
+assert "key.switchRadius" in renderer
 assert "HALF_SCALE = 0.5f" in renderer
 assert "LinearGradient" not in renderer
 assert "BLEND_RADIUS_PX" not in renderer
@@ -23,5 +26,7 @@ assert "'hybrid-continuous'" in route
 assert "autoScroll: !staticCapture" in route
 assert "const stressMode = stress != null;" in gallery
 assert "&static=1" in capture
+for variant in ("hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
+    assert variant in sweep
 
 print("hybrid continuous benchmark contract: OK")
