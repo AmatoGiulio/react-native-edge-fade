@@ -42,7 +42,7 @@ internal object BlurLabScaledContinuousShaders {
     }
   """
 
-  const val HORIZONTAL = """#version 300 es
+  val HORIZONTAL = """#version 300 es
     #extension GL_OES_EGL_image_external_essl3 : require
     precision highp float;
     precision highp samplerExternalOES;
@@ -102,7 +102,7 @@ internal object BlurLabScaledContinuousShaders {
     }
   """
 
-  const val VERTICAL = """#version 300 es
+  val VERTICAL = """#version 300 es
     precision highp float;
 
     in vec2 vUv;
@@ -157,7 +157,7 @@ internal object BlurLabScaledContinuousShaders {
     }
   """
 
-  const val COMPOSITE = """#version 300 es
+  val COMPOSITE = """#version 300 es
     #extension GL_OES_EGL_image_external_essl3 : require
     precision highp float;
     precision highp samplerExternalOES;
