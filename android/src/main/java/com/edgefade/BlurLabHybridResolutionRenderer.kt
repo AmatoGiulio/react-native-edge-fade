@@ -1,14 +1,9 @@
 package com.edgefade
 
-import android.graphics.BlendMode
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.LinearGradient
-import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
-import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
@@ -18,9 +13,11 @@ import kotlin.math.ceil
  * Benchmark-only adaptive-resolution continuous Gaussian.
  *
  * The visually sensitive low-radius tail is rendered at full resolution.
- * Once the same continuous radius field reaches [FULL_RES_RADIUS_PX], the
+ * Once the same continuous radius field reaches [SWITCH_RADIUS_PX], the
  * remaining outer region is rendered at half resolution with radius, geometry
- * and mask coordinates scaled together. No blur levels or sigma cross-fades.
+ * and mask coordinates scaled together. The switch is deliberately placed
+ * where the half-resolution output has already converged visually with the
+ * full-resolution reference. No blur levels or sigma cross-fades.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class BlurLabHybridResolutionRenderer {
@@ -49,9 +46,6 @@ internal class BlurLabHybridResolutionRenderer {
     val visible: Rect,
     val source: Rect,
     val scale: Float,
-    val featherStartY: Float = -1f,
-    val featherEndY: Float = -1f,
-    val featherIncreasing: Boolean = true,
   )
 
   private class ZoneRenderer(var zone: Zone) {
@@ -67,7 +61,6 @@ internal class BlurLabHybridResolutionRenderer {
   }
 
   private val content = RenderNode("EdgeFade.BlurLab.hybrid.content")
-  private val featherPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private var key: Key? = null
   private var zones = emptyList<ZoneRenderer>()
   private var curveSamples = FloatArray(32)
@@ -113,7 +106,7 @@ internal class BlurLabHybridResolutionRenderer {
       announced = true
       Log.i(
         TAG,
-        "Using hybrid continuous Gaussian benchmark path (full-res <= 40px, half-res above).",
+        "Using hybrid continuous Gaussian benchmark path (full-res <= 48px, half-res above).",
       )
     }
     return true
@@ -185,62 +178,9 @@ internal class BlurLabHybridResolutionRenderer {
         v.right.toFloat(),
         v.bottom.toFloat(),
       )
-
-      val hasFeather =
-        zone.featherStartY >= 0f &&
-          zone.featherEndY > zone.featherStartY
-
-      val layer = if (hasFeather) {
-        canvas.saveLayer(
-          v.left.toFloat(),
-          v.top.toFloat(),
-          v.right.toFloat(),
-          v.bottom.toFloat(),
-          null,
-        )
-      } else {
-        -1
-      }
-
-      canvas.save().also { transformSave ->
-        try {
-          canvas.translate(src.left.toFloat(), src.top.toFloat())
-          canvas.scale(1f / zone.scale, 1f / zone.scale)
-          canvas.drawRenderNode(renderer.node)
-        } finally {
-          canvas.restoreToCount(transformSave)
-        }
-      }
-
-      if (hasFeather) {
-        val start = zone.featherStartY
-        val end = zone.featherEndY
-        val colors = if (zone.featherIncreasing) {
-          intArrayOf(Color.TRANSPARENT, Color.WHITE)
-        } else {
-          intArrayOf(Color.WHITE, Color.TRANSPARENT)
-        }
-        featherPaint.shader = LinearGradient(
-          0f,
-          start,
-          0f,
-          end,
-          colors,
-          null,
-          Shader.TileMode.CLAMP,
-        )
-        featherPaint.blendMode = BlendMode.DST_IN
-        canvas.drawRect(
-          v.left.toFloat(),
-          v.top.toFloat(),
-          v.right.toFloat(),
-          v.bottom.toFloat(),
-          featherPaint,
-        )
-        featherPaint.shader = null
-        featherPaint.blendMode = null
-        canvas.restoreToCount(layer)
-      }
+      canvas.translate(src.left.toFloat(), src.top.toFloat())
+      canvas.scale(1f / zone.scale, 1f / zone.scale)
+      canvas.drawRenderNode(renderer.node)
     } finally {
       canvas.restoreToCount(save)
     }
@@ -294,12 +234,6 @@ internal class BlurLabHybridResolutionRenderer {
     val result = ArrayList<Zone>(4)
     if (key.radius <= 0f) return result
 
-    // The two renderings overlap across a radius interval, rather than meeting
-    // at a hard geometric seam. Both still evaluate the same continuous radius
-    // field; the feather only hides the resampling difference between 1x/0.5x.
-    val lowRadius = (FULL_RES_RADIUS_PX - BLEND_RADIUS_PX).coerceAtLeast(0f)
-    val highRadius = FULL_RES_RADIUS_PX + BLEND_RADIUS_PX
-
     fun distanceForRadius(depth: Float, radius: Float): Int {
       if (depth <= 0f) return 0
       val presence = (radius / key.radius).coerceIn(0f, 1f)
@@ -309,15 +243,7 @@ internal class BlurLabHybridResolutionRenderer {
       return ceil(distance.coerceIn(0f, depth)).toInt()
     }
 
-    fun addZone(
-      edge: Int,
-      visible: Rect,
-      scale: Float,
-      maxRadius: Float,
-      featherStartY: Float = -1f,
-      featherEndY: Float = -1f,
-      featherIncreasing: Boolean = true,
-    ) {
+    fun addZone(edge: Int, visible: Rect, scale: Float, maxRadius: Float) {
       if (visible.isEmpty) return
       val pad = ceil(maxRadius).toInt() + 1
       val source = Rect(
@@ -326,43 +252,30 @@ internal class BlurLabHybridResolutionRenderer {
         (visible.right + pad).coerceAtMost(key.width),
         (visible.bottom + pad).coerceAtMost(key.height),
       )
-      result += Zone(
-        edge = edge,
-        visible = visible,
-        source = source,
-        scale = scale,
-        featherStartY = featherStartY,
-        featherEndY = featherEndY,
-        featherIncreasing = featherIncreasing,
-      )
+      result += Zone(edge, visible, source, scale)
     }
 
-    val useHybrid = key.radius > highRadius
+    val useHybrid = key.radius > SWITCH_RADIUS_PX
 
     val topDepth = ceil(key.top).toInt().coerceIn(0, key.height)
     if (topDepth > 0) {
       if (!useHybrid) {
         addZone(EDGE_TOP, Rect(0, 0, key.width, topDepth), 1f, key.radius)
       } else {
-        val outerBlend = distanceForRadius(key.top, highRadius).coerceIn(0, topDepth)
-        val innerBlend = distanceForRadius(key.top, lowRadius).coerceIn(outerBlend, topDepth)
-
-        // Half-res underlay reaches through the full overlap.
+        val split = distanceForRadius(key.top, SWITCH_RADIUS_PX).coerceIn(0, topDepth)
+        if (split > 0) {
+          addZone(
+            EDGE_TOP,
+            Rect(0, 0, key.width, split),
+            HALF_SCALE,
+            key.radius,
+          )
+        }
         addZone(
           EDGE_TOP,
-          Rect(0, 0, key.width, innerBlend),
-          HALF_SCALE,
-          key.radius,
-        )
-        // Full-res overlay fades from transparent -> opaque across the overlap.
-        addZone(
-          EDGE_TOP,
-          Rect(0, outerBlend, key.width, topDepth),
+          Rect(0, split, key.width, topDepth),
           1f,
-          highRadius,
-          featherStartY = outerBlend.toFloat(),
-          featherEndY = innerBlend.toFloat(),
-          featherIncreasing = true,
+          SWITCH_RADIUS_PX,
         )
       }
     }
@@ -378,31 +291,24 @@ internal class BlurLabHybridResolutionRenderer {
           key.radius,
         )
       } else {
-        val outerBlendDistance =
-          distanceForRadius(key.bottom, highRadius).coerceIn(0, bottomDepth)
-        val innerBlendDistance =
-          distanceForRadius(key.bottom, lowRadius).coerceIn(outerBlendDistance, bottomDepth)
+        val splitDistance =
+          distanceForRadius(key.bottom, SWITCH_RADIUS_PX).coerceIn(0, bottomDepth)
+        val splitY = key.height - splitDistance
 
-        val halfInnerY = key.height - innerBlendDistance
-        val fullOuterY = key.height - outerBlendDistance
-
-        // Draw the half-res outer underlay first.
         addZone(
           EDGE_BOTTOM,
-          Rect(0, halfInnerY, key.width, key.height),
-          HALF_SCALE,
-          key.radius,
-        )
-        // Full-res is opaque toward the inner edge and fades out toward bottom.
-        addZone(
-          EDGE_BOTTOM,
-          Rect(0, innerStart, key.width, fullOuterY),
+          Rect(0, innerStart, key.width, splitY),
           1f,
-          highRadius,
-          featherStartY = halfInnerY.toFloat(),
-          featherEndY = fullOuterY.toFloat(),
-          featherIncreasing = false,
+          SWITCH_RADIUS_PX,
         )
+        if (splitY < key.height) {
+          addZone(
+            EDGE_BOTTOM,
+            Rect(0, splitY, key.width, key.height),
+            HALF_SCALE,
+            key.radius,
+          )
+        }
       }
     }
 
@@ -429,8 +335,7 @@ internal class BlurLabHybridResolutionRenderer {
 
   private companion object {
     private const val TAG = "EdgeFade.BlurLab"
-    private const val FULL_RES_RADIUS_PX = 40f
-    private const val BLEND_RADIUS_PX = 8f
+    private const val SWITCH_RADIUS_PX = 48f
     private const val HALF_SCALE = 0.5f
     private const val EDGE_TOP = 0
     private const val EDGE_BOTTOM = 1
