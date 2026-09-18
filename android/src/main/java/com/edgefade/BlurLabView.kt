@@ -50,11 +50,13 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   private fun hasBands() = topDepth > 0f || bottomDepth > 0f || leftDepth > 0f || rightDepth > 0f
 
   private fun isProgressive(active: String) =
-    active == "agsl" || active == "androidx" || active == "gaussian-scale"
+    active == "agsl" || active == "androidx" || active == "gaussian-scale" ||
+      active == "scaled-continuous"
 
   private fun activeBackend(hardware: Boolean): String = when {
     backend == "off" -> "off"
-    backend != "agsl" && backend != "androidx" && backend != "gaussian-scale" -> "off"
+    backend != "agsl" && backend != "androidx" &&
+      backend != "gaussian-scale" && backend != "scaled-continuous" -> "off"
     Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "off"
     backend == "androidx" && !AndroidxBlurAdapter.available -> "off"
     else -> backend
