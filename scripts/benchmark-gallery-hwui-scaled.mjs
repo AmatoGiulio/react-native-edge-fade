@@ -381,6 +381,45 @@ for (let sample = 0; sample < options.samples; sample++) {
     );
   }
 }
+
+const pairwise = [];
+for (let sample = 1; sample <= options.samples; sample++) {
+  const rows = results.filter((row) => row.sample === sample);
+  const agslRow = rows.find((row) => row.renderer === 'agsl');
+  const hwuiRow = rows.find((row) => row.renderer === 'hwui-scaled');
+  if (!agslRow || !hwuiRow) continue;
+
+  pairwise.push({
+    sample,
+    refreshHz: agslRow.refreshHzStart ?? agslRow.refreshHzEnd ?? null,
+    deltaHwuiVsAgsl: {
+      p95Ms:
+        Number.isFinite(hwuiRow.p95Ms) && Number.isFinite(agslRow.p95Ms)
+          ? hwuiRow.p95Ms - agslRow.p95Ms
+          : null,
+      p99Ms:
+        Number.isFinite(hwuiRow.p99Ms) && Number.isFinite(agslRow.p99Ms)
+          ? hwuiRow.p99Ms - agslRow.p99Ms
+          : null,
+      jankPctPoints:
+        Number.isFinite(hwuiRow.jankyPercent) && Number.isFinite(agslRow.jankyPercent)
+          ? hwuiRow.jankyPercent - agslRow.jankyPercent
+          : null,
+      deadline:
+        Number.isFinite(hwuiRow.deadlineMissed) && Number.isFinite(agslRow.deadlineMissed)
+          ? hwuiRow.deadlineMissed - agslRow.deadlineMissed
+          : null,
+    },
+  });
+}
+
+const pairwiseMedianDelta = {
+  p95Ms: median(pairwise.map((pair) => pair.deltaHwuiVsAgsl.p95Ms)),
+  p99Ms: median(pairwise.map((pair) => pair.deltaHwuiVsAgsl.p99Ms)),
+  jankPctPoints: median(pairwise.map((pair) => pair.deltaHwuiVsAgsl.jankPctPoints)),
+  deadline: median(pairwise.map((pair) => pair.deltaHwuiVsAgsl.deadline)),
+};
+
 const aggregateByRenderer = Object.fromEntries(
   RENDERERS.map((renderer) => [renderer, aggregate(results, renderer)])
 );
@@ -409,12 +448,31 @@ const report = {
   results,
   rejectedBlocks,
   aggregate: aggregateByRenderer,
+  pairwise,
+  pairwiseMedianDelta,
   deltaHwuiVsAgsl,
 };
 const reportPath = path.join(OUT_DIR, `${runId}-report.json`);
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
 
-console.log('\n=== Aggregate (valid refresh-matched samples only) ===');
+console.log('\n=== Pairwise deltas (HWUI - AGSL) ===');
+for (const pair of pairwise) {
+  console.log(
+    `sample=${pair.sample} refresh=${pair.refreshHz ?? 'n/a'}Hz ` +
+      `Δp95=${pair.deltaHwuiVsAgsl.p95Ms ?? 'n/a'}ms ` +
+      `Δp99=${pair.deltaHwuiVsAgsl.p99Ms ?? 'n/a'}ms ` +
+      `Δjank=${pair.deltaHwuiVsAgsl.jankPctPoints?.toFixed(2) ?? 'n/a'}pp ` +
+      `Δdeadline=${pair.deltaHwuiVsAgsl.deadline ?? 'n/a'}`
+  );
+}
+console.log(
+  `median pair delta: Δp95=${pairwiseMedianDelta.p95Ms ?? 'n/a'}ms ` +
+    `Δp99=${pairwiseMedianDelta.p99Ms ?? 'n/a'}ms ` +
+    `Δjank=${pairwiseMedianDelta.jankPctPoints?.toFixed(2) ?? 'n/a'}pp ` +
+    `Δdeadline=${pairwiseMedianDelta.deadline ?? 'n/a'}`
+);
+
+console.log('\n=== Aggregate (descriptive only; may mix refresh rates) ===');
 for (const renderer of RENDERERS) {
   const row = aggregateByRenderer[renderer];
   console.log(
