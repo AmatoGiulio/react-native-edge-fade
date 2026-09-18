@@ -107,6 +107,8 @@ class EdgeFadeViewManager :
   override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
     view.progressiveBackend = when (value) {
       "exact" -> "exact"
+      "agsl" -> "agsl"
+      "androidx" -> "androidx"
       "scaled" -> "scaled"
       else -> "auto"
     }
