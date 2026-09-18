@@ -37,6 +37,10 @@ assert "scaledRadius = key.radius * WORK_SCALE" in scaled
 assert "recording.scale(WORK_SCALE, WORK_SCALE)" in scaled
 assert "canvas.scale(1f / WORK_SCALE, 1f / WORK_SCALE)" in scaled
 assert "fullBlurRadius" in scaled
+assert "BlendMode.DST_OUT" in scaled
+assert "sharp * (1 - blurMix) + scaledBlur * blurMix" in scaled
+assert "SCALED_ERASE_SHADER" in scaled
+assert "mask.eval(coord * workScale)" in scaled
 
 # Production parity: all four edges and all four independent curve uniforms.
 for token in (
