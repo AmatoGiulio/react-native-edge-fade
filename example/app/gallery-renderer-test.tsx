@@ -16,6 +16,7 @@ type Renderer =
   | 'androidx'
   | 'hybrid-continuous'
   | 'adaptive-taps'
+  | 'hwui-scaled'
   | 'hybrid-52'
   | 'hybrid-56'
   | 'hybrid-60'
@@ -39,6 +40,7 @@ function rendererFrom(value: string | string[] | undefined): Renderer {
     renderer === 'androidx' ||
     renderer === 'hybrid-continuous' ||
     renderer === 'adaptive-taps' ||
+    renderer === 'hwui-scaled' ||
     renderer === 'hybrid-52' ||
     renderer === 'hybrid-56' ||
     renderer === 'hybrid-60' ||
@@ -142,6 +144,7 @@ export default function GalleryRendererTestRoute() {
               next === 'androidx' ||
               next === 'hybrid-continuous' ||
               next === 'adaptive-taps' ||
+              next === 'hwui-scaled' ||
               next === 'hybrid-52' ||
               next === 'hybrid-56' ||
               next === 'hybrid-60' ||
