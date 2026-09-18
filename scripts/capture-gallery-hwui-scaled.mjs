@@ -58,15 +58,25 @@ function launch(renderer) {
 }
 
 function verify(renderer) {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  let lastLogs = '';
+  for (let attempt = 0; attempt < 16; attempt++) {
     const logs = adb(['logcat', '-d', '-s', 'EdgeFade.BlurLab:I', '*:S'], false);
-    const expected = `Renderer active: requested=${renderer} active=${renderer}`;
-    if (logs.includes(expected)) return;
+    lastLogs = logs;
+
+    const generic = `Renderer active: requested=${renderer} active=${renderer}`;
+    const backendSpecific =
+      renderer === 'hwui-scaled' &&
+      logs.includes('Using HWUI scaled continuous Gaussian benchmark path (0.75x strips).');
+
+    if (logs.includes(generic) || backendSpecific) return;
+
     const disabled = `Renderer active: requested=${renderer} active=off`;
-    if (logs.includes(disabled)) throw new Error(`${renderer} disabled:\n${logs}`);
+    if (logs.includes(disabled)) {
+      throw new Error(`${renderer} disabled:\n${logs}`);
+    }
     sleep(250);
   }
-  throw new Error(`Could not verify ${renderer}`);
+  throw new Error(`Could not verify ${renderer}. BlurLab logs:\n${lastLogs}`);
 }
 
 function capture(renderer, stamp) {
