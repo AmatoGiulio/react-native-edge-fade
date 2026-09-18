@@ -10,8 +10,10 @@ route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
 gallery = (ROOT / "example/src/screens/GalleryScreen.tsx").read_text()
 capture = (ROOT / "scripts/capture-gallery-hybrid-continuous.mjs").read_text()
 
-assert "FULL_RES_RADIUS_PX = 40f" in renderer
+assert "SWITCH_RADIUS_PX = 48f" in renderer
 assert "HALF_SCALE = 0.5f" in renderer
+assert "LinearGradient" not in renderer
+assert "BLEND_RADIUS_PX" not in renderer
 assert "BlurLabShaders.pass(false)" in renderer
 assert "BlurLabShaders.pass(true)" in renderer
 assert "rc.scale(zone.scale, zone.scale)" in renderer
