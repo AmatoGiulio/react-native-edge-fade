@@ -117,7 +117,10 @@ internal class BlurLabHybridResolutionRenderer {
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit): Boolean {
-    if (!canvas.isHardwareAccelerated || !prepare(view)) return false
+    if (!canvas.isHardwareAccelerated || !isEligible(view)) return false
+    // BlurLabRenderer.prepare() has already applied the requested sweep radius.
+    // Do not call prepare(view) here: its default would collapse every
+    // hybrid-52/56/60/64 variant back to 48px.
     val current = key ?: return false
 
     content.setPosition(0, 0, current.width, current.height)
