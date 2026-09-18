@@ -11,7 +11,7 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 
-/** Internal progressive-blur testbed. It compares only AGSL and AndroidX-style engines. */
+/** Internal golden testbed for exact AGSL, AndroidX official and validated HWUI-scaled output. */
 internal class BlurLabView(context: Context) : FrameLayout(context) {
   val contentHost = EdgeFadeView(context)
   var backend = "agsl"
