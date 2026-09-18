@@ -22,13 +22,6 @@ internal class BlurLabRenderer {
     var vertical: RuntimeShader? = null
     fun release() { node.setRenderEffect(null); node.discardDisplayList() }
   }
-  private fun hybridSwitchRadius(backend: String): Float? {
-    if (backend == "hybrid-continuous") return 48f
-    if (!backend.startsWith("hybrid-")) return null
-    return backend.removePrefix("hybrid-").toFloatOrNull()
-      ?.takeIf { it in 1f..BlurLabGeometry.MAX_RADIUS_PX }
-  }
-
   private val content = RenderNode("EdgeFade.BlurLab.content")
   private val hybrid = BlurLabHybridResolutionRenderer()
   private var hybridActive = false
@@ -38,7 +31,13 @@ internal class BlurLabRenderer {
   private var curveSamples = FloatArray(32)
 
   fun prepare(view: BlurLabView, backend: String) {
-    val hybridSwitch = hybridSwitchRadius(backend)
+    val hybridSwitch: Float? = when {
+      backend == "hybrid-continuous" -> 48f
+      backend.startsWith("hybrid-") ->
+        backend.removePrefix("hybrid-").toFloatOrNull()
+          ?.takeIf { it in 1f..BlurLabGeometry.MAX_RADIUS_PX }
+      else -> null
+    }
     if (hybridSwitch != null && hybrid.isEligible(view)) {
       strips.forEach { it.release() }
       strips = emptyList()
