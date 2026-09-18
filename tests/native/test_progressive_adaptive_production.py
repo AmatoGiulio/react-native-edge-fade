@@ -21,6 +21,9 @@ production_capture = (
 production_benchmark = (
     ROOT / "scripts/benchmark-gallery-production-vs-androidx.mjs"
 ).read_text()
+backend_quartet = (
+    ROOT / "scripts/capture-gallery-public-backends.mjs"
+).read_text()
 
 # Whole-renderer hysteresis: no spatial backend split.
 assert "SCALED_ENTER_RADIUS_PX = 110f" in adaptive
@@ -44,9 +47,11 @@ assert 'internal var progressiveBackend: String = "auto"' in view
 assert 'progressiveBackend?: string;' in native_spec
 assert '@ReactProp(name = "progressiveBackend")' in manager
 assert '"exact" -> "exact"' in manager
+assert '"agsl" -> "agsl"' in manager
+assert '"androidx" -> "androidx"' in manager
 assert '"scaled" -> "scaled"' in manager
 assert 'val override = when (host.progressiveBackend)' in adaptive
-assert '"exact" -> Mode.EXACT' in adaptive
+assert '"exact", "agsl", "androidx" -> Mode.EXACT' in adaptive
 assert '"scaled" -> Mode.SCALED' in adaptive
 assert 'lastOverride = "auto"' in adaptive
 
@@ -79,6 +84,11 @@ for token in (
 # Both exact and scaled renderers consume the same production radius mask.
 assert "EdgeFadeProgressiveBlurEffect.MASK_SHADER" in exact
 assert "EdgeFadeProgressiveBlurEffect.MASK_SHADER" in scaled
+assert 'val exactBackend = when (host.progressiveBackend)' in exact
+assert 'backend = exactBackend' in exact
+assert 'if (key.backend == "androidx")' in exact
+assert 'RuntimeShader(BlurLabShaders.pass(vertical = false))' in exact
+assert 'RuntimeShader(BlurLabShaders.pass(vertical = true))' in exact
 
 # Public API 33+ path is now adaptive and reports the real active backend.
 assert "WeakHashMap<EdgeFadeView, EdgeFadeProgressiveAdaptiveRenderer>()" in effect
@@ -94,9 +104,9 @@ for token in ("topDp?: number", "leftDp?: number", "curve?: string"):
     assert token in gallery
 for token in ("fadeLeftDp", "fadeRightDp", "testCurve"):
     assert token in route
-assert "export type DemoBlurRenderer = 'auto' | 'exact' | 'scaled';" in fade_context
+assert "export type DemoBlurRenderer = 'auto' | 'agsl' | 'androidx' | 'scaled';" in fade_context
 assert "setBlurRenderer('auto')" in fade_context
-assert "const BLUR_RENDERERS = ['auto', 'exact', 'scaled'] as const;" in fade_panel
+assert "const BLUR_RENDERERS = ['auto', 'agsl', 'androidx', 'scaled'] as const;" in fade_panel
 assert "setBlurRenderer(renderer)" in fade_panel
 assert "progressiveBackend={" in gallery
 assert "blurRenderer" in gallery
@@ -109,6 +119,16 @@ assert "sleep(250);" in production_benchmark
 assert "const RENDERERS = ['public', 'androidx'];" in production_capture
 assert "--edges" in production_capture
 assert "--curve" in production_capture
+
+assert "const BACKENDS = ['auto', 'agsl', 'androidx', 'scaled'];" in backend_quartet
+assert "renderer: 'public'" in backend_quartet
+assert "backend," in backend_quartet
+assert "radiusPx = 150" in backend_quartet
+assert "topDp = 92" in backend_quartet
+assert "bottomDp = 112" in backend_quartet
+assert "Using pure progressive AGSL blur on API 33+" in backend_quartet
+assert "Using official AndroidX progressive blur on API 33+" in backend_quartet
+assert "Using HWUI-scaled progressive blur on API 33+" in backend_quartet
 
 # Rejected research backends/scripts must stay out of the final validation surface.
 for rejected in ("adaptive-taps", "hybrid-continuous", "hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
