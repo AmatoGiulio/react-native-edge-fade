@@ -27,6 +27,10 @@ assert 'backend == "hwui-scaled"' in lab
 assert "hwuiScaled.draw(canvas, view, record)" in lab
 assert 'active == "hwui-scaled"' in view
 assert "'hwui-scaled'" in route
+native_branch = route.split("if (\n    renderer === 'agsl'", 1)[1].split(
+    ") {\n    const NativeBlurLab", 1
+)[0]
+assert "renderer === 'hwui-scaled'" in native_branch
 assert "['hwui-scaled', 'agsl']" in capture
 assert "&static=1" in capture
 
