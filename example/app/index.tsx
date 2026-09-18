@@ -84,6 +84,15 @@ export default function GalleryEntry() {
   return (
     <View style={styles.root}>
       <GalleryScreen stress={stress} />
+      {!stressEnabled && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/showcase')}
+          style={[styles.showcase, { bottom: insets.bottom + 20 }]}
+        >
+          <Text style={styles.showcaseLabel}>Showcase</Text>
+        </Pressable>
+      )}
       {Platform.OS === 'android' && !stressEnabled && (
         <Pressable
           accessibilityRole="button"
@@ -108,4 +117,18 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   label: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
+  showcase: {
+    position: 'absolute',
+    left: 20,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  showcaseLabel: { color: '#111111', fontWeight: '700', fontSize: 13 },
 });
