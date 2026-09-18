@@ -26,13 +26,33 @@ internal class BlurLabRenderer {
   }
   private val content = RenderNode("EdgeFade.BlurLab.content")
   private val hybrid = BlurLabHybridResolutionRenderer()
+  private val hwuiScaled = BlurLabHwuiScaledRenderer()
   private var hybridActive = false
+  private var hwuiScaledActive = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var curveKey: String? = null
   private var curveSamples = FloatArray(32)
 
   fun prepare(view: BlurLabView, backend: String) {
+    if (backend == "hwui-scaled" && hwuiScaled.isEligible(view)) {
+      if (hybridActive) {
+        hybrid.release()
+        hybridActive = false
+      }
+      strips.forEach { it.release() }
+      strips = emptyList()
+      if (!hwuiScaled.prepare(view)) {
+        throw RuntimeException("HWUI scaled renderer could not prepare")
+      }
+      hwuiScaledActive = true
+      return
+    }
+    if (hwuiScaledActive) {
+      hwuiScaled.release()
+      hwuiScaledActive = false
+    }
+
     val hybridSwitch: Float? = when {
       backend == "hybrid-continuous" -> 48f
       backend.startsWith("hybrid-") ->
@@ -71,6 +91,11 @@ internal class BlurLabRenderer {
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
+    if (hwuiScaledActive) {
+      if (!hwuiScaled.draw(canvas, view, record)) record(canvas)
+      return
+    }
+
     if (hybridActive) {
       if (!hybrid.draw(canvas, view, record)) record(canvas)
       return
@@ -176,6 +201,8 @@ internal class BlurLabRenderer {
   }
 
   fun release() {
+    hwuiScaled.release()
+    hwuiScaledActive = false
     hybrid.release()
     hybridActive = false
     strips.forEach { it.release() }
