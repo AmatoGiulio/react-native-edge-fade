@@ -27,6 +27,8 @@ const DEFAULT_RADIUS_PX = 80;
 const DEFAULT_CYCLE_MS = 4200;
 const TEST_TOP_DP = 110;
 const TEST_BOTTOM_DP = 110;
+const TEST_LEFT_DP = 0;
+const TEST_RIGHT_DP = 0;
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -77,6 +79,11 @@ export default function GalleryRendererTestRoute() {
     cycleMs?: string | string[];
     image?: string | string[];
     static?: string | string[];
+    fadeTopDp?: string | string[];
+    fadeBottomDp?: string | string[];
+    fadeLeftDp?: string | string[];
+    fadeRightDp?: string | string[];
+    curve?: string | string[];
   }>();
 
   const renderer = rendererFrom(params.renderer);
@@ -84,6 +91,11 @@ export default function GalleryRendererTestRoute() {
   const cycleMs = numberFrom(params.cycleMs, DEFAULT_CYCLE_MS, 2000, 10_000);
   const imageRenderer = imageFrom(params.image);
   const staticCapture = first(params.static) === '1';
+  const fadeTopDp = numberFrom(params.fadeTopDp, TEST_TOP_DP, 0, 300);
+  const fadeBottomDp = numberFrom(params.fadeBottomDp, TEST_BOTTOM_DP, 0, 300);
+  const fadeLeftDp = numberFrom(params.fadeLeftDp, TEST_LEFT_DP, 0, 300);
+  const fadeRightDp = numberFrom(params.fadeRightDp, TEST_RIGHT_DP, 0, 300);
+  const testCurve = first(params.curve) ?? 'smooth';
   const radiusDp = radiusPx / PixelRatio.get();
   const [active, setActive] = useState<Renderer | 'pending'>(
     renderer === 'off' || renderer === 'public' ? renderer : 'pending'
@@ -96,8 +108,24 @@ export default function GalleryRendererTestRoute() {
       radiusDp,
       cycleMs,
       imageRenderer,
+      topDp: fadeTopDp,
+      bottomDp: fadeBottomDp,
+      leftDp: fadeLeftDp,
+      rightDp: fadeRightDp,
+      curve: testCurve,
     }),
-    [cycleMs, imageRenderer, radiusDp, renderer, staticCapture]
+    [
+      cycleMs,
+      fadeBottomDp,
+      fadeLeftDp,
+      fadeRightDp,
+      fadeTopDp,
+      imageRenderer,
+      radiusDp,
+      renderer,
+      staticCapture,
+      testCurve,
+    ]
   );
 
   if (Platform.OS !== 'android') return <View />;
@@ -131,11 +159,11 @@ export default function GalleryRendererTestRoute() {
           style={s.fill}
           backend={renderer}
           blurRadius={radiusDp}
-          fadeTop={TEST_TOP_DP}
-          fadeBottom={TEST_BOTTOM_DP}
-          fadeLeft={0}
-          fadeRight={0}
-          curve="smooth"
+          fadeTop={fadeTopDp}
+          fadeBottom={fadeBottomDp}
+          fadeLeft={fadeLeftDp}
+          fadeRight={fadeRightDp}
+          curve={testCurve}
           progression={1}
           cornerRadius={0}
           onBackendChange={({ nativeEvent }) => {
