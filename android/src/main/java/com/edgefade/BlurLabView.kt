@@ -72,7 +72,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
     else -> backend
   }
 
-  private fun report(active: String, hardware: Boolean) {
+  private fun report(active: String, hardware: Boolean, force: Boolean = false) {
     val reason = when {
       active == backend -> ""
       failedBackend == backend -> "Shader creation failed; renderer disabled.\n$failureMessage"
@@ -82,7 +82,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
         "AndroidX not compiled: rebuild with -PedgeFadeAndroidxBlur=true"
       else -> "Unknown backend; renderer disabled"
     }
-    if (backend != reportedRequested || active != reportedActive || reason != reportedReason) {
+    if (force || backend != reportedRequested || active != reportedActive || reason != reportedReason) {
       reportedRequested = backend
       reportedActive = active
       reportedReason = reason
@@ -99,6 +99,18 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
     }
     configureHost(activeBackend(true))
     invalidate()
+  }
+
+  /**
+   * Fabric can draw once before the JS direct-event listener is fully attached.
+   * The normal draw report is deduplicated, so that first event could be lost
+   * forever and leave the benchmark route stuck at active=pending. The manager
+   * calls this on the next animation frame after the prop transaction to pulse
+   * the current state once the mounted reactTag/event handler is stable.
+   */
+  fun reportConfiguredBackend() {
+    val hardware = isHardwareAccelerated
+    report(activeBackend(hardware), hardware, force = true)
   }
 
   private fun configureHost(active: String) {
