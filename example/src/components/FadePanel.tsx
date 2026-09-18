@@ -43,7 +43,7 @@ import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
 const MODES_ANDROID = ['mask', 'blur', 'overlay'] as const;
-const BLUR_RENDERERS = ['auto', 'exact', 'scaled'] as const;
+const BLUR_RENDERERS = ['auto', 'agsl', 'androidx', 'scaled'] as const;
 const DEFAULT_TINT = '#000000';
 
 const TINT_PRESETS = [
