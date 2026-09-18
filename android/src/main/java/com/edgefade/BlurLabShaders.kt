@@ -209,6 +209,24 @@ internal object BlurLabShaders {
     """.trimIndent()
   }
 
+
+  const val scaledOverlay = """
+    uniform shader content;
+    uniform shader mask;
+    uniform float fullBlurRadius;
+
+    half4 main(float2 coord) {
+      half4 blurred = content.eval(coord);
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float radius = fullBlurRadius * intensity;
+
+      // Match the successful GLES scaled-continuous composite: keep the
+      // identity end exact, then hand over smoothly to the 0.75x Gaussian.
+      float blurMix = smoothstep(0.75, 3.0, radius);
+      return blurred * half4(blurMix);
+    }
+  """
+
   // The mask returns radius / maximumRadius, NOT content opacity. At corners
   // max() combines the edges without stacking blur or multiplying opacity.
   val mask = """
