@@ -9,6 +9,7 @@ lab = (ANDROID / "BlurLabRenderer.kt").read_text()
 view = (ANDROID / "BlurLabView.kt").read_text()
 route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
 capture = (ROOT / "scripts/capture-gallery-hwui-scaled.mjs").read_text()
+manager = (ANDROID / "BlurLabViewManager.kt").read_text()
 
 assert "WORK_SCALE = 0.75f" in renderer
 assert "RuntimeShader(BlurLabShaders.pass(false))" in renderer
@@ -26,6 +27,10 @@ assert "return blurred * half4(blurMix);" in shaders
 assert 'backend == "hwui-scaled"' in lab
 assert "hwuiScaled.draw(canvas, view, record)" in lab
 assert 'active == "hwui-scaled"' in view
+assert "fun reportConfiguredBackend()" in view
+assert "force = true" in view
+assert "view.postOnAnimation" in manager
+assert "view.reportConfiguredBackend()" in manager
 assert "'hwui-scaled'" in route
 native_branch = route.split("if (\n    renderer === 'agsl'", 1)[1].split(
     ") {\n    const NativeBlurLab", 1
