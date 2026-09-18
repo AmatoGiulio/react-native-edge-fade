@@ -49,7 +49,7 @@ function launch(renderer) {
   sleep(300);
   const uri =
     `edgefade:///gallery-renderer-test?renderer=${renderer}` +
-    `&radiusPx=${radiusPx}&cycleMs=4200&image=expo`;
+    `&radiusPx=${radiusPx}&cycleMs=4200&image=expo&static=1`;
   const output = shell(
     `am start -W -a android.intent.action.VIEW -d '${uri}' -p ${PACKAGE}`,
     false,
@@ -84,8 +84,9 @@ for (const renderer of RENDERERS) {
   launch(renderer);
   sleep(1500);
   verify(renderer);
-  // Same auto-scroll phase every launch; enough time for the first frame to settle.
-  sleep(500);
+  // Static stress mode: identical offset/content for every backend.
+  // Give Expo Image time to settle before taking the deterministic capture.
+  sleep(1800);
   capture(renderer, stamp);
 }
 shell(`am force-stop ${PACKAGE}`);
