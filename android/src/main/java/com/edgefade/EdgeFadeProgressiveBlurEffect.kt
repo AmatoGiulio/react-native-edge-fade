@@ -15,7 +15,8 @@ import java.util.WeakHashMap
  *
  * `mode="blur"` keeps one Android semantic contract on supported releases: a
  * true spatially-varying Gaussian whose radius is driven continuously by the
- * edge mask. The implementation is selected only by platform capability:
+ * edge mask. The implementation is selected by platform capability and,
+ * on API 33+, by the maximum radius cost envelope:
  *
  * - API 33+: exact AndroidX/AGSL at lower radii, switching the whole renderer
  *   to the 0.75x HWUI Gaussian path at high radii with hysteresis.
@@ -233,7 +234,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     return try {
       renderer.draw(canvas, recordChildren)
     } catch (error: RuntimeException) {
-      Log.w(TAG, "Progressive strip draw failed; using mask fallback.", error)
+      Log.w(TAG, "Progressive draw failed; using mask fallback.", error)
       Api33.clear(view)
       view.progressiveBlurActive = false
       false
