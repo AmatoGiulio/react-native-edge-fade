@@ -87,6 +87,9 @@ for token in ("fadeLeftDp", "fadeRightDp", "testCurve"):
 assert "const RENDERERS = ['androidx', 'public'];" in production_benchmark
 assert "Using HWUI-scaled progressive blur on API 33+" in production_benchmark
 assert "deltaPublicVsAndroidx" in production_benchmark
+assert "pidof ${PACKAGE} || true" in production_benchmark
+assert "AndroidRuntime:E" in production_benchmark
+assert "sleep(250);" in production_benchmark
 assert "const RENDERERS = ['public', 'androidx'];" in production_capture
 assert "--edges" in production_capture
 assert "--curve" in production_capture
