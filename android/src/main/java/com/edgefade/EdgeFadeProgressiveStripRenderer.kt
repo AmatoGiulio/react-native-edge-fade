@@ -15,8 +15,10 @@ import kotlin.math.ceil
  *
  * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
  * the analytical/LUT edge mask, derives its own radius as
- * `maxRadius * intensity`, then uses the official AndroidX effect when opted in,
- * or the attributed port of its separable Gaussian kernel in H -> V order.
+ * `maxRadius * intensity`, then uses the official AndroidX effect when selected,
+ * or the attributed AGSL port of its separable Gaussian kernel in H -> V order.
+ * The public selector chooses automatically; the example can force either exact
+ * engine for same-scene validation.
  * There are no discrete blur levels, opacity
  * cross-fades, frost grading, lift, tint or material post-processing here.
  *
@@ -49,6 +51,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val curveBottom: String,
     val curveLeft: String,
     val curveRight: String,
+    val backend: String,
   )
 
   private data class Rect(
@@ -78,7 +81,8 @@ internal class EdgeFadeProgressiveStripRenderer(
   private class Strip(var band: Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    // The official build must not compile or run the port's Gaussian shaders.
+    // Lazy so the AGSL port is compiled only when production fallback or the
+    // demo explicitly requests AGSL, even if AndroidX is present in the build.
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
 
@@ -103,6 +107,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     val height = host.height
     if (width <= 0 || height <= 0) return false
 
+    val exactBackend = when (host.progressiveBackend) {
+      "agsl" -> "agsl"
+      "androidx" -> "androidx"
+      else -> if (AndroidxBlurAdapter.available) "androidx" else "agsl"
+    }
+    if (exactBackend == "androidx" && !AndroidxBlurAdapter.available) return false
+
     val next = Key(
       width = width,
       height = height,
@@ -116,6 +127,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
+      backend = exactBackend,
     )
 
     if (key == next) return true
@@ -274,7 +286,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
     strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
 
-    if (AndroidxBlurAdapter.available) {
+    if (key.backend == "androidx") {
       strip.node.setRenderEffect(
         AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask),
       )
