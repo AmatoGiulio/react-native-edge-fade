@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const PACKAGE = 'com.edgefadeexample';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'benchmark-results', 'gallery-hwui-scaled');
-const RENDERERS = ['off', 'agsl', 'hwui-scaled'];
+const RENDERERS = ['agsl', 'hwui-scaled'];
 
 function parseArgs(argv) {
   const out = {
@@ -192,8 +192,6 @@ function rendererLogs() {
 }
 
 function verifyRenderer(renderer) {
-  if (renderer === 'off') return;
-
   let lastUi = '';
   let lastLogs = '';
 
@@ -268,7 +266,7 @@ function runCase(renderer, sample, runId, captureVisual) {
     invalidReason = `refresh changed during case: ${refreshStart.hz}Hz -> ${refreshEnd.hz}Hz`;
   }
 
-  if (renderer === 'off' && targetRefreshHz == null && stableWithinCase) {
+  if (targetRefreshHz == null && stableWithinCase) {
     targetRefreshHz = refreshStart.hz ?? refreshEnd.hz;
   }
 
@@ -341,7 +339,7 @@ assertReleasePackage();
 
 const sdk = Number(shell('getprop ro.build.version.sdk'));
 const model = shell('getprop ro.product.model');
-if (sdk < 33) throw new Error('Renderer matrix requires API 33+ for AGSL/AndroidX Lab backends.');
+if (sdk < 33) throw new Error('Renderer matrix requires API 33+ for AGSL/HWUI-scaled backends.');
 
 const runId = timestamp();
 console.log(`Gallery HWUI scaled matrix / ${model} / API ${sdk}`);
@@ -355,10 +353,9 @@ for (let sample = 0; sample < options.samples; sample++) {
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
     targetRefreshHz = null;
-    const effectOrder = sample % 2 === 0
+    const order = sample % 2 === 0
       ? ['agsl', 'hwui-scaled']
       : ['hwui-scaled', 'agsl'];
-    const order = ['off', ...effectOrder];
     const block = [];
 
     console.log(`\n=== Sample ${sample + 1}, block attempt ${attempt}/${options.maxAttempts} ===`);
@@ -387,30 +384,23 @@ for (let sample = 0; sample < options.samples; sample++) {
 const aggregateByRenderer = Object.fromEntries(
   RENDERERS.map((renderer) => [renderer, aggregate(results, renderer)])
 );
-const baseline = aggregateByRenderer.off;
-const deltas = Object.fromEntries(
-  RENDERERS.filter((renderer) => renderer !== 'off').map((renderer) => {
-    const current = aggregateByRenderer[renderer];
-    return [
-      renderer,
-      {
-        jankDeltaPctPoints:
-          baseline.weightedJankPercent == null || current.weightedJankPercent == null
-            ? null
-            : current.weightedJankPercent - baseline.weightedJankPercent,
-        p95DeltaMs:
-          baseline.medianP95Ms == null || current.medianP95Ms == null
-            ? null
-            : current.medianP95Ms - baseline.medianP95Ms,
-        p99DeltaMs:
-          baseline.medianP99Ms == null || current.medianP99Ms == null
-            ? null
-            : current.medianP99Ms - baseline.medianP99Ms,
-        deadlineDelta: current.deadlineMissed - baseline.deadlineMissed,
-      },
-    ];
-  })
-);
+const agsl = aggregateByRenderer.agsl;
+const hwui = aggregateByRenderer['hwui-scaled'];
+const deltaHwuiVsAgsl = {
+  jankDeltaPctPoints:
+    agsl.weightedJankPercent == null || hwui.weightedJankPercent == null
+      ? null
+      : hwui.weightedJankPercent - agsl.weightedJankPercent,
+  p95DeltaMs:
+    agsl.medianP95Ms == null || hwui.medianP95Ms == null
+      ? null
+      : hwui.medianP95Ms - agsl.medianP95Ms,
+  p99DeltaMs:
+    agsl.medianP99Ms == null || hwui.medianP99Ms == null
+      ? null
+      : hwui.medianP99Ms - agsl.medianP99Ms,
+  deadlineDelta: hwui.deadlineMissed - agsl.deadlineMissed,
+};
 
 const report = {
   runId,
@@ -419,7 +409,7 @@ const report = {
   results,
   rejectedBlocks,
   aggregate: aggregateByRenderer,
-  deltasVsOff: deltas,
+  deltaHwuiVsAgsl,
 };
 const reportPath = path.join(OUT_DIR, `${runId}-report.json`);
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -434,5 +424,11 @@ for (const renderer of RENDERERS) {
       `deadline=${row.deadlineMissed}`
   );
 }
+console.log(
+  `HWUI vs AGSL: Δp95=${deltaHwuiVsAgsl.p95DeltaMs ?? 'n/a'}ms ` +
+    `Δp99=${deltaHwuiVsAgsl.p99DeltaMs ?? 'n/a'}ms ` +
+    `Δjank=${deltaHwuiVsAgsl.jankDeltaPctPoints?.toFixed(2) ?? 'n/a'}pp ` +
+    `Δdeadline=${deltaHwuiVsAgsl.deadlineDelta}`
+);
 console.log(`Report: ${reportPath}`);
 console.log('First-sample screenshots and raw gfxinfo are saved beside the report.');
