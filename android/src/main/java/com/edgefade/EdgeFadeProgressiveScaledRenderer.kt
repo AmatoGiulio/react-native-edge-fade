@@ -73,6 +73,9 @@ internal class EdgeFadeProgressiveScaledRenderer(
     val horizontal = RuntimeShader(BlurLabShaders.pass(vertical = false))
     val vertical = RuntimeShader(BlurLabShaders.pass(vertical = true))
     val composite = RuntimeShader(BlurLabShaders.scaledOverlay)
+    // Paint shaders evaluate in the full-resolution destination coordinate
+    // space, so the erase pass owns an independent full-resolution mask.
+    val eraseMask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
     val erase = RuntimeShader(SCALED_ERASE_SHADER)
     val erasePaint = Paint().apply {
       shader = erase
@@ -204,18 +207,20 @@ internal class EdgeFadeProgressiveScaledRenderer(
               // Start from the native-resolution sharp child scene.
               canvas.drawRenderNode(content)
 
-              // Remove exactly blurMix of the sharp premultiplied source,
-              // independent of the blurred source alpha.
-              canvas.translate(source.left.toFloat(), source.top.toFloat())
+              // Remove exactly blurMix of the sharp premultiplied source.
+              // This pass stays in full-resolution view coordinates; using the
+              // scaled strip mask here would double-apply the strip origin and
+              // produce a one-pixel seam at the inner band boundary.
               canvas.drawRect(
-                (visible.left - source.left).toFloat(),
-                (visible.top - source.top).toFloat(),
-                (visible.right - source.left).toFloat(),
-                (visible.bottom - source.top).toFloat(),
+                visible.left.toFloat(),
+                visible.top.toFloat(),
+                visible.right.toFloat(),
+                visible.bottom.toFloat(),
                 strip.erasePaint,
               )
 
               // scaledOverlay already contributes scaledBlur * blurMix.
+              canvas.translate(source.left.toFloat(), source.top.toFloat())
               canvas.scale(1f / WORK_SCALE, 1f / WORK_SCALE)
               canvas.drawRenderNode(strip.node)
             } finally {
@@ -309,6 +314,51 @@ internal class EdgeFadeProgressiveScaledRenderer(
     strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
     strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
 
+    // The erase Paint is drawn before any strip-local translation. Configure
+    // its mask directly in full-resolution EdgeFadeView coordinates.
+    strip.eraseMask.setFloatUniform("origin", 0f, 0f)
+    strip.eraseMask.setFloatUniform(
+      "viewSize",
+      key.width.toFloat(),
+      key.height.toFloat(),
+    )
+    strip.eraseMask.setFloatUniform(
+      "edges",
+      floatArrayOf(key.top, key.bottom, key.left, key.right),
+    )
+    strip.eraseMask.setFloatUniform("progression", key.progression)
+    strip.eraseMask.setFloatUniform(
+      "curveExp",
+      floatArrayOf(
+        topCurve.exponent,
+        bottomCurve.exponent,
+        leftCurve.exponent,
+        rightCurve.exponent,
+      ),
+    )
+    strip.eraseMask.setFloatUniform(
+      "curveMode",
+      floatArrayOf(
+        topCurve.mode,
+        bottomCurve.mode,
+        leftCurve.mode,
+        rightCurve.mode,
+      ),
+    )
+    strip.eraseMask.setFloatUniform(
+      "useLut",
+      floatArrayOf(
+        topCurve.useLut,
+        bottomCurve.useLut,
+        leftCurve.useLut,
+        rightCurve.useLut,
+      ),
+    )
+    strip.eraseMask.setFloatUniform("curveTopLut", topCurve.lut)
+    strip.eraseMask.setFloatUniform("curveBottomLut", bottomCurve.lut)
+    strip.eraseMask.setFloatUniform("curveLeftLut", leftCurve.lut)
+    strip.eraseMask.setFloatUniform("curveRightLut", rightCurve.lut)
+
     val scaledRadius = key.radius * WORK_SCALE
     for (shader in arrayOf(strip.horizontal, strip.vertical)) {
       shader.setInputShader("mask", strip.mask)
@@ -326,9 +376,8 @@ internal class EdgeFadeProgressiveScaledRenderer(
     // Full-resolution erase pass evaluates the same scaled mask coordinates as
     // the blurred RenderNode. It attenuates sharp content by blurMix before the
     // premultiplied blurred contribution is added.
-    strip.erase.setInputShader("mask", strip.mask)
+    strip.erase.setInputShader("mask", strip.eraseMask)
     strip.erase.setFloatUniform("fullBlurRadius", key.radius)
-    strip.erase.setFloatUniform("workScale", WORK_SCALE)
 
     val horizontalEffect =
       RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content")
@@ -439,11 +488,9 @@ internal class EdgeFadeProgressiveScaledRenderer(
     private const val SCALED_ERASE_SHADER = """
       uniform shader mask;
       uniform float fullBlurRadius;
-      uniform float workScale;
 
       half4 main(float2 coord) {
-        float intensity =
-          clamp(mask.eval(coord * workScale).a, 0.0, 1.0);
+        float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
         float radius = fullBlurRadius * intensity;
         float blurMix = smoothstep(0.75, 3.0, radius);
         return half4(0.0, 0.0, 0.0, blurMix);
