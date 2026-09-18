@@ -49,7 +49,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   /**
    * Internal demo/test override for the API 33+ progressive selector.
-   * "auto" keeps production policy; "exact" and "scaled" force one renderer.
+   * "auto" keeps production policy; "agsl", "androidx", and "scaled" force
+   * the concrete renderer. "exact" remains an internal compatibility alias.
    */
   internal var progressiveBackend: String = "auto"
 
