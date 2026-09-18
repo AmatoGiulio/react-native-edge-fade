@@ -7,6 +7,7 @@ import {
   type GalleryStressConfig,
   type GalleryStressImageRenderer,
 } from '@/screens/GalleryScreen';
+import type { DemoBlurRenderer } from '@/fade/FadeContext';
 import type NativeBlurLabType from '../../src/BlurLabNativeComponent';
 
 type Renderer =
@@ -60,6 +61,20 @@ function imageFrom(
   return 'expo';
 }
 
+function backendFrom(
+  value: string | string[] | undefined
+): DemoBlurRenderer {
+  const backend = first(value);
+  if (
+    backend === 'agsl' ||
+    backend === 'androidx' ||
+    backend === 'scaled'
+  ) {
+    return backend;
+  }
+  return 'auto';
+}
+
 export default function GalleryRendererTestRoute() {
   const params = useLocalSearchParams<{
     renderer?: string | string[];
@@ -72,6 +87,7 @@ export default function GalleryRendererTestRoute() {
     fadeLeftDp?: string | string[];
     fadeRightDp?: string | string[];
     curve?: string | string[];
+    backend?: string | string[];
   }>();
 
   const renderer = rendererFrom(params.renderer);
@@ -84,6 +100,7 @@ export default function GalleryRendererTestRoute() {
   const fadeLeftDp = numberFrom(params.fadeLeftDp, TEST_LEFT_DP, 0, 300);
   const fadeRightDp = numberFrom(params.fadeRightDp, TEST_RIGHT_DP, 0, 300);
   const testCurve = first(params.curve) ?? 'smooth';
+  const progressiveBackend = backendFrom(params.backend);
   const radiusDp = radiusPx / PixelRatio.get();
   const [active, setActive] = useState<Renderer | 'pending'>(
     renderer === 'off' || renderer === 'public' ? renderer : 'pending'
@@ -101,6 +118,7 @@ export default function GalleryRendererTestRoute() {
       leftDp: fadeLeftDp,
       rightDp: fadeRightDp,
       curve: testCurve,
+      progressiveBackend,
     }),
     [
       cycleMs,
@@ -109,6 +127,7 @@ export default function GalleryRendererTestRoute() {
       fadeRightDp,
       fadeTopDp,
       imageRenderer,
+      progressiveBackend,
       radiusDp,
       renderer,
       staticCapture,
