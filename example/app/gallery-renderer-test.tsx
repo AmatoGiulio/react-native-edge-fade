@@ -59,12 +59,14 @@ export default function GalleryRendererTestRoute() {
     radiusPx?: string | string[];
     cycleMs?: string | string[];
     image?: string | string[];
+    static?: string | string[];
   }>();
 
   const renderer = rendererFrom(params.renderer);
   const radiusPx = numberFrom(params.radiusPx, DEFAULT_RADIUS_PX, 1, MAX_RADIUS_PX);
   const cycleMs = numberFrom(params.cycleMs, DEFAULT_CYCLE_MS, 2000, 10_000);
   const imageRenderer = imageFrom(params.image);
+  const staticCapture = first(params.static) === '1';
   const radiusDp = radiusPx / PixelRatio.get();
   const [active, setActive] = useState<Renderer | 'pending'>(
     renderer === 'off' || renderer === 'public' ? renderer : 'pending'
@@ -72,13 +74,13 @@ export default function GalleryRendererTestRoute() {
 
   const stress = useMemo<GalleryStressConfig>(
     () => ({
-      autoScroll: true,
+      autoScroll: !staticCapture,
       effectEnabled: renderer === 'public',
       radiusDp,
       cycleMs,
       imageRenderer,
     }),
-    [cycleMs, imageRenderer, radiusDp, renderer]
+    [cycleMs, imageRenderer, radiusDp, renderer, staticCapture]
   );
 
   if (Platform.OS !== 'android') return <View />;
