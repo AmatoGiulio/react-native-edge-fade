@@ -15,8 +15,9 @@ Changes in this adaptation: the bounded/Clamp-mode in-bounds renormalization
 used by the AndroidX runtime-shader path (without the Decal option); strip-local
 extents; per-view/per-strip mutable RuntimeShader instances; an edge-union
 intensity mask; support for the library's analytical presets and serialized
-custom-curve LUTs; an explicit no-blur bypass; and guarded zero-weight odd taps.
-The mask controls Gaussian radius, not output opacity.
+custom-curve LUTs; an explicit no-blur bypass; guarded zero-weight odd taps; and
+the high-radius 0.75x HWUI working-resolution path used by the production
+renderer. The mask controls Gaussian radius, not output opacity.
 
 The edge-local strip geometry is a work-culling integration strategy for React
 Native. It does not quantize the radius field: every rendered fragment still
@@ -24,6 +25,12 @@ uses `radius = maxRadius * intensity`. Source rectangles are padded by the
 maximum radius plus one paired bilinear tap so visible strip pixels have the
 same sampling neighborhood as the full-surface shader except at the actual view
 boundary.
+
+At high maximum radii the API 33+ production selector may render the entire
+progressive field at 0.75x working resolution, scaling geometry and Gaussian
+radius together before compositing over the native-resolution source. This is a
+whole-renderer resolution choice with hysteresis, not a spatial split between
+two blur implementations inside the same edge.
 
 The AGSL port is NOT the Compose binary and is not presented as an official
 AndroidX integration. `androidx-reference/` is the isolated validation app that
