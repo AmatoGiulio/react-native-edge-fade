@@ -22,6 +22,11 @@ interface NativeProps extends ViewProps {
   mode?: string;
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: CodegenTypes.Float;
+  /**
+   * Internal demo/test override: "auto" | "exact" | "scaled".
+   * Deliberately not exposed by the public JS prop types.
+   */
+  progressiveBackend?: string;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
