@@ -57,6 +57,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
     active == "agsl" ||
       active == "androidx" ||
       active == "adaptive-taps" ||
+      active == "hwui-scaled" ||
       isHybrid(active)
 
   private fun activeBackend(hardware: Boolean): String = when {
@@ -64,6 +65,7 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
     backend != "agsl" &&
       backend != "androidx" &&
       backend != "adaptive-taps" &&
+      backend != "hwui-scaled" &&
       !isHybrid(backend) -> "off"
     Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "off"
     backend == "androidx" && !AndroidxBlurAdapter.available -> "off"
