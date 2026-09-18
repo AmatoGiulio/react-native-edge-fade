@@ -126,11 +126,26 @@ function ensureBackendActivation(effectEnabled, sdk) {
     return;
   }
 
-  const activation = sdk >= 33
-    ? 'Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).'
-    : 'Using GLES 3.0 continuous progressive blur on API 31-32';
-  if (!logcat.includes(activation)) {
-    throw new Error(`Progressive backend activation was not observed for API ${sdk}.`);
+  if (sdk >= 33) {
+    const activations = options.radiusPx >= 110
+      ? [
+          'Using HWUI-scaled progressive blur on API 33+',
+        ]
+      : [
+          'Using official AndroidX progressive blur on API 33+',
+          'Using pure progressive AGSL blur on API 33+',
+        ];
+    if (!activations.some((activation) => logcat.includes(activation))) {
+      throw new Error(
+        `Expected progressive backend activation was not observed for API ${sdk} / radius ${options.radiusPx}px.`
+      );
+    }
+  } else {
+    const activation =
+      'Using GLES 3.0 continuous progressive blur on API 31-32';
+    if (!logcat.includes(activation)) {
+      throw new Error(`Progressive backend activation was not observed for API ${sdk}.`);
+    }
   }
   if (/Progressive unavailable; using mask fallback|progressive draw failed|progressive frame unavailable/i.test(logcat)) {
     throw new Error('A progressive fallback/failure was observed during warm-up.');
