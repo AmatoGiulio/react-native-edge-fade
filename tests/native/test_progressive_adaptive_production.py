@@ -8,6 +8,14 @@ scaled = (ANDROID / "EdgeFadeProgressiveScaledRenderer.kt").read_text()
 exact = (ANDROID / "EdgeFadeProgressiveStripRenderer.kt").read_text()
 effect = (ANDROID / "EdgeFadeProgressiveBlurEffect.kt").read_text()
 shaders = (ANDROID / "BlurLabShaders.kt").read_text()
+gallery = (ROOT / "example/src/screens/GalleryScreen.tsx").read_text()
+route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
+production_capture = (
+    ROOT / "scripts/capture-gallery-production-vs-androidx.mjs"
+).read_text()
+production_benchmark = (
+    ROOT / "scripts/benchmark-gallery-production-vs-androidx.mjs"
+).read_text()
 
 # Whole-renderer hysteresis: no spatial backend split.
 assert "SCALED_ENTER_RADIUS_PX = 110f" in adaptive
@@ -59,5 +67,17 @@ assert "Using HWUI-scaled progressive blur on API 33+" in effect
 
 # Keep the successful identity-end composite unchanged.
 assert "smoothstep(0.75, 3.0, radius)" in shaders
+
+# Example validation can exercise all edges/curves against AndroidX official.
+for token in ("topDp?: number", "leftDp?: number", "curve?: string"):
+    assert token in gallery
+for token in ("fadeLeftDp", "fadeRightDp", "testCurve"):
+    assert token in route
+assert "const RENDERERS = ['androidx', 'public'];" in production_benchmark
+assert "Using HWUI-scaled progressive blur on API 33+" in production_benchmark
+assert "deltaPublicVsAndroidx" in production_benchmark
+assert "const RENDERERS = ['public', 'androidx'];" in production_capture
+assert "--edges" in production_capture
+assert "--curve" in production_capture
 
 print("Progressive adaptive production contract: OK")
