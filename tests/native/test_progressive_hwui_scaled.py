@@ -8,10 +8,8 @@ shaders = (ANDROID / "BlurLabShaders.kt").read_text()
 lab = (ANDROID / "BlurLabRenderer.kt").read_text()
 view = (ANDROID / "BlurLabView.kt").read_text()
 route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
-capture = (ROOT / "scripts/capture-gallery-hwui-scaled.mjs").read_text()
-benchmark = (ROOT / "scripts/benchmark-gallery-hwui-scaled.mjs").read_text()
-manager = (ANDROID / "BlurLabViewManager.kt").read_text()
 
+# Keep the independently validated golden renderer available for regressions.
 assert "WORK_SCALE = 0.75f" in renderer
 assert "RuntimeShader(BlurLabShaders.pass(false))" in renderer
 assert "RuntimeShader(BlurLabShaders.pass(true))" in renderer
@@ -19,40 +17,24 @@ assert "RuntimeShader(BlurLabShaders.scaledOverlay)" in renderer
 assert "scaledRadius = key.radius * WORK_SCALE" in renderer
 assert "rc.scale(WORK_SCALE, WORK_SCALE)" in renderer
 assert "canvas.scale(1f / WORK_SCALE, 1f / WORK_SCALE)" in renderer
-assert "Using HWUI scaled continuous Gaussian benchmark path" in renderer
 
-assert 'const val scaledOverlay = """' in shaders
+# The golden path is deliberately vertical-only. It must fail rather than
+# silently substituting another renderer for unsupported mixed-axis geometry.
+assert "view.leftDepth <= 0f" in renderer
+assert "view.rightDepth <= 0f" in renderer
+assert 'backend == "hwui-scaled"' in lab
+assert "require(hwuiScaled.isEligible(view))" in lab
+assert "HWUI-scaled golden backend supports top/bottom edges only." in lab
+
 assert "smoothstep(0.75, 3.0, radius)" in shaders
 assert "return blurred * half4(blurMix);" in shaders
-
-assert 'backend == "hwui-scaled"' in lab
-assert "hwuiScaled.draw(canvas, view, record)" in lab
 assert 'active == "hwui-scaled"' in view
-assert "fun reportConfiguredBackend()" in view
-assert "force = true" in view
-assert "view.postOnAnimation" in manager
-assert "view.reportConfiguredBackend()" in manager
 assert "'hwui-scaled'" in route
-native_branch = route.split("if (\n    renderer === 'agsl'", 1)[1].split(
-    ") {\n    const NativeBlurLab", 1
-)[0]
-assert "renderer === 'hwui-scaled'" in native_branch
-assert "['hwui-scaled', 'agsl']" in capture
-assert "&static=1" in capture
 
-assert "const RENDERERS = ['agsl', 'hwui-scaled'];" in benchmark
-assert "const order = sample % 2 === 0" in benchmark
-assert "['agsl', 'hwui-scaled']" in benchmark
-assert "['hwui-scaled', 'agsl']" in benchmark
-assert "deltaHwuiVsAgsl" in benchmark
-assert "pairwise" in benchmark
-assert "pairwiseMedianDelta" in benchmark
-assert "Pairwise deltas (HWUI - AGSL)" in benchmark
-assert "deltasVsOff" not in benchmark
-assert "gallery-renderer requested=${renderer} active=${renderer}" in benchmark
-assert "targetRefreshHz = null;" in benchmark
-assert "Rejected sample" in benchmark
-assert "rejectedBlocks" in benchmark
-assert "--max-attempts" in benchmark
+# Rejected research paths must not creep back into the final Lab surface.
+for rejected in ("adaptive-taps", "hybrid-continuous", "hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
+    assert rejected not in lab
+    assert rejected not in view
+    assert rejected not in route
 
-print("HWUI scaled benchmark contract: OK")
+print("HWUI scaled golden contract: OK")
