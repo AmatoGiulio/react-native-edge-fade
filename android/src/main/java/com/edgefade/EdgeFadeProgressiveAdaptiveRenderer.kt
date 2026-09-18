@@ -13,6 +13,9 @@ import java.lang.ref.WeakReference
  * Mixed-axis fields stay on the exact AndroidX/AGSL renderer. The dead-band
  * between [SCALED_EXIT_RADIUS_PX] and [SCALED_ENTER_RADIUS_PX] provides
  * hysteresis, preventing an animated radius from flipping renderers every frame.
+ *
+ * The demo-only native override can force either renderer for direct A/B testing;
+ * it is intentionally absent from the public JS prop types.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveAdaptiveRenderer(
@@ -25,6 +28,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
 
   private val hostRef = WeakReference(host)
   private var mode = Mode.EXACT
+  private var lastOverride = "auto"
   private var exact: EdgeFadeProgressiveStripRenderer? = null
   private var scaled: EdgeFadeProgressiveScaledRenderer? = null
 
@@ -37,28 +41,47 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         0f
       }
 
-    // The 0.75x path is validated for the vertical progressive topology
-    // (top/bottom, including either edge independently). Mixed-axis fields
-    // create 2-D corner radius gradients where the downsampled approximation
-    // is measurably different from AndroidX, so those stay exact.
+    val override = when (host.progressiveBackend) {
+      "exact" -> "exact"
+      "scaled" -> "scaled"
+      else -> "auto"
+    }
+
+    // A demo override change starts from a deterministic selector state instead
+    // of inheriting hysteresis from the previously forced renderer.
+    if (override != lastOverride) {
+      exact?.release()
+      exact = null
+      scaled?.release()
+      scaled = null
+      mode = Mode.EXACT
+      lastOverride = override
+    }
+
+    // Auto keeps the production policy. The explicit demo overrides bypass it
+    // so Exact vs Scaled can be compared at the same radius/geometry.
     val scaledEligible =
       host.fadeLeft <= 0f &&
         host.fadeRight <= 0f &&
         (host.fadeTop > 0f || host.fadeBottom > 0f)
 
-    val nextMode = when (mode) {
-      Mode.EXACT ->
-        if (scaledEligible && radius >= SCALED_ENTER_RADIUS_PX) {
-          Mode.SCALED
-        } else {
-          Mode.EXACT
-        }
-      Mode.SCALED ->
-        if (!scaledEligible || radius <= SCALED_EXIT_RADIUS_PX) {
-          Mode.EXACT
-        } else {
-          Mode.SCALED
-        }
+    val nextMode = when (override) {
+      "exact" -> Mode.EXACT
+      "scaled" -> Mode.SCALED
+      else -> when (mode) {
+        Mode.EXACT ->
+          if (scaledEligible && radius >= SCALED_ENTER_RADIUS_PX) {
+            Mode.SCALED
+          } else {
+            Mode.EXACT
+          }
+        Mode.SCALED ->
+          if (!scaledEligible || radius <= SCALED_EXIT_RADIUS_PX) {
+            Mode.EXACT
+          } else {
+            Mode.SCALED
+          }
+      }
     }
 
     if (nextMode != mode) {
@@ -107,6 +130,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     scaled?.release()
     scaled = null
     mode = Mode.EXACT
+    lastOverride = "auto"
   }
 
   internal companion object {
