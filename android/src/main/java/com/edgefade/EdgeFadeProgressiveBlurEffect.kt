@@ -18,8 +18,9 @@ import java.util.WeakHashMap
  * edge mask. The implementation is selected by platform capability and,
  * on API 33+, by the maximum radius cost envelope:
  *
- * - API 33+: exact AndroidX/AGSL at lower radii, switching the whole renderer
- *   to the 0.75x HWUI Gaussian path at high radii with hysteresis.
+ * - API 33+: exact AndroidX/AGSL by default. Validated top/bottom-only fields
+ *   switch the whole renderer to the 0.75x HWUI Gaussian path at high radii,
+ *   with hysteresis. Mixed-axis fields stay exact.
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
@@ -130,7 +131,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         if (backend == "hwui-scaled33") {
           Log.i(
             TAG,
-            "Using HWUI-scaled progressive blur on API 33+ (0.75x strips; enter >=110px, exit <=90px).",
+            "Using HWUI-scaled progressive blur on API 33+ (0.75x top/bottom strips; enter >=110px, exit <=90px).",
           )
         } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
