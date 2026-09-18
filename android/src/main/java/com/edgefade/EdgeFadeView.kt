@@ -47,6 +47,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   /** Maximum physical blur radius in px. */
   var blurRadius: Float = 0f
 
+  /**
+   * Internal demo/test override for the API 33+ progressive selector.
+   * "auto" keeps production policy; "exact" and "scaled" force one renderer.
+   */
+  internal var progressiveBackend: String = "auto"
+
   // Kept temporarily for source compatibility with the 0.2.x public API.
   // Saturation/lift are intentionally ignored by Public Progressive.
   var frostSaturation: Float = 0.9f
