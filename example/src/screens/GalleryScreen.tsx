@@ -18,6 +18,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
+const DemoAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
+
 import { useCatalog, type CatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
@@ -108,8 +110,17 @@ function SkeletonGrid() {
 export function GalleryScreen({ stress }: GalleryScreenProps) {
   const t = useTheme();
   const { catalog, isLoading, isError } = useCatalog();
-  const { top, bottom, left, right, radius, mode, tint, showBands } =
-    useFadeStore();
+  const {
+    top,
+    bottom,
+    left,
+    right,
+    radius,
+    mode,
+    tint,
+    showBands,
+    blurRenderer,
+  } = useFadeStore();
   const { curve, blurRadius, frostProgression } = useFadeRender();
 
   // The deterministic stress path must never be JS-rAF driven. Imperative
@@ -199,7 +210,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
-      <AnimatedEdgeFadeView
+      <DemoAnimatedEdgeFadeView
         testID={stressMode ? 'gallery-stress-edge-fade' : undefined}
         top={edgeTop}
         bottom={edgeBottom}
@@ -210,6 +221,9 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
+        progressiveBackend={
+          Platform.OS === 'android' && !stressMode ? blurRenderer : 'auto'
+        }
         color={!stressMode && mode === 'overlay' ? tint : undefined}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
@@ -237,7 +251,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             }}
           />
         )}
-      </AnimatedEdgeFadeView>
+      </DemoAnimatedEdgeFadeView>
 
       <Animated.View
         pointerEvents="none"
