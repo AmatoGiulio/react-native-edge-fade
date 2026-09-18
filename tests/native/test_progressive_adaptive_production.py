@@ -49,20 +49,13 @@ assert "validated BlurLab renderer exactly" in scaled
 assert "DST_OUT" not in scaled
 assert "SCALED_ERASE_SHADER" not in scaled
 
-# Production parity: all four edges and all four independent curve uniforms.
+# The optimized topology must preserve the independent top/bottom curve
+# contract. Mixed-axis geometry is intentionally blocked by the selector above.
 for token in (
     "curveTop",
     "curveBottom",
-    "curveLeft",
-    "curveRight",
     "curveTopLut",
     "curveBottomLut",
-    "curveLeftLut",
-    "curveRightLut",
-    "key.left * WORK_SCALE",
-    "key.right * WORK_SCALE",
-    "EDGE_LEFT",
-    "EDGE_RIGHT",
 ):
     assert token in scaled
 
@@ -93,5 +86,9 @@ assert "sleep(250);" in production_benchmark
 assert "const RENDERERS = ['public', 'androidx'];" in production_capture
 assert "--edges" in production_capture
 assert "--curve" in production_capture
+
+# Rejected research backends/scripts must stay out of the final validation surface.
+for rejected in ("adaptive-taps", "hybrid-continuous", "hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
+    assert rejected not in route
 
 print("Progressive adaptive production contract: OK")
