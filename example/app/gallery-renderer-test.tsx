@@ -14,13 +14,7 @@ type Renderer =
   | 'public'
   | 'agsl'
   | 'androidx'
-  | 'hybrid-continuous'
-  | 'adaptive-taps'
-  | 'hwui-scaled'
-  | 'hybrid-52'
-  | 'hybrid-56'
-  | 'hybrid-60'
-  | 'hybrid-64';
+  | 'hwui-scaled';
 
 const MAX_RADIUS_PX = 150;
 const DEFAULT_RADIUS_PX = 80;
@@ -40,13 +34,7 @@ function rendererFrom(value: string | string[] | undefined): Renderer {
     renderer === 'off' ||
     renderer === 'agsl' ||
     renderer === 'androidx' ||
-    renderer === 'hybrid-continuous' ||
-    renderer === 'adaptive-taps' ||
-    renderer === 'hwui-scaled' ||
-    renderer === 'hybrid-52' ||
-    renderer === 'hybrid-56' ||
-    renderer === 'hybrid-60' ||
-    renderer === 'hybrid-64'
+    renderer === 'hwui-scaled'
   ) {
     return renderer;
   }
@@ -136,13 +124,7 @@ export default function GalleryRendererTestRoute() {
   if (
     renderer === 'agsl' ||
     renderer === 'androidx' ||
-    renderer === 'hybrid-continuous' ||
-    renderer === 'adaptive-taps' ||
-    renderer === 'hwui-scaled' ||
-    renderer === 'hybrid-52' ||
-    renderer === 'hybrid-56' ||
-    renderer === 'hybrid-60' ||
-    renderer === 'hybrid-64'
+    renderer === 'hwui-scaled'
   ) {
     const NativeBlurLab = require('../../src/BlurLabNativeComponent')
       .default as typeof NativeBlurLabType;
@@ -171,13 +153,7 @@ export default function GalleryRendererTestRoute() {
             setActive(
               next === 'agsl' ||
               next === 'androidx' ||
-              next === 'hybrid-continuous' ||
-              next === 'adaptive-taps' ||
-              next === 'hwui-scaled' ||
-              next === 'hybrid-52' ||
-              next === 'hybrid-56' ||
-              next === 'hybrid-60' ||
-              next === 'hybrid-64'
+              next === 'hwui-scaled'
                 ? (next as Renderer)
                 : 'pending'
             );
