@@ -9,7 +9,12 @@ exact = (ANDROID / "EdgeFadeProgressiveStripRenderer.kt").read_text()
 effect = (ANDROID / "EdgeFadeProgressiveBlurEffect.kt").read_text()
 shaders = (ANDROID / "BlurLabShaders.kt").read_text()
 gallery = (ROOT / "example/src/screens/GalleryScreen.tsx").read_text()
+fade_context = (ROOT / "example/src/fade/FadeContext.tsx").read_text()
+fade_panel = (ROOT / "example/src/components/FadePanel.tsx").read_text()
 route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
+native_spec = (ROOT / "src/EdgeFadeViewNativeComponent.ts").read_text()
+view = (ANDROID / "EdgeFadeView.kt").read_text()
+manager = (ANDROID / "EdgeFadeViewManager.kt").read_text()
 production_capture = (
     ROOT / "scripts/capture-gallery-production-vs-androidx.mjs"
 ).read_text()
@@ -32,6 +37,18 @@ assert "radius <= SCALED_EXIT_RADIUS_PX" in adaptive
 assert "EdgeFadeProgressiveStripRenderer(host)" in adaptive
 assert "EdgeFadeProgressiveScaledRenderer(host)" in adaptive
 assert '"hwui-scaled33"' in adaptive
+
+# Demo-only A/B override: public JS API stays clean, while the example can
+# force either production renderer for direct visual/perf comparison.
+assert 'internal var progressiveBackend: String = "auto"' in view
+assert 'progressiveBackend?: string;' in native_spec
+assert '@ReactProp(name = "progressiveBackend")' in manager
+assert '"exact" -> "exact"' in manager
+assert '"scaled" -> "scaled"' in manager
+assert 'val override = when (host.progressiveBackend)' in adaptive
+assert '"exact" -> Mode.EXACT' in adaptive
+assert '"scaled" -> Mode.SCALED' in adaptive
+assert 'lastOverride = "auto"' in adaptive
 
 # The production scaled path is the validated 0.75x HWUI strategy.
 assert "WORK_SCALE = 0.75f" in scaled
@@ -77,6 +94,12 @@ for token in ("topDp?: number", "leftDp?: number", "curve?: string"):
     assert token in gallery
 for token in ("fadeLeftDp", "fadeRightDp", "testCurve"):
     assert token in route
+assert "export type DemoBlurRenderer = 'auto' | 'exact' | 'scaled';" in fade_context
+assert "setBlurRenderer('auto')" in fade_context
+assert "const BLUR_RENDERERS = ['auto', 'exact', 'scaled'] as const;" in fade_panel
+assert "setBlurRenderer(renderer)" in fade_panel
+assert "progressiveBackend={" in gallery
+assert "blurRenderer" in gallery
 assert "const RENDERERS = ['androidx', 'public'];" in production_benchmark
 assert "Using HWUI-scaled progressive blur on API 33+" in production_benchmark
 assert "deltaPublicVsAndroidx" in production_benchmark
