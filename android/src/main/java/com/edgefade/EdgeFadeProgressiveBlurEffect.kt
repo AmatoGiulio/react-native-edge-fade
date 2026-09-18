@@ -17,7 +17,8 @@ import java.util.WeakHashMap
  * true spatially-varying Gaussian whose radius is driven continuously by the
  * edge mask. The implementation is selected only by platform capability:
  *
- * - API 33+: official AndroidX when compiled in, otherwise the AGSL port.
+ * - API 33+: exact AndroidX/AGSL at lower radii, switching the whole renderer
+ *   to the 0.75x HWUI Gaussian path at high radii with hysteresis.
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
@@ -120,12 +121,17 @@ internal object EdgeFadeProgressiveBlurEffect {
 
       val backend = when {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "gles31"
-        AndroidxBlurAdapter.available -> "androidx33"
-        else -> "agsl33"
+        else -> Api33.backendFor(view)
+          ?: if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
       }
       if (state.announcedBackend != backend) {
         state.announcedBackend = backend
-        if (backend == "androidx33") {
+        if (backend == "hwui-scaled33") {
+          Log.i(
+            TAG,
+            "Using HWUI-scaled progressive blur on API 33+ (0.75x strips; enter >=110px, exit <=90px).",
+          )
+        } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
         } else if (backend == "agsl33") {
           Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
@@ -143,7 +149,7 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
-  // Oversized radii are recoverable, not a capability failure. Both public
+  // Oversized radii are recoverable, not a capability failure. Public
   // progressive renderers clamp their effective radius to
   // BlurLabGeometry.MAX_RADIUS_PX, matching AndroidX's 150px spatial-blur cap.
   private fun progressiveFallbackReason(view: EdgeFadeView): String? = when {
@@ -299,7 +305,7 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   private object Api33 {
-    private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveStripRenderer>()
+    private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveAdaptiveRenderer>()
 
     fun apply(view: EdgeFadeView): Boolean {
       // The rejected full-view implementation used View.setRenderEffect(). Make
@@ -308,9 +314,9 @@ internal object EdgeFadeProgressiveBlurEffect {
 
       val existing = renderers[view]
       val renderer = existing ?: try {
-        EdgeFadeProgressiveStripRenderer(view)
+        EdgeFadeProgressiveAdaptiveRenderer(view)
       } catch (error: RuntimeException) {
-        Log.w(TAG, "Progressive strip shader creation failed; using mask fallback.", error)
+        Log.w(TAG, "Progressive renderer creation failed; using mask fallback.", error)
         return false
       }
 
@@ -324,12 +330,14 @@ internal object EdgeFadeProgressiveBlurEffect {
       } catch (error: RuntimeException) {
         renderers.remove(view)
         renderer.release()
-        Log.w(TAG, "Progressive strip configuration failed; using mask fallback.", error)
+        Log.w(TAG, "Progressive renderer configuration failed; using mask fallback.", error)
         false
       }
     }
 
-    fun rendererFor(view: EdgeFadeView): EdgeFadeProgressiveStripRenderer? = renderers[view]
+    fun rendererFor(view: EdgeFadeView): EdgeFadeProgressiveAdaptiveRenderer? = renderers[view]
+
+    fun backendFor(view: EdgeFadeView): String? = renderers[view]?.backendName()
 
     fun clear(view: EdgeFadeView) {
       view.setRenderEffect(null)
