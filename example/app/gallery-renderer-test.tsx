@@ -110,6 +110,7 @@ export default function GalleryRendererTestRoute() {
     renderer === 'androidx' ||
     renderer === 'hybrid-continuous' ||
     renderer === 'adaptive-taps' ||
+    renderer === 'hwui-scaled' ||
     renderer === 'hybrid-52' ||
     renderer === 'hybrid-56' ||
     renderer === 'hybrid-60' ||
