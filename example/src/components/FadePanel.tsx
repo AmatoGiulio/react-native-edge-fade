@@ -40,6 +40,7 @@ import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
 const MODES_ANDROID = ['mask', 'blur', 'overlay'] as const;
+const BLUR_RENDERERS = ['auto', 'exact', 'scaled'] as const;
 const DEFAULT_TINT = '#000000';
 
 const TINT_PRESETS = [
@@ -336,6 +337,8 @@ export function FadePanel() {
     setTint,
     showBands,
     setShowBands,
+    blurRenderer,
+    setBlurRenderer,
     autoDemo,
     setAutoDemo,
     preset,
@@ -695,6 +698,38 @@ export function FadePanel() {
         disabled={mode !== 'blur'}
       />
 
+      {Platform.OS === 'android' && mode === 'blur' && (
+        <View>
+          <Text style={[s.rendererLabel, { color: t.faintText }]}>renderer</Text>
+          <View style={[s.seg, { backgroundColor: rowBg }]}>
+            {BLUR_RENDERERS.map((renderer) => {
+              const selected = blurRenderer === renderer;
+              return (
+                <Pressable
+                  key={renderer}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  style={[
+                    s.segItem,
+                    selected && { backgroundColor: t.controlActive },
+                  ]}
+                  onPress={() => setBlurRenderer(renderer)}
+                >
+                  <Text
+                    style={[
+                      s.segText,
+                      { color: selected ? t.text : t.faintText },
+                    ]}
+                  >
+                    {renderer}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       {Platform.OS === 'android' ? (
         advancedContent
       ) : (
@@ -874,6 +909,14 @@ const s = StyleSheet.create({
   monoLabel: {
     fontFamily: MONO,
     fontSize: 14,
+  },
+  rendererLabel: {
+    fontFamily: MONO,
+    fontSize: 11,
+    marginLeft: 4,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
 
   tintDot: {
