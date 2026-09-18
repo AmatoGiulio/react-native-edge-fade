@@ -23,10 +23,11 @@ assert "rc.scale(zone.scale, zone.scale)" in renderer
 draw_body = renderer.split("fun draw(", 1)[1].split("private fun drawZone", 1)[0]
 assert "prepare(view)" not in draw_body, "draw() must preserve the switch radius selected by BlurLabRenderer.prepare()"
 assert 'backend == "hybrid-continuous"' in lab
-strip_release = lab.index("fun release() { node.setRenderEffect(null); node.discardDisplayList() }")
-switch_parser = lab.index("private fun hybridSwitchRadius")
-content_node = lab.index('private val content = RenderNode("EdgeFade.BlurLab.content")')
-assert strip_release < switch_parser < content_node, "hybridSwitchRadius must live on BlurLabRenderer, not Strip"
+assert "hybridSwitchRadius" not in lab
+prepare_body = lab.split("fun prepare(view: BlurLabView, backend: String)", 1)[1].split("fun draw(", 1)[0]
+assert "val hybridSwitch: Float? = when {" in prepare_body
+assert 'backend == "hybrid-continuous" -> 48f' in prepare_body
+assert 'backend.startsWith("hybrid-")' in prepare_body
 assert 'active == "hybrid-continuous"' in view
 assert "'hybrid-continuous'" in route
 assert "autoScroll: !staticCapture" in route
