@@ -103,6 +103,15 @@ class EdgeFadeViewManager :
   @ReactProp(name = "blurRadius")
   override fun setBlurRadius(view: EdgeFadeView, value: Float) { view.blurRadius = dp(view, value) }
 
+  @ReactProp(name = "progressiveBackend")
+  override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
+    view.progressiveBackend = when (value) {
+      "exact" -> "exact"
+      "scaled" -> "scaled"
+      else -> "auto"
+    }
+  }
+
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) { view.frostSaturation = value }
 
