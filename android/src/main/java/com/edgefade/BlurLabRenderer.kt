@@ -26,7 +26,9 @@ internal class BlurLabRenderer {
 
   private val content = RenderNode("EdgeFade.BlurLab.content")
   private val gaussianScale = BlurLabGaussianScaleRenderer()
+  private val scaledContinuous = BlurLabScaledContinuousRenderer()
   private var gaussianScaleActive = false
+  private var scaledContinuousActive = false
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var curveKey: String? = null
@@ -41,6 +43,26 @@ internal class BlurLabRenderer {
     val radius = BlurLabGeometry.radius(view.radiusPx)
     val progression = BlurLabGeometry.finite(view.progression, 1f).coerceIn(0.05f, 1f)
     val next = Key(w, h, t, b, l, r, radius, progression, view.curve, backend)
+
+    if (backend == "scaled-continuous" && scaledContinuous.isEligible(view)) {
+      strips.forEach { it.release() }
+      strips = emptyList()
+      if (gaussianScaleActive) {
+        gaussianScale.release()
+        gaussianScaleActive = false
+      }
+      if (!scaledContinuous.prepare(view)) {
+        throw RuntimeException("Scaled continuous renderer could not prepare")
+      }
+      scaledContinuousActive = true
+      key = next
+      return
+    }
+
+    if (scaledContinuousActive) {
+      scaledContinuous.release()
+      scaledContinuousActive = false
+    }
 
     if (backend == "gaussian-scale" && gaussianScale.isEligible(view)) {
       strips.forEach { it.release() }
@@ -67,6 +89,11 @@ internal class BlurLabRenderer {
   }
 
   fun draw(canvas: Canvas, view: BlurLabView, record: (Canvas) -> Unit) {
+    if (scaledContinuousActive) {
+      if (!scaledContinuous.draw(canvas, view, record)) record(canvas)
+      return
+    }
+
     if (gaussianScaleActive) {
       if (!gaussianScale.draw(canvas, view, record)) record(canvas)
       return
@@ -156,6 +183,8 @@ internal class BlurLabRenderer {
   }
 
   fun release() {
+    scaledContinuous.release()
+    scaledContinuousActive = false
     gaussianScale.release()
     gaussianScaleActive = false
     strips.forEach { it.release() }
