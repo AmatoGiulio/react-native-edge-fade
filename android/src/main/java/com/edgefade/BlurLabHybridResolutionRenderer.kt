@@ -73,7 +73,7 @@ internal class BlurLabHybridResolutionRenderer {
       (view.topDepth > 0f || view.bottomDepth > 0f) &&
       view.curve == "smooth"
 
-  fun prepare(view: BlurLabView, switchRadiusPx: Float = DEFAULT_key.switchRadius): Boolean {
+  fun prepare(view: BlurLabView, switchRadiusPx: Float = DEFAULT_SWITCH_RADIUS_PX): Boolean {
     if (!isEligible(view) || view.width <= 0 || view.height <= 0) return false
 
     val next = Key(
@@ -83,7 +83,7 @@ internal class BlurLabHybridResolutionRenderer {
       bottom = BlurLabGeometry.edge(view.bottomDepth, view.height),
       radius = BlurLabGeometry.radius(view.radiusPx),
       progression = BlurLabGeometry.finite(view.progression, 1f).coerceIn(0.05f, 1f),
-      switchRadius = BlurLabGeometry.finite(switchRadiusPx, DEFAULT_key.switchRadius)
+      switchRadius = BlurLabGeometry.finite(switchRadiusPx, DEFAULT_SWITCH_RADIUS_PX)
         .coerceIn(1f, BlurLabGeometry.MAX_RADIUS_PX),
     )
 
