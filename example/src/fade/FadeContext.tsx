@@ -37,6 +37,8 @@ import type { EdgeFadeCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 import { useDialCurve, useThrottledMirror } from '@/components/dial';
 
+export type DemoBlurRenderer = 'auto' | 'exact' | 'scaled';
+
 export interface FadeStore {
   x1: SharedValue<number>;
   y1: SharedValue<number>;
@@ -58,6 +60,10 @@ export interface FadeStore {
   setTint: (tint: string | undefined) => void;
   showBands: boolean;
   setShowBands: (show: boolean) => void;
+
+  /** Android demo-only override for comparing progressive renderers. */
+  blurRenderer: DemoBlurRenderer;
+  setBlurRenderer: (renderer: DemoBlurRenderer) => void;
 
   /**
    * Auto-demo: when on, the top/bottom fade region gently breathes on a loop so
@@ -109,6 +115,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   // to any photo. Dark/Light/custom tints are opt-in via the panel.
   const [tint, setTint] = useState<string | undefined>(undefined);
   const [showBands, setShowBands] = useState(false);
+  const [blurRenderer, setBlurRenderer] = useState<DemoBlurRenderer>('auto');
   const [autoDemo, setAutoDemo] = useState(false);
   // Starts on the named default curve; a manual edit flips it to 'custom'.
   const [preset, setPreset] = useState<string>('default');
@@ -155,6 +162,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
+    setBlurRenderer('auto');
     setAutoDemo(false);
     setPreset('default');
   }, [
@@ -194,6 +202,8 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       setTint,
       showBands,
       setShowBands,
+      blurRenderer,
+      setBlurRenderer,
       autoDemo,
       setAutoDemo,
       preset,
@@ -218,6 +228,7 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       mode,
       tint,
       showBands,
+      blurRenderer,
       autoDemo,
       preset,
       reset,
