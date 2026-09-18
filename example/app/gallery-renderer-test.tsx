@@ -15,6 +15,7 @@ type Renderer =
   | 'agsl'
   | 'androidx'
   | 'hybrid-continuous'
+  | 'adaptive-taps'
   | 'hybrid-52'
   | 'hybrid-56'
   | 'hybrid-60'
@@ -37,6 +38,7 @@ function rendererFrom(value: string | string[] | undefined): Renderer {
     renderer === 'agsl' ||
     renderer === 'androidx' ||
     renderer === 'hybrid-continuous' ||
+    renderer === 'adaptive-taps' ||
     renderer === 'hybrid-52' ||
     renderer === 'hybrid-56' ||
     renderer === 'hybrid-60' ||
@@ -105,6 +107,7 @@ export default function GalleryRendererTestRoute() {
     renderer === 'agsl' ||
     renderer === 'androidx' ||
     renderer === 'hybrid-continuous' ||
+    renderer === 'adaptive-taps' ||
     renderer === 'hybrid-52' ||
     renderer === 'hybrid-56' ||
     renderer === 'hybrid-60' ||
@@ -138,6 +141,7 @@ export default function GalleryRendererTestRoute() {
               next === 'agsl' ||
               next === 'androidx' ||
               next === 'hybrid-continuous' ||
+              next === 'adaptive-taps' ||
               next === 'hybrid-52' ||
               next === 'hybrid-56' ||
               next === 'hybrid-60' ||
