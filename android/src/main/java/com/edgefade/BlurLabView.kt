@@ -50,12 +50,15 @@ internal class BlurLabView(context: Context) : FrameLayout(context) {
   }
 
   private fun hasBands() = topDepth > 0f || bottomDepth > 0f || leftDepth > 0f || rightDepth > 0f
+  private fun isHybrid(active: String) =
+    active == "hybrid-continuous" || active.matches(Regex("hybrid-(52|56|60|64)"))
+
   private fun isProgressive(active: String) =
-    active == "agsl" || active == "androidx" || active == "hybrid-continuous"
+    active == "agsl" || active == "androidx" || isHybrid(active)
 
   private fun activeBackend(hardware: Boolean): String = when {
     backend == "off" -> "off"
-    backend != "agsl" && backend != "androidx" && backend != "hybrid-continuous" -> "off"
+    backend != "agsl" && backend != "androidx" && !isHybrid(backend) -> "off"
     Build.VERSION.SDK_INT < 33 || !hardware || failedBackend == backend -> "off"
     backend == "androidx" && !AndroidxBlurAdapter.available -> "off"
     else -> backend
