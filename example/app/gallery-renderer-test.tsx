@@ -9,7 +9,7 @@ import {
 } from '@/screens/GalleryScreen';
 import type NativeBlurLabType from '../../src/BlurLabNativeComponent';
 
-type Renderer = 'off' | 'public' | 'agsl' | 'androidx';
+type Renderer = 'off' | 'public' | 'agsl' | 'androidx' | 'hybrid-continuous';
 
 const MAX_RADIUS_PX = 150;
 const DEFAULT_RADIUS_PX = 80;
@@ -23,7 +23,12 @@ function first(value: string | string[] | undefined) {
 
 function rendererFrom(value: string | string[] | undefined): Renderer {
   const renderer = first(value);
-  if (renderer === 'off' || renderer === 'agsl' || renderer === 'androidx') {
+  if (
+    renderer === 'off' ||
+    renderer === 'agsl' ||
+    renderer === 'androidx' ||
+    renderer === 'hybrid-continuous'
+  ) {
     return renderer;
   }
   return 'public';
@@ -54,12 +59,14 @@ export default function GalleryRendererTestRoute() {
     radiusPx?: string | string[];
     cycleMs?: string | string[];
     image?: string | string[];
+    static?: string | string[];
   }>();
 
   const renderer = rendererFrom(params.renderer);
   const radiusPx = numberFrom(params.radiusPx, DEFAULT_RADIUS_PX, 1, MAX_RADIUS_PX);
   const cycleMs = numberFrom(params.cycleMs, DEFAULT_CYCLE_MS, 2000, 10_000);
   const imageRenderer = imageFrom(params.image);
+  const staticCapture = first(params.static) === '1';
   const radiusDp = radiusPx / PixelRatio.get();
   const [active, setActive] = useState<Renderer | 'pending'>(
     renderer === 'off' || renderer === 'public' ? renderer : 'pending'
@@ -67,13 +74,13 @@ export default function GalleryRendererTestRoute() {
 
   const stress = useMemo<GalleryStressConfig>(
     () => ({
-      autoScroll: true,
+      autoScroll: !staticCapture,
       effectEnabled: renderer === 'public',
       radiusDp,
       cycleMs,
       imageRenderer,
     }),
-    [cycleMs, imageRenderer, radiusDp, renderer]
+    [cycleMs, imageRenderer, radiusDp, renderer, staticCapture]
   );
 
   if (Platform.OS !== 'android') return <View />;
@@ -81,7 +88,11 @@ export default function GalleryRendererTestRoute() {
   const gallery = <GalleryScreen stress={stress} />;
   const accessibilityLabel = `gallery-renderer requested=${renderer} active=${active}`;
 
-  if (renderer === 'agsl' || renderer === 'androidx') {
+  if (
+    renderer === 'agsl' ||
+    renderer === 'androidx' ||
+    renderer === 'hybrid-continuous'
+  ) {
     const NativeBlurLab = require('../../src/BlurLabNativeComponent')
       .default as typeof NativeBlurLabType;
 
@@ -107,7 +118,11 @@ export default function GalleryRendererTestRoute() {
           onBackendChange={({ nativeEvent }) => {
             const next = nativeEvent.active;
             setActive(
-              next === 'agsl' || next === 'androidx' ? next : 'pending'
+              next === 'agsl' ||
+              next === 'androidx' ||
+              next === 'hybrid-continuous'
+                ? next
+                : 'pending'
             );
           }}
         >
