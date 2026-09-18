@@ -45,6 +45,9 @@ assert "const order = sample % 2 === 0" in benchmark
 assert "['agsl', 'hwui-scaled']" in benchmark
 assert "['hwui-scaled', 'agsl']" in benchmark
 assert "deltaHwuiVsAgsl" in benchmark
+assert "pairwise" in benchmark
+assert "pairwiseMedianDelta" in benchmark
+assert "Pairwise deltas (HWUI - AGSL)" in benchmark
 assert "deltasVsOff" not in benchmark
 assert "gallery-renderer requested=${renderer} active=${renderer}" in benchmark
 assert "targetRefreshHz = null;" in benchmark
