@@ -41,6 +41,9 @@ internal class BlurLabViewManager : ViewGroupManager<BlurLabView>(),
   override fun onAfterUpdateTransaction(view: BlurLabView) {
     super.onAfterUpdateTransaction(view)
     view.applyConfig()
+    view.postOnAnimation {
+      if (view.isAttachedToWindow) view.reportConfiguredBackend()
+    }
   }
 
   private fun px(view: BlurLabView, value: Float) =
