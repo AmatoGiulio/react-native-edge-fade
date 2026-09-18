@@ -13,6 +13,9 @@ assert "fun passAdaptive(vertical: Boolean)" in shaders
 assert "adaptiveStart = 44.0" in shaders
 assert "adaptiveEnd = 56.0" in shaders
 assert "for (float i = 1.0; i < maxRadius; i += 4.0)" in shaders
+assert "float support(float x, float radius)" in shaders
+assert "smoothstep(radius - 0.5, radius + 1.5, x)" in shaders
+assert "if (i > radius + 2.0) break;" in shaders
 assert "exactGaussian(coord, radius)" in shaders
 assert "groupedGaussian(coord, radius)" in shaders
 assert 'next.backend == "adaptive-taps"' in renderer
