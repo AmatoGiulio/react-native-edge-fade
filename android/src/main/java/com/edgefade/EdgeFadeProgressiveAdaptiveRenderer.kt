@@ -14,8 +14,8 @@ import java.lang.ref.WeakReference
  * between [SCALED_EXIT_RADIUS_PX] and [SCALED_ENTER_RADIUS_PX] provides
  * hysteresis, preventing an animated radius from flipping renderers every frame.
  *
- * The demo-only native override can force either renderer for direct A/B testing;
- * it is intentionally absent from the public JS prop types.
+ * The demo-only native override can force AGSL, AndroidX, or the scaled renderer
+ * for direct same-scene comparison; it is absent from the public JS prop types.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveAdaptiveRenderer(
@@ -43,6 +43,8 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
 
     val override = when (host.progressiveBackend) {
       "exact" -> "exact"
+      "agsl" -> "agsl"
+      "androidx" -> "androidx"
       "scaled" -> "scaled"
       else -> "auto"
     }
@@ -66,7 +68,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         (host.fadeTop > 0f || host.fadeBottom > 0f)
 
     val nextMode = when (override) {
-      "exact" -> Mode.EXACT
+      "exact", "agsl", "androidx" -> Mode.EXACT
       "scaled" -> Mode.SCALED
       else -> when (mode) {
         Mode.EXACT ->
@@ -119,9 +121,16 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     }
   }
 
-  fun backendName(): String = when (mode) {
-    Mode.SCALED -> "hwui-scaled33"
-    Mode.EXACT -> if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
+  fun backendName(): String {
+    val requested = hostRef.get()?.progressiveBackend
+    return when (mode) {
+      Mode.SCALED -> "hwui-scaled33"
+      Mode.EXACT -> when (requested) {
+        "agsl" -> "agsl33"
+        "androidx" -> "androidx33"
+        else -> if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
+      }
+    }
   }
 
   fun release() {
