@@ -39,6 +39,11 @@ export interface GalleryStressConfig {
   radiusDp: number;
   cycleMs: number;
   imageRenderer: GalleryStressImageRenderer;
+  topDp?: number;
+  bottomDp?: number;
+  leftDp?: number;
+  rightDp?: number;
+  curve?: string;
 }
 
 interface GalleryScreenProps {
@@ -176,12 +181,14 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
     opacity: !stressMode && showBands && bottom.get() > 0 ? 1 : 0,
   }));
 
-  const edgeTop = stressMode ? STRESS_TOP_BOTTOM_DP : top;
-  const edgeBottom = stressMode ? STRESS_TOP_BOTTOM_DP : bottom;
-  const edgeLeft = stressMode ? 0 : left;
-  const edgeRight = stressMode ? 0 : right;
+  const edgeTop = stressMode ? (stress.topDp ?? STRESS_TOP_BOTTOM_DP) : top;
+  const edgeBottom = stressMode
+    ? (stress.bottomDp ?? STRESS_TOP_BOTTOM_DP)
+    : bottom;
+  const edgeLeft = stressMode ? (stress.leftDp ?? 0) : left;
+  const edgeRight = stressMode ? (stress.rightDp ?? 0) : right;
   const edgeRadius = stressMode ? 0 : radius;
-  const edgeCurve = stressMode ? 'smooth' : curve;
+  const edgeCurve = stressMode ? (stress.curve ?? 'smooth') : curve;
   const edgeMode = stressMode ? 'blur' : mode;
   const edgeBlurRadius = stressMode
     ? stress.effectEnabled
