@@ -37,6 +37,14 @@ export default function ProgressiveShowcaseRoute() {
   const cardHeight = Math.min(height * 0.69, cardWidth * 1.48);
   const bottomClosed = 12;
   const bottomOpen = Math.min(cardHeight * 0.78, 440);
+  const bottom = useSharedValue(bottomClosed);
+
+  useEffect(() => {
+    bottom.value = withDelay(
+      320,
+      withTiming(bottomOpen, { duration: OPEN_MS, easing: EASE })
+    );
+  }, [bottom, bottomOpen]);
 
   useEffect(() => {
     progress.value = withDelay(
@@ -63,8 +71,13 @@ export default function ProgressiveShowcaseRoute() {
   const toggle = () => {
     const next = !open;
     setOpen(next);
+    const duration = next ? OPEN_MS : 500;
     progress.value = withTiming(next ? 1 : 0, {
-      duration: next ? OPEN_MS : 500,
+      duration,
+      easing: EASE,
+    });
+    bottom.value = withTiming(next ? bottomOpen : bottomClosed, {
+      duration,
       easing: EASE,
     });
   };
@@ -97,7 +110,7 @@ export default function ProgressiveShowcaseRoute() {
         <AnimatedEdgeFadeView
           mode="blur"
           top={0}
-          bottom={progress}
+          bottom={bottom}
           curve="smooth"
           blurRadius={150}
           blurProgression={1}
