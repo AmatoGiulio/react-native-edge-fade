@@ -8,7 +8,9 @@ import java.lang.ref.WeakReference
 /**
  * Selects the API 33+ progressive renderer by maximum blur radius.
  *
- * Resolution selection is global for the whole EdgeFade instance. The dead-band
+ * Resolution selection is global for the whole EdgeFade instance. The scaled
+ * path is currently restricted to the validated top/bottom-only topology.
+ * Mixed-axis fields stay on the exact AndroidX/AGSL renderer. The dead-band
  * between [SCALED_EXIT_RADIUS_PX] and [SCALED_ENTER_RADIUS_PX] provides
  * hysteresis, preventing an animated radius from flipping renderers every frame.
  */
@@ -35,11 +37,28 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         0f
       }
 
+    // The 0.75x path is validated for the vertical progressive topology
+    // (top/bottom, including either edge independently). Mixed-axis fields
+    // create 2-D corner radius gradients where the downsampled approximation
+    // is measurably different from AndroidX, so those stay exact.
+    val scaledEligible =
+      host.fadeLeft <= 0f &&
+        host.fadeRight <= 0f &&
+        (host.fadeTop > 0f || host.fadeBottom > 0f)
+
     val nextMode = when (mode) {
       Mode.EXACT ->
-        if (radius >= SCALED_ENTER_RADIUS_PX) Mode.SCALED else Mode.EXACT
+        if (scaledEligible && radius >= SCALED_ENTER_RADIUS_PX) {
+          Mode.SCALED
+        } else {
+          Mode.EXACT
+        }
       Mode.SCALED ->
-        if (radius <= SCALED_EXIT_RADIUS_PX) Mode.EXACT else Mode.SCALED
+        if (!scaledEligible || radius <= SCALED_EXIT_RADIUS_PX) {
+          Mode.EXACT
+        } else {
+          Mode.SCALED
+        }
     }
 
     if (nextMode != mode) {
