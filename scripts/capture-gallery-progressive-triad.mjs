@@ -42,6 +42,12 @@ if (!Number.isFinite(edgeDp) || edgeDp < 0 || edgeDp > 300) {
 if (!['vertical', 'horizontal', 'all'].includes(edges)) {
   throw new Error('--edges must be vertical, horizontal or all');
 }
+if (edges !== 'vertical') {
+  throw new Error(
+    'The HWUI-scaled Lab golden renderer is validated only for vertical top/bottom edges. ' +
+      'Use capture-gallery-production-vs-androidx.mjs for horizontal or mixed-axis fidelity.'
+  );
+}
 if (!curve) throw new Error('--curve must not be empty');
 
 fs.mkdirSync(OUT, { recursive: true });
