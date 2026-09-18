@@ -23,6 +23,11 @@ assert "SCALED_EXIT_RADIUS_PX = 90f" in adaptive
 assert "Mode.EXACT" in adaptive
 assert "Mode.SCALED" in adaptive
 assert "radius >= SCALED_ENTER_RADIUS_PX" in adaptive
+assert "scaledEligible" in adaptive
+assert "host.fadeLeft <= 0f" in adaptive
+assert "host.fadeRight <= 0f" in adaptive
+assert "(host.fadeTop > 0f || host.fadeBottom > 0f)" in adaptive
+assert "!scaledEligible || radius <= SCALED_EXIT_RADIUS_PX" in adaptive
 assert "radius <= SCALED_EXIT_RADIUS_PX" in adaptive
 assert "EdgeFadeProgressiveStripRenderer(host)" in adaptive
 assert "EdgeFadeProgressiveScaledRenderer(host)" in adaptive
