@@ -133,8 +133,9 @@ function verify(renderer) {
     if (renderer === 'public') {
       const uiReady =
         lastUi.includes('gallery-renderer requested=public active=public');
+      const scaledEligible = edges === 'vertical';
       const backendReady =
-        radiusPx >= 110
+        scaledEligible && radiusPx >= 110
           ? lastLogs.includes(
               'Using HWUI-scaled progressive blur on API 33+'
             )
