@@ -191,55 +191,90 @@ function rendererLogs() {
   );
 }
 
+function diagnosticLogs() {
+  try {
+    return adb(
+      [
+        'logcat',
+        '-d',
+        '-v',
+        'brief',
+        '-s',
+        'EdgeFadeProgressive:V',
+        'EdgeFade.BlurLab:V',
+        'AndroidRuntime:E',
+        'ReactNativeJS:E',
+        '*:S',
+      ],
+      false
+    );
+  } catch {
+    return '';
+  }
+}
+
 function verifyRenderer(renderer) {
-  let lastUi = '';
-  let lastLogs = '';
+  // The benchmark route continuously scrolls on the UI thread. uiautomator
+  // dump waits for an idle accessibility tree and can therefore return an
+  // empty dump here even when the app is healthy. Backend activation is a
+  // stronger signal anyway, so poll the native activation log immediately
+  // after launch, before the stress loop has had time to start.
+  let observedLogs = '';
 
-  for (let attempt = 1; attempt <= 20; attempt++) {
-    try {
-      shell('uiautomator dump /sdcard/edgefade-bench-ui.xml >/dev/null 2>&1');
-      lastUi = shell('cat /sdcard/edgefade-bench-ui.xml', false);
-    } catch {}
-
-    lastLogs = rendererLogs();
+  for (let attempt = 1; attempt <= 30; attempt++) {
+    const currentLogs = rendererLogs();
+    if (currentLogs) observedLogs += currentLogs;
 
     if (renderer === 'public') {
-      const uiReady =
-        lastUi.includes('gallery-renderer requested=public active=public');
       const backendReady =
         options.radiusPx >= 110
-          ? lastLogs.includes('Using HWUI-scaled progressive blur on API 33+')
-          : lastLogs.includes('Using official AndroidX progressive blur on API 33+') ||
-            lastLogs.includes('Using pure progressive AGSL blur on API 33+');
+          ? observedLogs.includes(
+              'Using HWUI-scaled progressive blur on API 33+'
+            )
+          : observedLogs.includes(
+              'Using official AndroidX progressive blur on API 33+'
+            ) ||
+            observedLogs.includes(
+              'Using pure progressive AGSL blur on API 33+'
+            );
 
-      if (uiReady && backendReady) return;
+      if (backendReady) return;
 
-      if (/Progressive unavailable; using mask fallback|progressive draw failed/i.test(lastLogs)) {
-        throw new Error(`Public progressive backend failed.\n${lastLogs}`);
+      if (
+        /Progressive unavailable; using mask fallback|progressive draw failed/i.test(
+          observedLogs
+        )
+      ) {
+        throw new Error(
+          `Public progressive backend failed.\n${observedLogs}`
+        );
       }
     } else {
-      const expectedUi =
-        `gallery-renderer requested=${renderer} active=${renderer}`;
-      if (lastUi.includes(expectedUi)) return;
-
       const expectedLog =
         `Renderer active: requested=${renderer} active=${renderer}`;
-      if (lastLogs.includes(expectedLog)) return;
+      if (observedLogs.includes(expectedLog)) return;
 
-      const disabledUi =
-        `gallery-renderer requested=${renderer} active=off`;
       const disabledLog =
         `Renderer active: requested=${renderer} active=off`;
-      if (lastUi.includes(disabledUi) || lastLogs.includes(disabledLog)) {
-        throw new Error(`${renderer} disabled.\n${lastLogs}`);
+      if (observedLogs.includes(disabledLog)) {
+        throw new Error(`${renderer} disabled.\n${observedLogs}`);
       }
     }
 
-    sleep(250);
+    const pid = shell(`pidof ${PACKAGE} || true`);
+    if (!pid) {
+      throw new Error(
+        `Renderer process exited while verifying ${renderer}.\n${diagnosticLogs()}`
+      );
+    }
+
+    sleep(100);
   }
 
   throw new Error(
-    `Renderer verification failed for ${renderer}.\nUI dump:\n${lastUi}\nLogs:\n${lastLogs}`
+    `Renderer activation was not observed for ${renderer}.\n` +
+      `Backend logs:\n${observedLogs}\n` +
+      `Diagnostics:\n${diagnosticLogs()}`
   );
 }
 function screenshot(renderer, runId) {
@@ -255,10 +290,12 @@ let targetRefreshHz = null;
 function runCase(renderer, sample, runId, captureVisual) {
   console.log(`\n${renderer.toUpperCase()} / sample ${sample}`);
   launch(renderer);
-  sleep(1000);
+  // Verify during the stress route's built-in 1.2s pre-scroll window so the
+  // one-shot production activation log cannot be lost behind continuous work.
+  sleep(250);
   verifyRenderer(renderer);
   if (captureVisual) screenshot(renderer, runId);
-  sleep(Math.max(0, options.warmupMs - 1000));
+  sleep(Math.max(0, options.warmupMs - 250));
 
   const refreshStart = readRefreshRate();
   adb(['shell', 'dumpsys', 'gfxinfo', PACKAGE, 'reset']);
