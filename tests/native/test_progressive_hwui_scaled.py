@@ -9,6 +9,7 @@ lab = (ANDROID / "BlurLabRenderer.kt").read_text()
 view = (ANDROID / "BlurLabView.kt").read_text()
 route = (ROOT / "example/app/gallery-renderer-test.tsx").read_text()
 capture = (ROOT / "scripts/capture-gallery-hwui-scaled.mjs").read_text()
+benchmark = (ROOT / "scripts/benchmark-gallery-hwui-scaled.mjs").read_text()
 manager = (ANDROID / "BlurLabViewManager.kt").read_text()
 
 assert "WORK_SCALE = 0.75f" in renderer
@@ -38,5 +39,12 @@ native_branch = route.split("if (\n    renderer === 'agsl'", 1)[1].split(
 assert "renderer === 'hwui-scaled'" in native_branch
 assert "['hwui-scaled', 'agsl']" in capture
 assert "&static=1" in capture
+
+assert "const RENDERERS = ['off', 'agsl', 'hwui-scaled'];" in benchmark
+assert "gallery-renderer requested=${renderer} active=${renderer}" in benchmark
+assert "targetRefreshHz = null;" in benchmark
+assert "Rejected sample" in benchmark
+assert "rejectedBlocks" in benchmark
+assert "--max-attempts" in benchmark
 
 print("HWUI scaled benchmark contract: OK")
