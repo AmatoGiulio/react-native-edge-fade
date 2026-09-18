@@ -20,15 +20,15 @@ internal class BlurLabRenderer {
     val mask = RuntimeShader(BlurLabShaders.mask)
     var horizontal: RuntimeShader? = null
     var vertical: RuntimeShader? = null
-    private fun hybridSwitchRadius(backend: String): Float? {
+    fun release() { node.setRenderEffect(null); node.discardDisplayList() }
+  }
+  private fun hybridSwitchRadius(backend: String): Float? {
     if (backend == "hybrid-continuous") return 48f
     if (!backend.startsWith("hybrid-")) return null
     return backend.removePrefix("hybrid-").toFloatOrNull()
       ?.takeIf { it in 1f..BlurLabGeometry.MAX_RADIUS_PX }
   }
 
-  fun release() { node.setRenderEffect(null); node.discardDisplayList() }
-  }
   private val content = RenderNode("EdgeFade.BlurLab.content")
   private val hybrid = BlurLabHybridResolutionRenderer()
   private var hybridActive = false
