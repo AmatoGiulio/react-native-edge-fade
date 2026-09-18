@@ -9,7 +9,13 @@ import {
 } from '@/screens/GalleryScreen';
 import type NativeBlurLabType from '../../src/BlurLabNativeComponent';
 
-type Renderer = 'off' | 'public' | 'agsl' | 'androidx' | 'gaussian-scale';
+type Renderer =
+  | 'off'
+  | 'public'
+  | 'agsl'
+  | 'androidx'
+  | 'gaussian-scale'
+  | 'scaled-continuous';
 
 const MAX_RADIUS_PX = 150;
 const DEFAULT_RADIUS_PX = 80;
@@ -27,7 +33,8 @@ function rendererFrom(value: string | string[] | undefined): Renderer {
     renderer === 'off' ||
     renderer === 'agsl' ||
     renderer === 'androidx' ||
-    renderer === 'gaussian-scale'
+    renderer === 'gaussian-scale' ||
+    renderer === 'scaled-continuous'
   ) {
     return renderer;
   }
@@ -91,7 +98,8 @@ export default function GalleryRendererTestRoute() {
   if (
     renderer === 'agsl' ||
     renderer === 'androidx' ||
-    renderer === 'gaussian-scale'
+    renderer === 'gaussian-scale' ||
+    renderer === 'scaled-continuous'
   ) {
     const NativeBlurLab = require('../../src/BlurLabNativeComponent')
       .default as typeof NativeBlurLabType;
@@ -120,7 +128,8 @@ export default function GalleryRendererTestRoute() {
             setActive(
               next === 'agsl' ||
                 next === 'androidx' ||
-                next === 'gaussian-scale'
+                next === 'gaussian-scale' ||
+                next === 'scaled-continuous'
                 ? next
                 : 'pending'
             );
