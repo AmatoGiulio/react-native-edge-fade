@@ -351,7 +351,7 @@ assertReleasePackage();
 
 const sdk = Number(shell('getprop ro.build.version.sdk'));
 const model = shell('getprop ro.product.model');
-if (sdk < 33) throw new Error('Renderer matrix requires API 33+ for AndroidX/HWUI-scaled backends.');
+if (sdk < 33) throw new Error('Renderer matrix requires API 33+ for AndroidX/production adaptive backends.');
 
 const runId = timestamp();
 console.log(`Gallery AndroidX vs production adaptive / ${model} / API ${sdk}`);
