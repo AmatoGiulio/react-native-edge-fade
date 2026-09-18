@@ -86,8 +86,10 @@ internal object BlurLabShaders {
    *
    * radius <= 44px: byte-for-byte equivalent paired-tap kernel to [pass].
    * radius >= 56px: groups four adjacent Gaussian weights into one weighted
-   * centroid sample per side. The 44..56px interval blends the two estimates
-   * inside the same shader coordinate space, so there is no geometric seam.
+   * centroid sample per side, with a continuous support window so groups do
+   * not appear at discrete radius thresholds. The 44..56px interval blends
+   * the two estimates inside the same shader coordinate space, so there is no
+   * geometric seam or contour-band boundary.
    */
   fun passAdaptive(vertical: Boolean): String {
     val offset = if (vertical) "float2(0.0, d)" else "float2(d, 0.0)"
@@ -145,24 +147,33 @@ internal object BlurLabShaders {
         return half4(result / weightSum);
       }
 
+      float support(float x, float radius) {
+        // Keep the truncation edge continuous as radius changes from pixel to
+        // pixel. The exact kernel changes support at integer radii; doing that
+        // with four-weight groups made the group enter all at once and exposed
+        // horizontal contour bands in a spatially varying blur.
+        return 1.0 - smoothstep(radius - 0.5, radius + 1.5, x);
+      }
+
       half4 groupedGaussian(float2 coord, float radius) {
-        float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
-        if (r < 1.0) return half4(sampled);
+        if (radius < 1.0) return half4(sampled);
 
         float sigma = max(radius / 2.0, 1.0);
         float weightSum = 1.0;
         float4 result = sampled;
 
         for (float i = 1.0; i < maxRadius; i += 4.0) {
-          if (i > r) break;
+          // Enter the next group while its support is still exactly zero.
+          // That keeps loop-count changes from changing the image.
+          if (i > radius + 2.0) break;
 
-          float w0 = gaussian(i, sigma) * step(i, r);
-          float w1 = gaussian(i + 1.0, sigma) * step(i + 1.0, r);
-          float w2 = gaussian(i + 2.0, sigma) * step(i + 2.0, r);
-          float w3 = gaussian(i + 3.0, sigma) * step(i + 3.0, r);
+          float w0 = gaussian(i, sigma) * support(i, radius);
+          float w1 = gaussian(i + 1.0, sigma) * support(i + 1.0, radius);
+          float w2 = gaussian(i + 2.0, sigma) * support(i + 2.0, radius);
+          float w3 = gaussian(i + 3.0, sigma) * support(i + 3.0, radius);
           float weight = w0 + w1 + w2 + w3;
-          if (weight <= 0.0) break;
+          if (weight <= 0.00001) continue;
 
           float d =
             (i * w0 +
