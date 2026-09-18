@@ -1,4 +1,7 @@
-import { MAX_DEMO_BLUR } from '@/fade/limits';
+import {
+  ANDROID_PROGRESSIVE_BLUR_DENSITY,
+  MAX_DEMO_BLUR,
+} from '@/fade/limits';
 import { useCallback, useState, type ReactNode } from 'react';
 import {
   Platform,
@@ -60,6 +63,13 @@ function fmt2(v: number): string {
 function fmtDp(v: number): string {
   'worklet';
   return `${Math.round(v)}dp`;
+}
+
+function fmtBlurRadius(v: number): string {
+  'worklet';
+  return Platform.OS === 'android'
+    ? `${Math.round(v * ANDROID_PROGRESSIVE_BLUR_DENSITY)}px`
+    : `${Math.round(v)}dp`;
 }
 
 function NativeIcon({
@@ -687,12 +697,16 @@ export function FadePanel() {
         {...dialSurface}
       />
       <DialRow
-        label="blur amount"
+        label="blur radius"
         value={blur}
         min={0}
         max={MAX_DEMO_BLUR}
-        step={1}
-        format={fmtDp}
+        step={
+          Platform.OS === 'android'
+            ? 1 / ANDROID_PROGRESSIVE_BLUR_DENSITY
+            : 1
+        }
+        format={fmtBlurRadius}
         tint={scheme}
         {...dialSurface}
         disabled={mode !== 'blur'}
