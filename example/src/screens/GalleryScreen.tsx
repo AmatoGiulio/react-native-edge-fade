@@ -18,11 +18,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
-const DemoAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
-
 import { useCatalog, type CatalogItem } from '@/data/catalog';
 import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
+
+const DemoAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
 
 const GAP = 2;
 const STRESS_TOP_BOTTOM_DP = 110;
