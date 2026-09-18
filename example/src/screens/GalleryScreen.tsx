@@ -19,7 +19,11 @@ import Animated, {
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 import { useCatalog, type CatalogItem } from '@/data/catalog';
-import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
+import {
+  useFadeStore,
+  useFadeRender,
+  type DemoBlurRenderer,
+} from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
 
 const DemoAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
@@ -46,6 +50,7 @@ export interface GalleryStressConfig {
   leftDp?: number;
   rightDp?: number;
   curve?: string;
+  progressiveBackend?: DemoBlurRenderer;
 }
 
 interface GalleryScreenProps {
@@ -222,7 +227,11 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
         progressiveBackend={
-          Platform.OS === 'android' && !stressMode ? blurRenderer : 'auto'
+          Platform.OS === 'android'
+            ? stressMode
+              ? (stress.progressiveBackend ?? 'auto')
+              : blurRenderer
+            : 'auto'
         }
         color={!stressMode && mode === 'overlay' ? tint : undefined}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
