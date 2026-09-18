@@ -80,6 +80,124 @@ internal object BlurLabShaders {
     """.trimIndent()
   }
 
+
+  /**
+   * Benchmark-only single-node adaptive Gaussian.
+   *
+   * radius <= 44px: byte-for-byte equivalent paired-tap kernel to [pass].
+   * radius >= 56px: groups four adjacent Gaussian weights into one weighted
+   * centroid sample per side. The 44..56px interval blends the two estimates
+   * inside the same shader coordinate space, so there is no geometric seam.
+   */
+  fun passAdaptive(vertical: Boolean): String {
+    val offset = if (vertical) "float2(0.0, d)" else "float2(d, 0.0)"
+    val axis = if (vertical) "y" else "x"
+
+    return """
+      uniform shader content;
+      uniform shader mask;
+      uniform float blurRadius;
+      uniform float2 extent;
+      const float maxRadius = 150.0;
+      const float adaptiveStart = 44.0;
+      const float adaptiveEnd = 56.0;
+
+      float gaussian(float x, float sigma) {
+        return exp(-(x * x) / (2.0 * sigma * sigma));
+      }
+
+      float inside(float2 p) {
+        return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
+      }
+
+      half4 exactGaussian(float2 coord, float radius) {
+        float r = floor(radius);
+        float4 sampled = float4(content.eval(coord));
+        if (r < 1.0) return half4(sampled);
+
+        float sigma = max(radius / 2.0, 1.0);
+        float weightSum = 1.0;
+        float4 result = sampled;
+
+        for (float i = 1.0; i < maxRadius; i += 2.0) {
+          if (i >= r) break;
+          float low = gaussian(i, sigma);
+          float high = gaussian(i + 1.0, sigma);
+          float weight = low + high;
+          float d = i + high / weight;
+          float2 offset = $offset;
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+
+        float odd = mod(r, 2.0) * (1.0 - step(maxRadius, r));
+        if (odd > 0.0) {
+          float weight = gaussian(r, sigma);
+          float d = r;
+          float2 offset = $offset;
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+        return half4(result / weightSum);
+      }
+
+      half4 groupedGaussian(float2 coord, float radius) {
+        float r = floor(radius);
+        float4 sampled = float4(content.eval(coord));
+        if (r < 1.0) return half4(sampled);
+
+        float sigma = max(radius / 2.0, 1.0);
+        float weightSum = 1.0;
+        float4 result = sampled;
+
+        for (float i = 1.0; i < maxRadius; i += 4.0) {
+          if (i > r) break;
+
+          float w0 = gaussian(i, sigma) * step(i, r);
+          float w1 = gaussian(i + 1.0, sigma) * step(i + 1.0, r);
+          float w2 = gaussian(i + 2.0, sigma) * step(i + 2.0, r);
+          float w3 = gaussian(i + 3.0, sigma) * step(i + 3.0, r);
+          float weight = w0 + w1 + w2 + w3;
+          if (weight <= 0.0) break;
+
+          float d =
+            (i * w0 +
+             (i + 1.0) * w1 +
+             (i + 2.0) * w2 +
+             (i + 3.0) * w3) / weight;
+
+          float2 offset = $offset;
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+        return half4(result / weightSum);
+      }
+
+      half4 main(float2 coord) {
+        float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+        float radius = blurRadius * intensity;
+
+        if (radius <= adaptiveStart) {
+          return exactGaussian(coord, radius);
+        }
+        if (radius >= adaptiveEnd) {
+          return groupedGaussian(coord, radius);
+        }
+
+        half4 exact = exactGaussian(coord, radius);
+        half4 grouped = groupedGaussian(coord, radius);
+        float mixAmount = smoothstep(adaptiveStart, adaptiveEnd, radius);
+        return mix(exact, grouped, half4(mixAmount));
+      }
+    """.trimIndent()
+  }
+
   // The mask returns radius / maximumRadius, NOT content opacity. At corners
   // max() combines the edges without stacking blur or multiplying opacity.
   val mask = """
