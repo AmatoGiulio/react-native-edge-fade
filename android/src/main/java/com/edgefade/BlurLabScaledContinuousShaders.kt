@@ -81,17 +81,19 @@ internal object BlurLabScaledContinuousShaders {
           float weight = low + high;
           float d = i + high / weight;
           vec2 delta = vec2(d / uWorkSize.x, 0.0);
-          result += weight * sampleSource(vUv - delta);
-          result += weight * sampleSource(vUv + delta);
-          weightSum += 2.0 * weight;
+          vec2 a = vUv - delta;
+          vec2 b = vUv + delta;
+          if (a.x >= 0.0 && a.x < 1.0) { result += weight * sampleSource(a); weightSum += weight; }
+          if (b.x >= 0.0 && b.x < 1.0) { result += weight * sampleSource(b); weightSum += weight; }
         }
 
         if (mod(r, 2.0) > 0.0 && r < float(maxRadius)) {
           float weight = gaussian(r, sigma);
           vec2 delta = vec2(r / uWorkSize.x, 0.0);
-          result += weight * sampleSource(vUv - delta);
-          result += weight * sampleSource(vUv + delta);
-          weightSum += 2.0 * weight;
+          vec2 a = vUv - delta;
+          vec2 b = vUv + delta;
+          if (a.x >= 0.0 && a.x < 1.0) { result += weight * sampleSource(a); weightSum += weight; }
+          if (b.x >= 0.0 && b.x < 1.0) { result += weight * sampleSource(b); weightSum += weight; }
         }
         sampled = result / weightSum;
       }
@@ -134,17 +136,19 @@ internal object BlurLabScaledContinuousShaders {
           float weight = low + high;
           float d = i + high / weight;
           vec2 delta = vec2(0.0, d / uWorkSize.y);
-          result += weight * sampleWork(vUv - delta);
-          result += weight * sampleWork(vUv + delta);
-          weightSum += 2.0 * weight;
+          vec2 a = vUv - delta;
+          vec2 b = vUv + delta;
+          if (a.y >= 0.0 && a.y < 1.0) { result += weight * sampleWork(a); weightSum += weight; }
+          if (b.y >= 0.0 && b.y < 1.0) { result += weight * sampleWork(b); weightSum += weight; }
         }
 
         if (mod(r, 2.0) > 0.0 && r < float(maxRadius)) {
           float weight = gaussian(r, sigma);
           vec2 delta = vec2(0.0, r / uWorkSize.y);
-          result += weight * sampleWork(vUv - delta);
-          result += weight * sampleWork(vUv + delta);
-          weightSum += 2.0 * weight;
+          vec2 a = vUv - delta;
+          vec2 b = vUv + delta;
+          if (a.y >= 0.0 && a.y < 1.0) { result += weight * sampleWork(a); weightSum += weight; }
+          if (b.y >= 0.0 && b.y < 1.0) { result += weight * sampleWork(b); weightSum += weight; }
         }
         sampled = result / weightSum;
       }
