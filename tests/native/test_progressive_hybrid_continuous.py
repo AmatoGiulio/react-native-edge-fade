@@ -21,6 +21,10 @@ assert "BlurLabShaders.pass(false)" in renderer
 assert "BlurLabShaders.pass(true)" in renderer
 assert "rc.scale(zone.scale, zone.scale)" in renderer
 assert 'backend == "hybrid-continuous"' in lab
+strip_release = lab.index("fun release() { node.setRenderEffect(null); node.discardDisplayList() }")
+switch_parser = lab.index("private fun hybridSwitchRadius")
+content_node = lab.index('private val content = RenderNode("EdgeFade.BlurLab.content")')
+assert strip_release < switch_parser < content_node, "hybridSwitchRadius must live on BlurLabRenderer, not Strip"
 assert 'active == "hybrid-continuous"' in view
 assert "'hybrid-continuous'" in route
 assert "autoScroll: !staticCapture" in route
@@ -28,5 +32,7 @@ assert "const stressMode = stress != null;" in gallery
 assert "&static=1" in capture
 for variant in ("hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
     assert variant in sweep
+    assert variant in route
+    assert variant in view
 
 print("hybrid continuous benchmark contract: OK")
