@@ -40,7 +40,12 @@ assert "renderer === 'hwui-scaled'" in native_branch
 assert "['hwui-scaled', 'agsl']" in capture
 assert "&static=1" in capture
 
-assert "const RENDERERS = ['off', 'agsl', 'hwui-scaled'];" in benchmark
+assert "const RENDERERS = ['agsl', 'hwui-scaled'];" in benchmark
+assert "const order = sample % 2 === 0" in benchmark
+assert "['agsl', 'hwui-scaled']" in benchmark
+assert "['hwui-scaled', 'agsl']" in benchmark
+assert "deltaHwuiVsAgsl" in benchmark
+assert "deltasVsOff" not in benchmark
 assert "gallery-renderer requested=${renderer} active=${renderer}" in benchmark
 assert "targetRefreshHz = null;" in benchmark
 assert "Rejected sample" in benchmark
