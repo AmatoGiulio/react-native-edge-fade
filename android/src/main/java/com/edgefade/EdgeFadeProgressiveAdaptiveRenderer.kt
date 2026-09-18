@@ -56,13 +56,25 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       mode = nextMode
     }
 
-    return current(host).prepare()
+    return when (mode) {
+      Mode.EXACT ->
+        (exact ?: EdgeFadeProgressiveStripRenderer(host).also { exact = it }).prepare()
+      Mode.SCALED ->
+        (scaled ?: EdgeFadeProgressiveScaledRenderer(host).also { scaled = it }).prepare()
+    }
   }
 
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val host = hostRef.get() ?: return false
     if (!prepare()) return false
-    return current(host).draw(canvas, recordChildren)
+    return when (mode) {
+      Mode.EXACT ->
+        (exact ?: EdgeFadeProgressiveStripRenderer(host).also { exact = it })
+          .draw(canvas, recordChildren)
+      Mode.SCALED ->
+        (scaled ?: EdgeFadeProgressiveScaledRenderer(host).also { scaled = it })
+          .draw(canvas, recordChildren)
+    }
   }
 
   fun backendName(): String = when (mode) {
@@ -76,13 +88,6 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     scaled?.release()
     scaled = null
     mode = Mode.EXACT
-  }
-
-  private fun current(host: EdgeFadeView) = when (mode) {
-    Mode.EXACT ->
-      exact ?: EdgeFadeProgressiveStripRenderer(host).also { exact = it }
-    Mode.SCALED ->
-      scaled ?: EdgeFadeProgressiveScaledRenderer(host).also { scaled = it }
   }
 
   internal companion object {
