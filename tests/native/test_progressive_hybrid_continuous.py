@@ -37,9 +37,9 @@ assert "'hybrid-continuous'" in route
 assert "autoScroll: !staticCapture" in route
 assert "const stressMode = stress != null;" in gallery
 assert "&static=1" in capture
+assert 'Regex("hybrid-(52|56|60|64)")' in view
 for variant in ("hybrid-52", "hybrid-56", "hybrid-60", "hybrid-64"):
     assert variant in sweep
     assert variant in route
-    assert variant in view
 
 print("hybrid continuous benchmark contract: OK")
