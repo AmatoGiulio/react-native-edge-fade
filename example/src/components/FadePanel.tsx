@@ -618,6 +618,45 @@ export function FadePanel() {
         })}
       </View>
 
+      {Platform.OS === 'android' && (
+        <View style={s.rendererSection}>
+          <Text style={[s.rendererLabel, { color: t.faintText }]}>renderer</Text>
+          <View
+            style={[
+              s.seg,
+              { backgroundColor: rowBg, opacity: mode === 'blur' ? 1 : 0.45 },
+            ]}
+          >
+            {BLUR_RENDERERS.map((renderer) => {
+              const selected = blurRenderer === renderer;
+              const disabled = mode !== 'blur';
+              return (
+                <Pressable
+                  key={renderer}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled }}
+                  disabled={disabled}
+                  style={[
+                    s.segItem,
+                    selected && { backgroundColor: t.controlActive },
+                  ]}
+                  onPress={() => setBlurRenderer(renderer)}
+                >
+                  <Text
+                    style={[
+                      s.segText,
+                      { color: selected ? t.text : t.faintText },
+                    ]}
+                  >
+                    {renderer}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       <View style={s.padWrap}>
         <BezierPlot
           x1={x1}
@@ -711,38 +750,6 @@ export function FadePanel() {
         {...dialSurface}
         disabled={mode !== 'blur'}
       />
-
-      {Platform.OS === 'android' && mode === 'blur' && (
-        <View>
-          <Text style={[s.rendererLabel, { color: t.faintText }]}>renderer</Text>
-          <View style={[s.seg, { backgroundColor: rowBg }]}>
-            {BLUR_RENDERERS.map((renderer) => {
-              const selected = blurRenderer === renderer;
-              return (
-                <Pressable
-                  key={renderer}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  style={[
-                    s.segItem,
-                    selected && { backgroundColor: t.controlActive },
-                  ]}
-                  onPress={() => setBlurRenderer(renderer)}
-                >
-                  <Text
-                    style={[
-                      s.segText,
-                      { color: selected ? t.text : t.faintText },
-                    ]}
-                  >
-                    {renderer}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      )}
 
       {Platform.OS === 'android' ? (
         advancedContent
@@ -923,6 +930,9 @@ const s = StyleSheet.create({
   monoLabel: {
     fontFamily: MONO,
     fontSize: 14,
+  },
+  rendererSection: {
+    marginBottom: 6,
   },
   rendererLabel: {
     fontFamily: MONO,
