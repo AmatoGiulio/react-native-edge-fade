@@ -40,7 +40,11 @@ assert "fullBlurRadius" in scaled
 assert "BlendMode.DST_OUT" in scaled
 assert "sharp * (1 - blurMix) + scaledBlur * blurMix" in scaled
 assert "SCALED_ERASE_SHADER" in scaled
-assert "mask.eval(coord * workScale)" in scaled
+assert "val eraseMask = RuntimeShader" in scaled
+assert 'strip.eraseMask.setFloatUniform("origin", 0f, 0f)' in scaled
+assert 'strip.erase.setInputShader("mask", strip.eraseMask)' in scaled
+assert "mask.eval(coord).a" in scaled
+assert "mask.eval(coord * workScale)" not in scaled
 
 # Production parity: all four edges and all four independent curve uniforms.
 for token in (
