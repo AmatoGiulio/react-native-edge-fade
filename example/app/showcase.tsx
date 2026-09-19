@@ -25,17 +25,15 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 500;
+const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// V9 uses a much wider diffusion kernel, matching the reference's low-frequency
-// material field, while selecting calibrated neighbouring blur stages instead of
-// overlaying a maximum blur. Half-resolution offscreen rendering removes the
-// visible coarse texture from the 0.25x prototype.
+// The compositor keeps one clean fixed Gaussian and only crossfades it over
+// space. "smoother" gives zero slope at both ends, avoiding visible knees.
 const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [
@@ -159,7 +157,7 @@ export default function ProgressiveShowcaseRoute() {
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="compositor"
-        style={[StyleSheet.absoluteFill, s.fadeHost]}
+        style={StyleSheet.absoluteFill}
       >
         <ScrollView
           style={StyleSheet.absoluteFill}
@@ -305,12 +303,6 @@ export default function ProgressiveShowcaseRoute() {
 const s = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#efeeec',
-  },
-  fadeHost: {
-    // The compositor must own the same opaque surface that is visible behind
-    // its children. Previously the beige lived only on the parent, so the blur
-    // source was transparent and large dark cards blurred into transparent black.
     backgroundColor: '#efeeec',
   },
   scrollContent: {

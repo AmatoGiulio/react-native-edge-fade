@@ -2,7 +2,6 @@ package com.edgefade
 
 import android.graphics.Canvas
 import android.os.Build
-import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 
@@ -125,12 +124,6 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val host = hostRef.get() ?: return false
     if (!prepare()) return false
-    if (host.progressiveBackend == "compositor" && mode != Mode.COMPOSITOR) {
-      Log.e(
-        TAG,
-        "Invariant violation: compositor requested but actual mode is $mode",
-      )
-    }
     return when (mode) {
       Mode.EXACT ->
         (exact ?: EdgeFadeProgressiveStripRenderer(host).also { exact = it })
@@ -169,7 +162,6 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   }
 
   internal companion object {
-    private const val TAG = "EdgeFadeSelector"
     const val SCALED_ENTER_RADIUS_PX = 110f
     const val SCALED_EXIT_RADIUS_PX = 90f
   }
