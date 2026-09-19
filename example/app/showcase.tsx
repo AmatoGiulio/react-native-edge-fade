@@ -20,6 +20,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
+
+const ProgressiveFade = AnimatedEdgeFadeView as any;
 import { STILLS_ITEMS } from '@/data/catalog';
 
 const ITEMS = STILLS_ITEMS.slice(0, 14);
@@ -119,7 +121,7 @@ export default function ProgressiveShowcaseRoute() {
     <Animated.View style={[s.page, surfaceStyle]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <AnimatedEdgeFadeView
+      <ProgressiveFade
         mode="blur"
         top={0}
         bottom={bottomDepth}
@@ -128,6 +130,7 @@ export default function ProgressiveShowcaseRoute() {
         curve="smooth"
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={1}
+        progressiveBackend="agsl"
         style={StyleSheet.absoluteFill}
       >
         <ScrollView
@@ -201,7 +204,7 @@ export default function ProgressiveShowcaseRoute() {
             </View>
           ))}
         </ScrollView>
-      </AnimatedEdgeFadeView>
+      </ProgressiveFade>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
