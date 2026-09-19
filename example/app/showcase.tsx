@@ -35,26 +35,25 @@ const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// Empirical radius-domain transfer fitted from REF vs OUR video.
-// The previous t^1.79 curve had the correct geometric depth, but at 150px
-// most perceptual sharpness loss collapsed into a tiny radius window (~23-34px).
-// These alpha stops deliberately hold that radius band across most of the ramp,
-// then finish strongly at the bottom where the reference becomes fully diffuse.
+// Measured reference profile. Keep the endpoints smooth: the previous
+// radius-domain remap introduced two visible knees (hard onset + hard finish).
+// The improved lower coverage comes from the deeper expanded field, not from
+// those knees, so retain the 66% field while restoring the airy t^1.79 ramp.
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
   values: [
     1.0,
-    0.9080,
-    0.8484,
-    0.8430,
-    0.8377,
-    0.8303,
-    0.8199,
-    0.8094,
-    0.7968,
-    0.7854,
-    0.7778,
-    0.5193,
+    0.9883,
+    0.9595,
+    0.9163,
+    0.8599,
+    0.7912,
+    0.7107,
+    0.6188,
+    0.5159,
+    0.4023,
+    0.2783,
+    0.1442,
     0.0,
   ],
 };
