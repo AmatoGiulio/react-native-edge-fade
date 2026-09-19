@@ -27,6 +27,7 @@ const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
+const BLUR_RAMP_DEPTH = 112;
 const OPEN_MS = 580;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -86,6 +87,7 @@ export default function ProgressiveShowcaseRoute() {
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
+  const blurProgression = useSharedValue(1);
 
   const expandedDepth = Math.min(height * 0.6, 560);
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
@@ -114,7 +116,17 @@ export default function ProgressiveShowcaseRoute() {
       easing: EASE,
     });
 
-    bottomDepth.value = withTiming(next ? expandedDepth : CLOSED_DEPTH, {
+    const nextDepth = next ? expandedDepth : CLOSED_DEPTH;
+    // Keep the actual radius ramp the same physical depth as the Lab.
+    // Expanding the sheet must create a max-blur plateau below that ramp,
+    // not stretch a weak 0 -> 150px gradient across half the screen.
+    const nextProgression = Math.min(1, BLUR_RAMP_DEPTH / nextDepth);
+
+    bottomDepth.value = withTiming(nextDepth, {
+      duration,
+      easing: EASE,
+    });
+    blurProgression.value = withTiming(nextProgression, {
       duration,
       easing: EASE,
     });
@@ -132,7 +144,7 @@ export default function ProgressiveShowcaseRoute() {
         right={0}
         curve="smooth"
         blurRadius={BLUR_RADIUS_DP}
-        blurProgression={1}
+        blurProgression={blurProgression}
         progressiveBackend="agsl"
         style={StyleSheet.absoluteFill}
       >
