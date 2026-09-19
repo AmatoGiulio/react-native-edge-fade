@@ -199,7 +199,7 @@ internal object BlurLabShaders {
   // Fixed-blur compositor used by the showcase-only "compositor" backend.
   // The Gaussian kernel is spatially uniform and therefore stable/premium; only
   // the opacity of the blurred backdrop changes across the edge field.
-  const val compositorOverlay = """
+  val compositorOverlay = """
     uniform shader content;
     uniform shader mask;
 
