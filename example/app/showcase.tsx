@@ -28,13 +28,34 @@ const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
-// The reference does not open with a straight 112dp blur wall. The radius
-// transition broadens as the bottom field rises, while the lower area still
-// reaches the full 150px radius.
-const OPEN_RAMP_DEPTH = 232;
-const OPEN_MS = 580;
-const CLOSE_MS = 460;
+// Measured from the reference video (10–90% blur spread ≈ 10% of the visible
+// screen, full ramp ≈ 16%). On this device that maps to ~154dp.
+const OPEN_RAMP_DEPTH = 154;
+const OPEN_MS = 500;
+const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
+
+// Reverse-engineered from the reference edge-spread profile.
+// Native custom stops are alpha values; EdgeFade converts them back to blur
+// presence, yielding approximately presence(t) = t^1.79.
+const REFERENCE_BLUR_CURVE = {
+  type: 'stops' as const,
+  values: [
+    1.0,
+    0.9883,
+    0.9595,
+    0.9163,
+    0.8599,
+    0.7912,
+    0.7107,
+    0.6188,
+    0.5159,
+    0.4023,
+    0.2783,
+    0.1442,
+    0.0,
+  ],
+};
 
 const TOP_STORIES = [
   {
@@ -149,7 +170,7 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve="soft"
+        curve={REFERENCE_BLUR_CURVE}
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="agsl"
