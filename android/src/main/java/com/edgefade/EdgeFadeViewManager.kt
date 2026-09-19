@@ -111,7 +111,6 @@ class EdgeFadeViewManager :
       "agsl" -> "agsl"
       "androidx" -> "androidx"
       "scaled" -> "scaled"
-      "compositor" -> "compositor"
       else -> "auto"
     }
   }

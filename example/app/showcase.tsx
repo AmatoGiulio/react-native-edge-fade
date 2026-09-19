@@ -25,17 +25,42 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 420;
+const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+// Demo-only material extinction measured by eye against reference.mp4.
+// Blur remains pure everywhere else because the native default is strength=0.
+const MATERIAL_STRENGTH = 0.96;
+const MATERIAL_COLOR = '#e3e0dc';
 const CLOSED_DEPTH = 112;
+// Measured from the reference video (10–90% blur spread ≈ 10% of the visible
+// screen, full ramp ≈ 16%). On this device that maps to ~154dp.
+const OPEN_RAMP_DEPTH = 160;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The compositor uses a large uniform Gaussian. "smooth" brings the fully
-// diffused backdrop in earlier than smootherstep so sharp card geometry does not
-// survive too far into the material field.
-const REFERENCE_COMPOSITOR_CURVE = 'smooth' as const;
+// Measured reference profile. Keep the endpoints smooth: the previous
+// radius-domain remap introduced two visible knees (hard onset + hard finish).
+// The improved lower coverage comes from the deeper expanded field, not from
+// those knees, so retain the 66% field while restoring the airy t^1.79 ramp.
+const REFERENCE_BLUR_CURVE = {
+  type: 'stops' as const,
+  values: [
+    1.0,
+    0.9883,
+    0.9595,
+    0.9163,
+    0.8599,
+    0.7912,
+    0.7107,
+    0.6188,
+    0.5159,
+    0.4023,
+    0.2783,
+    0.1442,
+    0.0,
+  ],
+};
 
 const TOP_STORIES = [
   {
@@ -96,21 +121,20 @@ export default function ProgressiveShowcaseRoute() {
   // The reference's blur field begins materially higher than the current demo.
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
-  const expandedDepth = Math.min(height * 0.78, 720);
-  const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
-  const openRampDepth = storyWidth / 1.58;
-
-  // The reference transition occupies roughly one hero-image height. The field
-  // itself extends to the bottom of the screen, but the radius reaches maximum
-  // over this local ramp instead of evolving across the entire panel.
+  const expandedDepth = Math.min(height * 0.7, 620);
+  // Keep bottom size and radius progression frame-synchronised in the same
+  // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
+  // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
+  // static, which is why changing that prop appeared to do nothing.
   const blurProgression = useDerivedValue(() => {
     const rampDepth = interpolate(
       progress.value,
       [0, 1],
-      [CLOSED_DEPTH, openRampDepth]
+      [CLOSED_DEPTH, OPEN_RAMP_DEPTH]
     );
     return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
   });
+  const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),
@@ -154,11 +178,13 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve={REFERENCE_COMPOSITOR_CURVE}
+        curve={REFERENCE_BLUR_CURVE}
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
-        progressiveBackend="compositor"
-        style={[StyleSheet.absoluteFill, s.fadeHost]}
+        progressiveBackend="agsl"
+        progressiveMaterialStrength={MATERIAL_STRENGTH}
+        progressiveMaterialColor={MATERIAL_COLOR}
+        style={StyleSheet.absoluteFill}
       >
         <ScrollView
           style={StyleSheet.absoluteFill}
@@ -304,12 +330,6 @@ export default function ProgressiveShowcaseRoute() {
 const s = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#efeeec',
-  },
-  fadeHost: {
-    // The compositor must own the same opaque surface that is visible behind
-    // its children. Previously the beige lived only on the parent, so the blur
-    // source was transparent and large dark cards blurred into transparent black.
     backgroundColor: '#efeeec',
   },
   scrollContent: {

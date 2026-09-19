@@ -45,32 +45,33 @@ internal object BlurLabShaders {
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
         float radius = blurRadius * intensity;
+        float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
-        if (radius >= 1.0) {
+        if (r >= 1.0) {
           float sigma = max(radius / 2.0, 1.0);
           float weightSum = 1.0;
           float4 result = sampled;
           for (float i = 1.0; i < maxRadius; i += 2.0) {
-            if (i >= radius) break;
-
-            // Fade each discrete Gaussian tap in continuously as the spatial
-            // radius crosses it. The previous floor(radius) cutoff changed the
-            // kernel in visible steps; over a tall progressive field those steps
-            // read as horizontal bands.
-            float lowGate = clamp(radius - i, 0.0, 1.0);
-            float highGate = clamp(radius - (i + 1.0), 0.0, 1.0);
-            float low = gaussian(i, sigma) * lowGate;
-            float high = gaussian(i + 1.0, sigma) * highGate;
+            if (i >= r) break;
+            float low = gaussian(i, sigma);
+            float high = gaussian(i + 1.0, sigma);
             float weight = low + high;
-
-            if (weight > 0.000001) {
-              float d = i + high / weight;
-              float2 offset = $offset;
-              float2 a = coord - offset;
-              float2 b = coord + offset;
-              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
-              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
-            }
+            float d = i + high / weight;
+            float2 offset = $offset;
+            float2 a = coord - offset;
+            float2 b = coord + offset;
+            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+          }
+          float odd = mod(r, 2.0) * (1.0 - step(maxRadius, r));
+          if (odd > 0.0) {
+            float weight = gaussian(r, sigma);
+            float d = r;
+            float2 offset = $offset;
+            float2 a = coord - offset;
+            float2 b = coord + offset;
+            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
           }
           sampled = result / weightSum;
         }
@@ -196,91 +197,45 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
-  // Fixed-blur compositor used by the showcase-only "compositor" backend.
-  // The Gaussian kernel is spatially uniform and therefore stable/premium; only
-  // the opacity of the blurred backdrop changes across the edge field.
-  val compositorOverlay = """
-    uniform shader content;
-    uniform shader mask;
-    uniform float contrast;
-    uniform float saturation;
-
-    half4 main(float2 coord) {
-      half4 blurred = content.eval(coord);
-      float mixAmount = clamp(mask.eval(coord).a, 0.0, 1.0);
-      if (mixAmount <= 0.0001) return half4(0.0);
-
-      float alpha = max(float(blurred.a), 0.0001);
-      float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
-
-      // System-style frosted backdrops are not only a huge Gaussian: they also
-      // compress luminance contrast so large dark source rectangles stop reading
-      // as literal rectangles. A small saturation boost preserves the source
-      // colour while doing so. No tint is introduced here.
-      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      rgb = mix(float3(luma), rgb, saturation);
-      rgb = (rgb - 0.5) * contrast + 0.5;
-      rgb = clamp(rgb, 0.0, 1.0);
-
-      return half4(rgb * float(blurred.a), float(blurred.a)) * half4(mixAmount);
-    }
-  """.trimIndent()
-
-  // Optional demo-only material pass. Public progressive blur keeps strength=0.
+  // Optional demo-only material pass. The public renderer leaves this disabled
+  // (strength = 0), preserving its pure progressive-Gaussian contract.
   //
-  // Reference measurements show two different spatial behaviours:
-  //   1. material/contrast starts changing before measurable Gaussian spread;
-  //   2. blur radius stays near zero until the lower part of the ramp, then rises fast.
-  //
-  // Do not drive material from blur intensity. Reconstruct the raw geometric
-  // edge position here so grading can begin earlier while the Gaussian curve
-  // remains deliberately back-loaded.
+  // Blur removes high frequencies, but very dark cards can still survive as
+  // large rectangular low-frequency masses. The reference material gradually
+  // compresses those masses into the surrounding surface. Drive that extinction
+  // from the SAME radius field, but with a delayed onset so the inner edge stays
+  // optically sharp and the material only takes over deeper in the blur field.
   val materialComposite = """
     uniform shader content;
-    uniform float2 origin;
-    uniform float2 viewSize;
-    uniform float4 edges;
-    uniform float progression;
+    uniform shader mask;
     uniform float materialStrength;
     uniform float3 materialColor;
 
-    float position(float distance, float depth) {
-      if (depth <= 0.0 || distance >= depth) return 0.0;
-      return clamp((1.0 - distance / depth) / progression, 0.0, 1.0);
-    }
-
-    float smoother(float x) {
-      float t = clamp(x, 0.0, 1.0);
-      return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-    }
-
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float2 p = coord + origin;
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
 
-      float raw = max(
-        max(position(p.y, edges.x), position(viewSize.y - p.y, edges.y)),
-        max(position(p.x, edges.z), position(viewSize.x - p.x, edges.w))
-      );
-
-      float material = clamp(materialStrength, 0.0, 1.0) * smoother(raw);
+      // Blur starts immediately; grading deliberately starts later. This avoids
+      // the cheap "white gradient over content" look at the transition edge.
+      float material = clamp(materialStrength, 0.0, 1.0)
+        * smoothstep(0.18, 0.84, intensity);
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
-      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
 
-      // Keep the source colour visible. The material mainly compresses contrast;
-      // tint is intentionally small so coloured imagery remains a coloured wash.
-      float saturation = mix(1.0, 0.84, material);
+      // Reference-like extinction: first reduce chroma, then compress contrast,
+      // then let the blurred content dissolve into the surrounding material.
+      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+      float saturation = mix(1.0, 0.82, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.78, material);
+      float contrast = mix(1.0, 0.52, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      float tintAmount = 0.08 * material;
+      float tintAmount = 0.70 * material;
       rgb = mix(rgb, materialColor, tintAmount);
-      rgb = clamp(rgb + 0.008 * material, 0.0, 1.0);
+      rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
