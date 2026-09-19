@@ -15,6 +15,7 @@ import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -27,7 +28,10 @@ const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
-const BLUR_RAMP_DEPTH = 112;
+// The reference does not open with a straight 112dp blur wall. The radius
+// transition broadens as the bottom field rises, while the lower area still
+// reaches the full 150px radius.
+const OPEN_RAMP_DEPTH = 232;
 const OPEN_MS = 580;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -87,9 +91,20 @@ export default function ProgressiveShowcaseRoute() {
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
-  const blurProgression = useSharedValue(1);
 
   const expandedDepth = Math.min(height * 0.6, 560);
+  // Keep bottom size and radius progression frame-synchronised in the same
+  // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
+  // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
+  // static, which is why changing that prop appeared to do nothing.
+  const blurProgression = useDerivedValue(() => {
+    const rampDepth = interpolate(
+      progress.value,
+      [0, 1],
+      [CLOSED_DEPTH, OPEN_RAMP_DEPTH]
+    );
+    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
+  });
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
   const panelStyle = useAnimatedStyle(() => ({
@@ -117,16 +132,8 @@ export default function ProgressiveShowcaseRoute() {
     });
 
     const nextDepth = next ? expandedDepth : CLOSED_DEPTH;
-    // Keep the actual radius ramp the same physical depth as the Lab.
-    // Expanding the sheet must create a max-blur plateau below that ramp,
-    // not stretch a weak 0 -> 150px gradient across half the screen.
-    const nextProgression = Math.min(1, BLUR_RAMP_DEPTH / nextDepth);
 
     bottomDepth.value = withTiming(nextDepth, {
-      duration,
-      easing: EASE,
-    });
-    blurProgression.value = withTiming(nextProgression, {
       duration,
       easing: EASE,
     });
@@ -142,7 +149,7 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve="smooth"
+        curve="soft"
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="agsl"
