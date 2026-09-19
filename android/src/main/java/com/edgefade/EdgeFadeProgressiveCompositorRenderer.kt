@@ -18,14 +18,14 @@ import java.lang.ref.WeakReference
  * radius per fragment. It builds one stable backdrop, then crossfades that
  * backdrop over the sharp scene with the edge field.
  *
- * V3 deliberately stays at native resolution and stacks several stable HWUI
- * Gaussian passes. The previous V2 attempted to downsample with RenderNode.scale,
- * but that only records a transform; it does not create a true low-resolution
- * raster boundary before RenderEffect, so it looked almost identical to V1.
+ * V4 uses one genuinely large UNIFORM HWUI Gaussian. Spatially-varying AndroidX
+ * blur is capped at 150px, but a uniform RenderEffect blur is not; the previous
+ * compositor accidentally inherited the progressive 150px clamp and therefore
+ * never reached system-material diffusion scale.
  *
- * Multiple fixed Gaussian passes create the very large diffusion kernel needed
- * to destroy card geometry, while a mild contrast compression in the overlay
- * shader keeps colours present without a neutral tint.
+ * A single large stable kernel is closer to system control-center rendering than
+ * stacking several clamped progressive-sized kernels, and avoids any per-pixel
+ * radius quantisation by construction.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveCompositorRenderer(
@@ -86,7 +86,9 @@ internal class EdgeFadeProgressiveCompositorRenderer(
       bottom = BlurLabGeometry.edge(host.fadeBottom, height),
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
-      radius = BlurLabGeometry.radius(host.blurRadius),
+      radius =
+        BlurLabGeometry.finite(host.blurRadius)
+          .coerceIn(0f, COMPOSITOR_MAX_RADIUS_PX),
       progression =
         BlurLabGeometry.finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
       curveTop = host.curveTop,
@@ -132,8 +134,8 @@ internal class EdgeFadeProgressiveCompositorRenderer(
       if (!announcedDraw && current != null) {
         Log.i(
           TAG,
-          "COMPOSITOR_V3 draw host=${current.width}x${current.height} " +
-            "radius=${current.radius}px passes=${BLUR_PASSES} " +
+          "COMPOSITOR_V4 draw host=${current.width}x${current.height} " +
+            "uniformRadius=${current.radius}px max=${COMPOSITOR_MAX_RADIUS_PX}px " +
             "contrast=${BACKDROP_CONTRAST} saturation=${BACKDROP_SATURATION} " +
             "bottom=${current.bottom}px progression=${current.progression}",
         )
@@ -207,30 +209,19 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     overlay.setFloatUniform("contrast", BACKDROP_CONTRAST)
     overlay.setFloatUniform("saturation", BACKDROP_SATURATION)
 
-    // RenderEffect radius is stable everywhere. Stack several identical Gaussian
-    // passes instead of varying radius per pixel. Gaussian variances add, so this
-    // produces a much wider clean diffusion footprint without quantisation bands.
-    val oneBlur =
+    // One large uniform blur. Do not route through BlurLabGeometry.radius():
+    // that helper intentionally caps progressive/spatial blur to 150px.
+    val systemBlur =
       RenderEffect.createBlurEffect(
         next.radius,
         next.radius,
         Shader.TileMode.CLAMP,
       )
-    var blurStack: RenderEffect = oneBlur
-    repeat(BLUR_PASSES - 1) {
-      val pass =
-        RenderEffect.createBlurEffect(
-          next.radius,
-          next.radius,
-          Shader.TileMode.CLAMP,
-        )
-      blurStack = RenderEffect.createChainEffect(pass, blurStack)
-    }
 
     val spatialComposite =
       RenderEffect.createRuntimeShaderEffect(overlay, "content")
     backdrop.setRenderEffect(
-      RenderEffect.createChainEffect(spatialComposite, blurStack),
+      RenderEffect.createChainEffect(spatialComposite, systemBlur),
     )
   }
 
@@ -256,12 +247,11 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   private companion object {
     private const val TAG = "EdgeFadeCompositor"
 
-    // Quality-first experimental settings. Four 150px Gaussian passes have an
-    // effective spread roughly 2x a single pass, enough to erase the silhouette
-    // of large cards before the spatial crossfade.
-    private const val BLUR_PASSES = 4
-    private const val BACKDROP_CONTRAST = 0.62f
-    private const val BACKDROP_SATURATION = 1.08f
+    // Internal experimental ceiling only. Uniform RenderEffect blur is not bound
+    // by the 150px progressive-radius cap.
+    private const val COMPOSITOR_MAX_RADIUS_PX = 640f
+    private const val BACKDROP_CONTRAST = 0.68f
+    private const val BACKDROP_SATURATION = 1.06f
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {
