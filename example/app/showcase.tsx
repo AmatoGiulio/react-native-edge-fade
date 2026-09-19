@@ -158,7 +158,7 @@ export default function ProgressiveShowcaseRoute() {
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="compositor"
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, s.fadeHost]}
       >
         <ScrollView
           style={StyleSheet.absoluteFill}
@@ -304,6 +304,12 @@ export default function ProgressiveShowcaseRoute() {
 const s = StyleSheet.create({
   page: {
     flex: 1,
+    backgroundColor: '#efeeec',
+  },
+  fadeHost: {
+    // The compositor must own the same opaque surface that is visible behind
+    // its children. Previously the beige lived only on the parent, so the blur
+    // source was transparent and large dark cards blurred into transparent black.
     backgroundColor: '#efeeec',
   },
   scrollContent: {
