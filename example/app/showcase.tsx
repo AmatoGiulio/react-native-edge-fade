@@ -32,9 +32,10 @@ const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const MATERIAL_STRENGTH = 0.96;
 const MATERIAL_COLOR = '#e3e0dc';
 const CLOSED_DEPTH = 112;
-// Measured from the reference video (10–90% blur spread ≈ 10% of the visible
-// screen, full ramp ≈ 16%). On this device that maps to ~154dp.
-const OPEN_RAMP_DEPTH = 160;
+// Keep almost the whole expanded field in transition. The previous fixed 160dp
+// ramp left ~75% of the open panel pinned at maximum blur/material strength,
+// producing the large flat opaque band visible in the benchmark.
+const OPEN_PROGRESSION = 0.88;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -122,18 +123,12 @@ export default function ProgressiveShowcaseRoute() {
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * 0.7, 620);
-  // Keep bottom size and radius progression frame-synchronised in the same
-  // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
-  // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
-  // static, which is why changing that prop appeared to do nothing.
-  const blurProgression = useDerivedValue(() => {
-    const rampDepth = interpolate(
-      progress.value,
-      [0, 1],
-      [CLOSED_DEPTH, OPEN_RAMP_DEPTH]
-    );
-    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
-  });
+  // Closed uses the full compact depth as the ramp. Open keeps only a small
+  // fully-material region at the bottom and lets blur/material evolve across
+  // almost the entire panel, matching the long continuous falloff in the ref.
+  const blurProgression = useDerivedValue(() =>
+    interpolate(progress.value, [0, 1], [1, OPEN_PROGRESSION])
+  );
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
   const panelStyle = useAnimatedStyle(() => ({
