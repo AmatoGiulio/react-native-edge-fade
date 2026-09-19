@@ -114,7 +114,10 @@ export default function ProgressiveShowcaseRoute() {
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
 
-  const expandedDepth = Math.min(height * 0.66, 560);
+  // The reference's blur field begins materially higher than the current demo.
+  // Keep the measured airy curve/ramp unchanged and move the whole field upward
+  // instead of distorting the radius transfer again.
+  const expandedDepth = Math.min(height * 0.7, 620);
   // Keep bottom size and radius progression frame-synchronised in the same
   // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
   // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
