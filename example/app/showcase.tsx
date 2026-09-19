@@ -157,7 +157,7 @@ export default function ProgressiveShowcaseRoute() {
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="compositor"
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, s.fadeHost]}
       >
         <ScrollView
           style={StyleSheet.absoluteFill}
@@ -303,6 +303,11 @@ export default function ProgressiveShowcaseRoute() {
 const s = StyleSheet.create({
   page: {
     flex: 1,
+    backgroundColor: '#efeeec',
+  },
+  fadeHost: {
+    // Keep the compositor source opaque. Without this, the blurred backdrop is
+    // generated over transparency and reads like a translucent veil.
     backgroundColor: '#efeeec',
   },
   scrollContent: {
