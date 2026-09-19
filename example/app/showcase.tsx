@@ -27,37 +27,14 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
-// Demo-only material extinction measured by eye against reference.mp4.
-// Blur remains pure everywhere else because the native default is strength=0.
-const MATERIAL_STRENGTH = 0.72;
-const MATERIAL_COLOR = '#efeeec';
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// Fitted from the reference open/closed frames. Measurable Gaussian spread is
-// almost zero through the upper ~40% of the transition, then accelerates toward
-// the maximum near the bottom. Material grading uses the raw geometric field and
-// is intentionally broader; blur radius itself follows this delayed quadratic.
-const REFERENCE_BLUR_CURVE = {
-  type: 'stops' as const,
-  values: [
-    1.0,
-    1.0,
-    1.0,
-    1.0,
-    1.0,
-    0.9992,
-    0.9722,
-    0.9066,
-    0.8025,
-    0.6597,
-    0.4784,
-    0.2585,
-    0.0,
-  ],
-};
+// The compositor keeps one clean fixed Gaussian and only crossfades it over
+// space. "smoother" gives zero slope at both ends, avoiding visible knees.
+const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [
   {
@@ -176,12 +153,10 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve={REFERENCE_BLUR_CURVE}
+        curve={REFERENCE_COMPOSITOR_CURVE}
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
-        progressiveBackend="agsl"
-        progressiveMaterialStrength={MATERIAL_STRENGTH}
-        progressiveMaterialColor={MATERIAL_COLOR}
+        progressiveBackend="compositor"
         style={StyleSheet.absoluteFill}
       >
         <ScrollView

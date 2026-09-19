@@ -133,6 +133,11 @@ internal object EdgeFadeProgressiveBlurEffect {
             TAG,
             "Using HWUI-scaled progressive blur on API 33+ (0.75x top/bottom strips; enter >=110px, exit <=90px).",
           )
+        } else if (backend == "compositor33") {
+          Log.i(
+            TAG,
+            "Using fixed-Gaussian compositor blur on API 33+ (sharp/full-blur spatial crossfade).",
+          )
         } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
         } else if (backend == "agsl33") {

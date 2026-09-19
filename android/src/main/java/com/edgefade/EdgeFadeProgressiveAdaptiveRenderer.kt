@@ -24,6 +24,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   private enum class Mode {
     EXACT,
     SCALED,
+    COMPOSITOR,
   }
 
   private val hostRef = WeakReference(host)
@@ -31,6 +32,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   private var lastOverride = "auto"
   private var exact: EdgeFadeProgressiveStripRenderer? = null
   private var scaled: EdgeFadeProgressiveScaledRenderer? = null
+  private var compositor: EdgeFadeProgressiveCompositorRenderer? = null
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -46,6 +48,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       "agsl" -> "agsl"
       "androidx" -> "androidx"
       "scaled" -> "scaled"
+      "compositor" -> "compositor"
       else -> "auto"
     }
 
@@ -56,6 +59,8 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       exact = null
       scaled?.release()
       scaled = null
+      compositor?.release()
+      compositor = null
       mode = Mode.EXACT
       lastOverride = override
     }
@@ -70,6 +75,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     val nextMode = when (override) {
       "exact", "agsl", "androidx" -> Mode.EXACT
       "scaled" -> Mode.SCALED
+      "compositor" -> Mode.COMPOSITOR
       else -> when (mode) {
         Mode.EXACT ->
           if (scaledEligible && radius >= SCALED_ENTER_RADIUS_PX) {
@@ -83,6 +89,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
           } else {
             Mode.SCALED
           }
+        Mode.COMPOSITOR -> Mode.EXACT
       }
     }
 
@@ -96,6 +103,10 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
           scaled?.release()
           scaled = null
         }
+        Mode.COMPOSITOR -> {
+          compositor?.release()
+          compositor = null
+        }
       }
       mode = nextMode
     }
@@ -105,6 +116,8 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         (exact ?: EdgeFadeProgressiveStripRenderer(host).also { exact = it }).prepare()
       Mode.SCALED ->
         (scaled ?: EdgeFadeProgressiveScaledRenderer(host).also { scaled = it }).prepare()
+      Mode.COMPOSITOR ->
+        (compositor ?: EdgeFadeProgressiveCompositorRenderer(host).also { compositor = it }).prepare()
     }
   }
 
@@ -118,6 +131,9 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       Mode.SCALED ->
         (scaled ?: EdgeFadeProgressiveScaledRenderer(host).also { scaled = it })
           .draw(canvas, recordChildren)
+      Mode.COMPOSITOR ->
+        (compositor ?: EdgeFadeProgressiveCompositorRenderer(host).also { compositor = it })
+          .draw(canvas, recordChildren)
     }
   }
 
@@ -125,6 +141,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     val requested = hostRef.get()?.progressiveBackend
     return when (mode) {
       Mode.SCALED -> "hwui-scaled33"
+      Mode.COMPOSITOR -> "compositor33"
       Mode.EXACT -> when (requested) {
         "agsl" -> "agsl33"
         "androidx" -> "androidx33"
@@ -138,6 +155,8 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     exact = null
     scaled?.release()
     scaled = null
+    compositor?.release()
+    compositor = null
     mode = Mode.EXACT
     lastOverride = "auto"
   }

@@ -196,6 +196,23 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
+  // Fixed-blur compositor used by the showcase-only "compositor" backend.
+  // The Gaussian kernel is spatially uniform and therefore stable/premium; only
+  // the opacity of the blurred backdrop changes across the edge field.
+  const val compositorOverlay = """
+    uniform shader content;
+    uniform shader mask;
+
+    half4 main(float2 coord) {
+      half4 blurred = content.eval(coord);
+      float mixAmount = clamp(mask.eval(coord).a, 0.0, 1.0);
+
+      // Return a premultiplied overlay. SRC_OVER against the already-drawn sharp
+      // scene yields exactly: sharp * (1-mix) + blurred * mix.
+      return blurred * half4(mixAmount);
+    }
+  """.trimIndent()
+
   // Optional demo-only material pass. Public progressive blur keeps strength=0.
   //
   // Reference measurements show two different spatial behaviours:
