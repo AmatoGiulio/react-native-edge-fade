@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, router } from 'expo-router';
@@ -20,10 +21,36 @@ import Animated, {
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 import { STILLS_ITEMS } from '@/data/catalog';
 
-const FEED = STILLS_ITEMS.slice(0, 8);
+const ITEMS = STILLS_ITEMS.slice(0, 14);
 const OPEN_MS = 560;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
+
+const POSTS = [
+  {
+    id: 'afterglow',
+    author: 'afterglow',
+    meta: 'Nocturne Festival · Napoli',
+    hero: ITEMS[0],
+    side: ITEMS[2],
+    caption: 'A new stage opens after midnight.',
+  },
+  {
+    id: 'midnight-runway',
+    author: 'midnight.runway',
+    meta: 'SS27 · Guest installation',
+    grid: [ITEMS[3], ITEMS[4], ITEMS[5], ITEMS[6]],
+    caption: 'Fashion film, live score, one room.',
+  },
+  {
+    id: 'signal-room',
+    author: 'signal.room',
+    meta: 'Warehouse 24 · Live session',
+    hero: ITEMS[7] ?? ITEMS[1],
+    side: ITEMS[8] ?? ITEMS[0],
+    caption: 'Doors 23:30 · limited capacity.',
+  },
+];
 
 export default function ProgressiveShowcaseRoute() {
   const insets = useSafeAreaInsets();
@@ -42,29 +69,29 @@ export default function ProgressiveShowcaseRoute() {
     backgroundColor: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#f4f4f2', '#111111']
+      ['#f4f4f2', '#101010']
     ),
   }));
 
-  const feedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: interpolate(progress.value, [0, 1], [0, -8]) },
-      { scale: interpolate(progress.value, [0, 1], [1, 0.995]) },
-    ],
+  const veilStyle = useAnimatedStyle(() => ({
+    height: interpolate(progress.value, [0, 1], [122, expandedDepth]),
+    opacity: interpolate(progress.value, [0, 1], [0.38, 0.58]),
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(255,255,255,0.96)', 'rgba(15,15,15,0.82)']
+    ),
   }));
 
   const menuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.18, 0.48, 1], [0, 0.18, 1]),
+    opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.2, 1]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [26, 0]) },
+      { translateY: interpolate(progress.value, [0, 1], [22, 0]) },
     ],
   }));
 
   const collapsedLabelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.32, 0.5], [1, 0.3, 0]),
-    transform: [
-      { translateY: interpolate(progress.value, [0, 1], [0, -10]) },
-    ],
+    opacity: interpolate(progress.value, [0, 0.34, 0.5], [1, 0.28, 0]),
   }));
 
   const togglePanel = () => {
@@ -93,6 +120,7 @@ export default function ProgressiveShowcaseRoute() {
 
   const fg = dark ? '#f7f7f5' : '#151515';
   const muted = dark ? 'rgba(255,255,255,0.52)' : 'rgba(0,0,0,0.48)';
+  const divider = dark ? '#232323' : '#dfdfdc';
 
   return (
     <Animated.View style={[s.page, surfaceStyle]}>
@@ -109,80 +137,105 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={1}
         style={StyleSheet.absoluteFill}
       >
-        <Animated.View
-          style={[
-            s.content,
-            { paddingTop: insets.top + 18 },
-            feedStyle,
+        <ScrollView
+          style={StyleSheet.absoluteFill}
+          contentContainerStyle={[
+            s.scrollContent,
+            {
+              paddingTop: insets.top + 14,
+              paddingBottom: insets.bottom + 190,
+            },
           ]}
+          showsVerticalScrollIndicator={false}
+          bounces
+          overScrollMode="never"
         >
           <View style={s.topbar}>
-            <Text style={[s.brand, { color: fg }]}>edge fade</Text>
-            <Pressable
-              hitSlop={12}
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Close showcase"
-            >
-              <Text style={[s.close, { color: fg }]}>×</Text>
-            </Pressable>
-          </View>
-
-          <View style={s.profileRow}>
-            <Image source={FEED[6]!.source} style={s.avatar} contentFit="cover" />
-            <View style={s.profileText}>
-              <Text style={[s.handle, { color: fg }]}>progressive blur</Text>
-              <Text style={[s.byline, { color: muted }]}>react-native-edge-fade</Text>
+            <Text style={[s.brand, { color: fg }]}>NOCTURNE</Text>
+            <View style={s.topActions}>
+              <Text style={[s.topAction, { color: fg }]}>○</Text>
+              <Pressable
+                hitSlop={12}
+                onPress={() => router.back()}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Text style={[s.close, { color: fg }]}>×</Text>
+              </Pressable>
             </View>
-            <Text style={[s.more, { color: muted }]}>•••</Text>
           </View>
 
-          <View style={s.heroRow}>
-            <Image source={FEED[0]!.source} style={s.heroLarge} contentFit="cover" />
-            <Image source={FEED[2]!.source} style={s.heroSmall} contentFit="cover" />
-          </View>
-
-          <View style={[s.divider, { backgroundColor: dark ? '#232323' : '#dfdfdc' }]} />
-
-          <View style={s.profileRow}>
-            <Image source={FEED[4]!.source} style={s.avatar} contentFit="cover" />
-            <View style={s.profileText}>
-              <Text style={[s.handle, { color: fg }]}>native rendering</Text>
-              <Text style={[s.byline, { color: muted }]}>Gaussian · progressive · fast</Text>
-            </View>
-            <Text style={[s.more, { color: muted }]}>•••</Text>
-          </View>
-
-          <View style={s.grid}>
-            {FEED.slice(3, 7).map((item, index) => (
-              <Image
-                key={item.id}
-                source={item.source}
-                style={index === 0 ? s.gridWide : s.gridTile}
-                contentFit="cover"
-              />
-            ))}
-          </View>
-
-          <Text style={[s.caption, { color: muted }]}>
-            Progressive Gaussian blur · Android · iOS
+          <Text style={[s.sectionKicker, { color: muted }]}>FRIDAY · 23:30</Text>
+          <Text style={[s.sectionTitle, { color: fg }]}>
+            Music, fashion and image after dark.
           </Text>
-        </Animated.View>
+
+          {POSTS.map((post, postIndex) => (
+            <View key={post.id}>
+              <View style={s.profileRow}>
+                <Image
+                  source={(ITEMS[(postIndex + 9) % ITEMS.length] ?? ITEMS[0])!.source}
+                  style={s.avatar}
+                  contentFit="cover"
+                />
+                <View style={s.profileText}>
+                  <Text style={[s.handle, { color: fg }]}>{post.author}</Text>
+                  <Text style={[s.byline, { color: muted }]}>{post.meta}</Text>
+                </View>
+                <Text style={[s.more, { color: muted }]}>•••</Text>
+              </View>
+
+              {'grid' in post && post.grid ? (
+                <View style={s.grid}>
+                  {post.grid.map((item, index) => (
+                    <Image
+                      key={item!.id}
+                      source={item!.source}
+                      style={index === 0 ? s.gridWide : s.gridTile}
+                      contentFit="cover"
+                    />
+                  ))}
+                </View>
+              ) : (
+                <View style={s.heroRow}>
+                  <Image source={post.hero!.source} style={s.heroLarge} contentFit="cover" />
+                  <Image source={post.side!.source} style={s.heroSmall} contentFit="cover" />
+                </View>
+              )}
+
+              <Text style={[s.caption, { color: muted }]}>{post.caption}</Text>
+              <View style={[s.divider, { backgroundColor: divider }]} />
+            </View>
+          ))}
+        </ScrollView>
       </AnimatedEdgeFadeView>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          s.milkyVeil,
+          { bottom: 0 },
+          veilStyle,
+        ]}
+      />
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
         style={[
           s.menu,
-          { bottom: insets.bottom + 76 },
+          { bottom: insets.bottom + 80 },
           menuStyle,
         ]}
       >
-        <Image source={FEED[7]!.source} style={s.menuAvatar} contentFit="cover" />
-
-        <Text style={s.menuItem}>Progressive blur</Text>
-        <Text style={s.menuItem}>Renderer</Text>
-        <Text style={s.menuItem}>Gallery</Text>
+        <Image
+          source={(ITEMS[10] ?? ITEMS[3])!.source}
+          style={s.menuAvatar}
+          contentFit="cover"
+        />
+        <Text style={s.menuItem}>Lineup</Text>
+        <Text style={s.menuItem}>Schedule</Text>
+        <Text style={s.menuItem}>Passes</Text>
+        <Text style={s.menuItem}>Archive</Text>
       </Animated.View>
 
       <View style={[s.bottomBar, { bottom: insets.bottom + 12 }]}>
@@ -203,7 +256,7 @@ export default function ProgressiveShowcaseRoute() {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={open ? 'Collapse menu' : 'Expand menu'}
+          accessibilityLabel={open ? 'Close menu' : 'Open menu'}
           onPress={togglePanel}
           style={s.menuTrigger}
         >
@@ -221,53 +274,77 @@ const s = StyleSheet.create({
   page: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 22,
+  scrollContent: {
+    paddingHorizontal: 18,
   },
   topbar: {
-    height: 44,
+    height: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   brand: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  topAction: {
+    fontSize: 19,
+    lineHeight: 20,
   },
   close: {
     fontSize: 24,
     lineHeight: 26,
     fontWeight: '300',
   },
+  sectionKicker: {
+    marginTop: 18,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 1.5,
+    fontWeight: '700',
+  },
+  sectionTitle: {
+    marginTop: 6,
+    marginBottom: 18,
+    maxWidth: 280,
+    fontSize: 25,
+    lineHeight: 28,
+    letterSpacing: -0.8,
+    fontWeight: '700',
+  },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 11,
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 27,
+    height: 27,
+    borderRadius: 13.5,
   },
   profileText: {
     flex: 1,
     marginLeft: 9,
   },
   handle: {
-    fontSize: 12,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 13,
     fontWeight: '700',
   },
   byline: {
     marginTop: 1,
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 8.5,
+    lineHeight: 10.5,
   },
   more: {
-    fontSize: 10,
+    fontSize: 9,
     letterSpacing: 1,
   },
   heroRow: {
@@ -282,11 +359,6 @@ const s = StyleSheet.create({
   heroSmall: {
     flex: 0.82,
     borderRadius: 12,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginTop: 18,
-    marginBottom: 1,
   },
   grid: {
     height: 234,
@@ -306,32 +378,45 @@ const s = StyleSheet.create({
     borderRadius: 12,
   },
   caption: {
-    marginTop: 12,
-    fontSize: 9,
-    letterSpacing: 0.3,
+    marginTop: 10,
+    fontSize: 8.5,
+    lineHeight: 12,
+    letterSpacing: 0.2,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 16,
+    marginBottom: 7,
+  },
+  milkyVeil: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
   menu: {
     position: 'absolute',
     left: 24,
     right: 24,
+    zIndex: 20,
   },
   menuAvatar: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    marginBottom: 18,
+    marginBottom: 15,
   },
   menuItem: {
     color: '#fff',
     fontSize: 13,
-    lineHeight: 22,
+    lineHeight: 23,
     fontWeight: '600',
   },
   bottomBar: {
     position: 'absolute',
-    left: 24,
-    right: 24,
+    left: 22,
+    right: 22,
     height: 52,
+    zIndex: 30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -340,11 +425,11 @@ const s = StyleSheet.create({
     height: 34,
     padding: 3,
     borderRadius: 17,
-    backgroundColor: 'rgba(18,18,18,0.48)',
+    backgroundColor: 'rgba(18,18,18,0.46)',
     flexDirection: 'row',
   },
   segment: {
-    minWidth: 58,
+    minWidth: 57,
     paddingHorizontal: 13,
     alignItems: 'center',
     justifyContent: 'center',
@@ -366,7 +451,7 @@ const s = StyleSheet.create({
     height: 34,
     paddingHorizontal: 12,
     borderRadius: 17,
-    backgroundColor: 'rgba(18,18,18,0.48)',
+    backgroundColor: 'rgba(18,18,18,0.46)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
