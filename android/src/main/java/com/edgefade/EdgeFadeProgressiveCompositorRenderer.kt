@@ -204,7 +204,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         val passes = passCount(current.radius)
         Log.i(
           TAG,
-          "COMPOSITOR_V6_KAWASE draw host=${current.width}x${current.height} " +
+          "COMPOSITOR_V7_MATERIAL draw host=${current.width}x${current.height} " +
             "low=${lowWidth}x${lowHeight} scale=${INPUT_SCALE} " +
             "radius=${current.radius}px passes=${passes} " +
             "opacity=${current.opacity} contrast=${BACKDROP_CONTRAST} " +

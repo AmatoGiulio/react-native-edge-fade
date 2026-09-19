@@ -25,23 +25,28 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const CLOSED_BLUR_RADIUS_PX = 152;
-const OPEN_BLUR_RADIUS_PX = 132;
+const CLOSED_BLUR_RADIUS_PX = 160;
+const OPEN_BLUR_RADIUS_PX = 136;
 const CLOSED_BLUR_RADIUS_DP = CLOSED_BLUR_RADIUS_PX / PixelRatio.get();
 const OPEN_BLUR_RADIUS_DP = OPEN_BLUR_RADIUS_PX / PixelRatio.get();
 
-const CLOSED_COMPOSITOR_OPACITY = 0.38;
-const OPEN_COMPOSITOR_OPACITY = 0.60;
+// The blurred surface must fully replace the sharp pixels once the material is
+// established. Lowering this opacity was the source of the "double image"/halo:
+// the sharp feed remained visible under the blurred copy.
+const CLOSED_COMPOSITOR_OPACITY = 1;
+const OPEN_COMPOSITOR_OPACITY = 1;
 
-const CLOSED_DEPTH = 112;
+// Reference compact material occupies a much deeper region than the old 112dp
+// strip: most of the bar is fully diffused, with only its upper edge feathered.
+const CLOSED_DEPTH = 184;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The reference does not behave like one global "blur amount". Compact and
-// expanded states use different density profiles: compact is broader but lighter;
-// expanded is slightly tighter, denser, and has a long spatial tail.
-const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
+// The reference has a soft feather followed by a genuinely blurred material
+// region. "gentle" gives a readable onset without the concentrated halo of a
+// short smootherstep ramp.
+const REFERENCE_COMPOSITOR_CURVE = 'gentle' as const;
 
 const TOP_STORIES = [
   {
@@ -49,14 +54,14 @@ const TOP_STORIES = [
     type: 'SCENE REPORT',
     date: 'September 19, 2026',
     title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[0],
+    image: ITEMS[23],
   },
   {
     id: 'story-2',
     type: 'FEATURES',
     date: 'September 18, 2026',
     title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[4],
+    image: ITEMS[27],
   },
 ];
 
@@ -107,11 +112,11 @@ export default function ProgressiveShowcaseRoute() {
   const expandedDepth = Math.min(height * 0.78, 720);
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
-  // Reference feel: compact state is broad-but-light, expanded state is denser
-  // but still uses a long vertical tail. Avoid the old short ramp that created
-  // a fully-blurred plateau through most of the open panel.
+  // Reference geometry is "feather -> material", not a low-opacity blurred
+  // overlay across the whole panel. Leave a stable fully-diffused region toward
+  // the outer edge and animate only the feather length.
   const blurProgression = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [1, 0.84])
+    interpolate(progress.value, [0, 1], [0.55, 0.62])
   );
 
   const panelStyle = useAnimatedStyle(() => ({
