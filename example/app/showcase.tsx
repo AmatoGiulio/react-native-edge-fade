@@ -24,7 +24,7 @@ import { STILLS_ITEMS } from '@/data/catalog';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
-const ITEMS = STILLS_ITEMS.slice(0, 18);
+const ITEMS = STILLS_ITEMS.slice(0, 32);
 const CLOSED_BLUR_RADIUS_PX = 160;
 const OPEN_BLUR_RADIUS_PX = 136;
 const CLOSED_BLUR_RADIUS_DP = CLOSED_BLUR_RADIUS_PX / PixelRatio.get();
