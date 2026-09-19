@@ -35,8 +35,6 @@ interface NativeProps extends ViewProps {
   progressiveMaterialStrength?: CodegenTypes.Float;
   /** Internal showcase material tint paired with progressiveMaterialStrength. */
   progressiveMaterialColor?: ColorValue;
-  /** Internal compositor opacity cap. 1 keeps legacy compositor behaviour. */
-  progressiveCompositorOpacity?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

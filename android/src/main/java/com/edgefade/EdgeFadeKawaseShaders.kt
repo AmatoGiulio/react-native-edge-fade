@@ -169,7 +169,6 @@ internal object EdgeFadeKawaseShaders {
     uniform sampler2D uContent;
     uniform float uContrast;
     uniform float uSaturation;
-    uniform float uMaxOpacity;
 
     $MASK_FUNCTIONS
 
@@ -178,8 +177,7 @@ internal object EdgeFadeKawaseShaders {
     }
 
     void main() {
-      float amount =
-        maskIntensity(viewCoord()) * clamp(uMaxOpacity, 0.0, 1.0);
+      float amount = maskIntensity(viewCoord());
       if (amount <= 0.0001) {
         outColor = vec4(0.0);
         return;

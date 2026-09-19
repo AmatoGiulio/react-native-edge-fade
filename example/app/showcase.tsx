@@ -24,29 +24,19 @@ import { STILLS_ITEMS } from '@/data/catalog';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
-const ITEMS = STILLS_ITEMS.slice(0, 32);
-const CLOSED_BLUR_RADIUS_PX = 160;
-const OPEN_BLUR_RADIUS_PX = 136;
-const CLOSED_BLUR_RADIUS_DP = CLOSED_BLUR_RADIUS_PX / PixelRatio.get();
-const OPEN_BLUR_RADIUS_DP = OPEN_BLUR_RADIUS_PX / PixelRatio.get();
-
-// The blurred surface must fully replace the sharp pixels once the material is
-// established. Lowering this opacity was the source of the "double image"/halo:
-// the sharp feed remained visible under the blurred copy.
-const CLOSED_COMPOSITOR_OPACITY = 1;
-const OPEN_COMPOSITOR_OPACITY = 1;
-
-// Reference compact material occupies a much deeper region than the old 112dp
-// strip: most of the bar is fully diffused, with only its upper edge feathered.
-const CLOSED_DEPTH = 184;
+const ITEMS = STILLS_ITEMS.slice(0, 18);
+const BLUR_RADIUS_PX = 128;
+const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The reference has a soft feather followed by a genuinely blurred material
-// region. "gentle" gives a readable onset without the concentrated halo of a
-// short smootherstep ramp.
-const REFERENCE_COMPOSITOR_CURVE = 'gentle' as const;
+// The compositor uses a true quarter-resolution Kawase diffusion surface.
+// Keep the source colour/luminance neutral and use smootherstep for the spatial
+// reveal so the blurred backdrop does not appear as a bright halo before it is
+// actually needed.
+const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [
   {
@@ -54,14 +44,14 @@ const TOP_STORIES = [
     type: 'SCENE REPORT',
     date: 'September 19, 2026',
     title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[23],
+    image: ITEMS[0],
   },
   {
     id: 'story-2',
     type: 'FEATURES',
     date: 'September 18, 2026',
     title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[27],
+    image: ITEMS[4],
   },
 ];
 
@@ -103,21 +93,25 @@ export default function ProgressiveShowcaseRoute() {
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
-  const blurRadius = useSharedValue(CLOSED_BLUR_RADIUS_DP);
-  const compositorOpacity = useSharedValue(CLOSED_COMPOSITOR_OPACITY);
 
   // The reference's blur field begins materially higher than the current demo.
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * 0.78, 720);
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
+  const openRampDepth = storyWidth / 1.58;
 
-  // Reference geometry is "feather -> material", not a low-opacity blurred
-  // overlay across the whole panel. Leave a stable fully-diffused region toward
-  // the outer edge and animate only the feather length.
-  const blurProgression = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [0.55, 0.62])
-  );
+  // The reference transition occupies roughly one hero-image height. The field
+  // itself extends to the bottom of the screen, but the radius reaches maximum
+  // over this local ramp instead of evolving across the entire panel.
+  const blurProgression = useDerivedValue(() => {
+    const rampDepth = interpolate(
+      progress.value,
+      [0, 1],
+      [CLOSED_DEPTH, openRampDepth]
+    );
+    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
+  });
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),
@@ -149,22 +143,6 @@ export default function ProgressiveShowcaseRoute() {
       duration,
       easing: EASE,
     });
-
-    blurRadius.value = withTiming(
-      next ? OPEN_BLUR_RADIUS_DP : CLOSED_BLUR_RADIUS_DP,
-      {
-        duration,
-        easing: EASE,
-      }
-    );
-
-    compositorOpacity.value = withTiming(
-      next ? OPEN_COMPOSITOR_OPACITY : CLOSED_COMPOSITOR_OPACITY,
-      {
-        duration,
-        easing: EASE,
-      }
-    );
   };
 
   return (
@@ -178,10 +156,9 @@ export default function ProgressiveShowcaseRoute() {
         left={0}
         right={0}
         curve={REFERENCE_COMPOSITOR_CURVE}
-        blurRadius={blurRadius}
+        blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="compositor"
-        progressiveCompositorOpacity={compositorOpacity}
         style={[StyleSheet.absoluteFill, s.fadeHost]}
       >
         <ScrollView
