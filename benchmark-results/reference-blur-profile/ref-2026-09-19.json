@@ -1,0 +1,55 @@
+{
+  "source": "exploration-05-DZO7RASG_edge_fade_progressive_blur_demo(1).mp4",
+  "method": "vertical edge-spread sigma, baseline-subtracted in quadrature, median settled frames, monotonic PAVA, power fit",
+  "baselineSeconds": 0.45,
+  "settledSeconds": [
+    0.85,
+    0.95,
+    1.05,
+    1.15
+  ],
+  "referenceFrame": {
+    "width": 1080,
+    "height": 1080,
+    "visibleScreenApproxHeightPx": 970
+  },
+  "edgeX": 324,
+  "fit": {
+    "rampStartYPx": 374.42,
+    "rampDepthPx": 158.67,
+    "rampStartNormalizedToVisibleScreen": 0.386,
+    "rampDepthNormalizedToVisibleScreen": 0.164,
+    "presenceModel": "u^1.789",
+    "exponent": 1.789,
+    "rmse": 0.0368
+  },
+  "settledCrossingsApprox": {
+    "y10Px": 419,
+    "y50Px": 476,
+    "y90Px": 516,
+    "width10to90Px": 97,
+    "width10to90NormalizedToVisibleScreen": 0.1
+  },
+  "temporalApprox": {
+    "visibleOnsetSeconds": 0.55,
+    "mainSettleSeconds": 0.95,
+    "residualSettleSeconds": 1.05,
+    "mainTransitionMs": 400,
+    "totalSettleMs": 500
+  },
+  "alphaStops13": [
+    1,
+    0.9883,
+    0.9595,
+    0.9163,
+    0.8599,
+    0.7912,
+    0.7107,
+    0.6188,
+    0.5159,
+    0.4023,
+    0.2783,
+    0.1442,
+    0
+  ]
+}
