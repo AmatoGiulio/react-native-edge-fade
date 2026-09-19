@@ -7,6 +7,7 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
+import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
@@ -72,6 +73,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   private val overlay = RuntimeShader(BlurLabShaders.compositorOverlay)
 
   private var key: Key? = null
+  private var announcedDraw = false
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -130,9 +132,26 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     try {
       if (!prepare()) return false
 
-      if ((key?.radius ?: 0f) <= 0f) {
+      val current = key
+      if ((current?.radius ?: 0f) <= 0f) {
         recordChildren(canvas)
         return true
+      }
+
+      if (!announcedDraw && current != null) {
+        val diffusionWidth = ceil(current.width * DIFFUSION_SCALE).toInt().coerceAtLeast(1)
+        val diffusionHeight = ceil(current.height * DIFFUSION_SCALE).toInt().coerceAtLeast(1)
+        val workingRadius =
+          (current.radius * DIFFUSION_SCALE * DIFFUSION_GAIN)
+            .coerceIn(1f, MAX_DIFFUSION_RADIUS_PX)
+        Log.i(
+          TAG,
+          "COMPOSITOR_V2 draw host=${current.width}x${current.height} " +
+            "diffusion=${diffusionWidth}x${diffusionHeight} " +
+            "radius=${current.radius}px workingRadius=${workingRadius}px " +
+            "bottom=${current.bottom}px progression=${current.progression}",
+        )
+        announcedDraw = true
       }
 
       tracePhase("EdgeFade.progressive.compositor.recordContent") {
@@ -251,9 +270,11 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     diffusion.discardDisplayList()
     backdrop.discardDisplayList()
     key = null
+    announcedDraw = false
   }
 
   private companion object {
+    private const val TAG = "EdgeFadeCompositor"
     // 16% is intentionally aggressive: system-style materials favour broad
     // low-frequency colour diffusion over geometric fidelity of the source.
     private const val DIFFUSION_SCALE = 0.16f
