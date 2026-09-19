@@ -25,17 +25,22 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 128;
-const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+const CLOSED_BLUR_RADIUS_PX = 152;
+const OPEN_BLUR_RADIUS_PX = 132;
+const CLOSED_BLUR_RADIUS_DP = CLOSED_BLUR_RADIUS_PX / PixelRatio.get();
+const OPEN_BLUR_RADIUS_DP = OPEN_BLUR_RADIUS_PX / PixelRatio.get();
+
+const CLOSED_COMPOSITOR_OPACITY = 0.38;
+const OPEN_COMPOSITOR_OPACITY = 0.60;
+
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The compositor uses a true quarter-resolution Kawase diffusion surface.
-// Keep the source colour/luminance neutral and use smootherstep for the spatial
-// reveal so the blurred backdrop does not appear as a bright halo before it is
-// actually needed.
+// The reference does not behave like one global "blur amount". Compact and
+// expanded states use different density profiles: compact is broader but lighter;
+// expanded is slightly tighter, denser, and has a long spatial tail.
 const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [
@@ -93,25 +98,21 @@ export default function ProgressiveShowcaseRoute() {
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
+  const blurRadius = useSharedValue(CLOSED_BLUR_RADIUS_DP);
+  const compositorOpacity = useSharedValue(CLOSED_COMPOSITOR_OPACITY);
 
   // The reference's blur field begins materially higher than the current demo.
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * 0.78, 720);
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
-  const openRampDepth = storyWidth / 1.58;
 
-  // The reference transition occupies roughly one hero-image height. The field
-  // itself extends to the bottom of the screen, but the radius reaches maximum
-  // over this local ramp instead of evolving across the entire panel.
-  const blurProgression = useDerivedValue(() => {
-    const rampDepth = interpolate(
-      progress.value,
-      [0, 1],
-      [CLOSED_DEPTH, openRampDepth]
-    );
-    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
-  });
+  // Reference feel: compact state is broad-but-light, expanded state is denser
+  // but still uses a long vertical tail. Avoid the old short ramp that created
+  // a fully-blurred plateau through most of the open panel.
+  const blurProgression = useDerivedValue(() =>
+    interpolate(progress.value, [0, 1], [1, 0.84])
+  );
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),
@@ -143,6 +144,22 @@ export default function ProgressiveShowcaseRoute() {
       duration,
       easing: EASE,
     });
+
+    blurRadius.value = withTiming(
+      next ? OPEN_BLUR_RADIUS_DP : CLOSED_BLUR_RADIUS_DP,
+      {
+        duration,
+        easing: EASE,
+      }
+    );
+
+    compositorOpacity.value = withTiming(
+      next ? OPEN_COMPOSITOR_OPACITY : CLOSED_COMPOSITOR_OPACITY,
+      {
+        duration,
+        easing: EASE,
+      }
+    );
   };
 
   return (
@@ -156,9 +173,10 @@ export default function ProgressiveShowcaseRoute() {
         left={0}
         right={0}
         curve={REFERENCE_COMPOSITOR_CURVE}
-        blurRadius={BLUR_RADIUS_DP}
+        blurRadius={blurRadius}
         blurProgression={blurProgression}
         progressiveBackend="compositor"
+        progressiveCompositorOpacity={compositorOpacity}
         style={[StyleSheet.absoluteFill, s.fadeHost]}
       >
         <ScrollView

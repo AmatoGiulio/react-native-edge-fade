@@ -48,6 +48,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     val right: Float,
     val radius: Float,
     val progression: Float,
+    val opacity: Float,
     val curveTop: String,
     val curveBottom: String,
     val curveLeft: String,
@@ -75,6 +76,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     val curveRightLut: Int,
     val contrast: Int,
     val saturation: Int,
+    val maxOpacity: Int,
   )
 
   private class OutputFrame(
@@ -149,6 +151,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
       right = finite(host.fadeRight).coerceIn(0f, host.width.toFloat()),
       radius = finite(host.blurRadius).coerceIn(0f, MAX_RADIUS_PX),
       progression = finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
+      opacity = finite(host.progressiveCompositorOpacity, 1f).coerceIn(0f, 1f),
       curveTop = host.curveTop,
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
@@ -204,7 +207,8 @@ internal class EdgeFadeProgressiveCompositorRenderer(
           "COMPOSITOR_V6_KAWASE draw host=${current.width}x${current.height} " +
             "low=${lowWidth}x${lowHeight} scale=${INPUT_SCALE} " +
             "radius=${current.radius}px passes=${passes} " +
-            "contrast=${BACKDROP_CONTRAST} saturation=${BACKDROP_SATURATION} " +
+            "opacity=${current.opacity} contrast=${BACKDROP_CONTRAST} " +
+            "saturation=${BACKDROP_SATURATION} " +
             "hostBackground=${host.background != null}",
         )
         announcedDraw = true
@@ -367,6 +371,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     GLES30.glUniform1fv(uniforms.curveRightLut, LUT_SIZE, right.lut, 0)
     GLES30.glUniform1f(uniforms.contrast, BACKDROP_CONTRAST)
     GLES30.glUniform1f(uniforms.saturation, BACKDROP_SATURATION)
+    GLES30.glUniform1f(uniforms.maxOpacity, key.opacity)
   }
 
   private fun curveUniforms(curve: String): CurveUniforms {
@@ -515,6 +520,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         curveRightLut = uniform(finalProgram, "uCurveRightLut[0]"),
         contrast = uniform(finalProgram, "uContrast"),
         saturation = uniform(finalProgram, "uSaturation"),
+        maxOpacity = uniform(finalProgram, "uMaxOpacity"),
       )
 
     createQuad()

@@ -34,6 +34,8 @@ export interface AnimatedEdgeFadeViewProps extends Omit<
   radius?: number | SharedValueLike<number>;
   blurRadius?: number | SharedValueLike<number>;
   blurProgression?: number | SharedValueLike<number>;
+  /** Internal showcase-only compositor opacity cap. */
+  progressiveCompositorOpacity?: number | SharedValueLike<number>;
 }
 
 // ── Reanimated soft peer dependency ────────────────────────────────────────────
@@ -66,7 +68,8 @@ function useEdgeFadeAnimatedProps(
   endSV: SharedValueLike<number> | null,
   radiusSV: SharedValueLike<number> | null,
   blurRadiusSV: SharedValueLike<number> | null,
-  blurProgressionSV: SharedValueLike<number> | null
+  blurProgressionSV: SharedValueLike<number> | null,
+  compositorOpacitySV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -83,6 +86,9 @@ function useEdgeFadeAnimatedProps(
     // Public blurProgression maps to the historical native frostProgression
     // prop. Keep the mapping here so animated and static APIs stay identical.
     if (blurProgressionSV) out.frostProgression = blurProgressionSV.value;
+    if (compositorOpacitySV) {
+      out.progressiveCompositorOpacity = compositorOpacitySV.value;
+    }
     return out;
   });
 }
@@ -128,6 +134,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const blurProgressionSV = isSharedValue(props.blurProgression)
     ? (props.blurProgression as SharedValueLike<number>)
     : null;
+  const compositorOpacitySV = isSharedValue(props.progressiveCompositorOpacity)
+    ? (props.progressiveCompositorOpacity as SharedValueLike<number>)
+    : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
   // an ACTIVE edge with zero size — so resolveNativeProps still resolves the
@@ -169,6 +178,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     color: _col,
     blurRadius: _br,
     blurProgression: _bp,
+    progressiveCompositorOpacity: _pco,
     frostSaturation: _fs,
     frostLift: _fl,
     frostProgression: _fp,
@@ -194,7 +204,8 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     endSV,
     radiusSV,
     blurRadiusSV,
-    blurProgressionSV
+    blurProgressionSV,
+    compositorOpacitySV
   );
 
   return (
@@ -214,6 +225,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       frostSaturation={n.frostSaturation}
       frostLift={n.frostLift}
       frostProgression={n.frostProgression}
+      progressiveCompositorOpacity={
+        compositorOpacitySV ? undefined : props.progressiveCompositorOpacity
+      }
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

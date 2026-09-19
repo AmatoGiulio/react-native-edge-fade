@@ -126,6 +126,11 @@ class EdgeFadeViewManager :
     view.progressiveMaterialColor = value ?: Color.rgb(239, 238, 236)
   }
 
+  @ReactProp(name = "progressiveCompositorOpacity", defaultFloat = 1f)
+  override fun setProgressiveCompositorOpacity(view: EdgeFadeView, value: Float) {
+    view.progressiveCompositorOpacity = value.coerceIn(0f, 1f)
+  }
+
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) { view.frostSaturation = value }
 
