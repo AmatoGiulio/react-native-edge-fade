@@ -44,7 +44,8 @@
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "benchmark:gallery": "node scripts/benchmark-gallery-stress.mjs",
     "benchmark:gallery:trace": "node scripts/capture-gallery-perfetto.mjs",
-    "release": "release-it --only-version"
+    "release": "release-it --only-version",
+    "benchmark:showcase": "node scripts/capture-showcase-benchmark.mjs"
   },
   "keywords": [
     "react-native",
