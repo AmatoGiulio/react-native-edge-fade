@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,10 @@ function readArg(name) {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function hasArg(name) {
+  return process.argv.includes(name);
+}
+
 function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
@@ -33,6 +37,8 @@ function run(command, args, options = {}) {
 }
 
 const requestedSerial = readArg('--serial') ?? process.env.ADB_SERIAL;
+const settleMs = Number(readArg('--settle-ms') ?? 2200);
+const autoOpen = !hasArg('--no-open');
 
 function connectedDevices() {
   const stdout = run('adb', ['devices']);
@@ -143,9 +149,10 @@ adb([
 
 const openButton = await waitForDescription('Open tonight panel');
 
-// Give Expo Image one extra beat after the route becomes interactive so the
-// benchmark does not capture placeholder/late-decoded imagery.
-await sleep(900);
+// Expo Image decoding can lag route interactivity by more than a frame on a
+// cold launch. Wait long enough for the hero/stills to be materially present,
+ // otherwise the benchmark is worthless.
+await sleep(settleMs);
 
 const closedPath = capture('closed');
 console.log(`[showcase-benchmark] closed: ${closedPath}`);
@@ -179,6 +186,82 @@ writeFileSync(
   `${JSON.stringify(metadata, null, 2)}\n`
 );
 
+const previewPath = resolve(outputDir, 'index.html');
+const previewHtml = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Progressive Showcase Benchmark</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #111;
+    color: #eee;
+  }
+  h1 { margin: 0 0 18px; font-size: 18px; font-weight: 600; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    align-items: start;
+  }
+  figure { margin: 0; }
+  figcaption {
+    margin: 0 0 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #aaa;
+  }
+  img {
+    display: block;
+    width: 100%;
+    max-height: calc(100vh - 100px);
+    object-fit: contain;
+    background: #222;
+    border: 1px solid #333;
+  }
+  .meta {
+    margin-top: 16px;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+  <h1>Progressive showcase — current benchmark</h1>
+  <div class="grid">
+    <figure>
+      <figcaption>Closed</figcaption>
+      <img src="./closed.png?t=${Date.now()}" alt="Closed benchmark" />
+    </figure>
+    <figure>
+      <figcaption>Open</figcaption>
+      <img src="./open.png?t=${Date.now()}" alt="Open benchmark" />
+    </figure>
+  </div>
+  <div class="meta">
+    ${metadata.device} · Android ${metadata.android} · ${metadata.wmSize}
+  </div>
+</body>
+</html>
+`;
+writeFileSync(previewPath, previewHtml);
+
 console.log(
   `[showcase-benchmark] saved benchmark pair in ${outputDir}`
 );
+console.log(`[showcase-benchmark] preview: ${previewPath}`);
+
+if (autoOpen && process.platform === 'darwin' && existsSync(previewPath)) {
+  try {
+    run('open', [previewPath]);
+  } catch {
+    // The benchmark itself succeeded; preview opening is convenience only.
+  }
+}
