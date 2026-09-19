@@ -1,6 +1,7 @@
 package com.edgefade
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
@@ -36,6 +37,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val curveLeft: String,
     val curveRight: String,
     val backend: String,
+    val materialStrength: Float,
+    val materialColor: Int,
   )
 
   private data class CurveSamples(
@@ -50,6 +53,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
     fun release() {
       node.setRenderEffect(null)
@@ -90,6 +94,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
       backend = exactBackend,
+      materialStrength =
+        BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
+      materialColor = host.progressiveMaterialColor,
     )
 
     if (key == next) return true
@@ -232,25 +239,41 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveLeft", curves.left)
     strip.mask.setFloatUniform("curveRight", curves.right)
 
-    if (key.backend == "androidx") {
-      strip.node.setRenderEffect(
-        AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask),
-      )
-      return
-    }
+    val blurEffect =
+      if (key.backend == "androidx") {
+        AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask)
+      } else {
+        for (shader in arrayOf(strip.horizontal, strip.vertical)) {
+          shader.setInputShader("mask", strip.mask)
+          shader.setFloatUniform("blurRadius", key.radius)
+          shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
+        }
 
-    for (shader in arrayOf(strip.horizontal, strip.vertical)) {
-      shader.setInputShader("mask", strip.mask)
-      shader.setFloatUniform("blurRadius", key.radius)
-      shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
-    }
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(strip.vertical, "content"),
+          RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
+        )
+      }
 
-    strip.node.setRenderEffect(
-      RenderEffect.createChainEffect(
-        RenderEffect.createRuntimeShaderEffect(strip.vertical, "content"),
-        RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
-      ),
-    )
+    val finalEffect =
+      if (key.materialStrength > 0f) {
+        strip.material.setInputShader("mask", strip.mask)
+        strip.material.setFloatUniform("materialStrength", key.materialStrength)
+        strip.material.setFloatUniform(
+          "materialColor",
+          Color.red(key.materialColor) / 255f,
+          Color.green(key.materialColor) / 255f,
+          Color.blue(key.materialColor) / 255f,
+        )
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
+          blurEffect,
+        )
+      } else {
+        blurEffect
+      }
+
+    strip.node.setRenderEffect(finalEffect)
   }
 
   private fun curveSamples(curve: String): FloatArray =

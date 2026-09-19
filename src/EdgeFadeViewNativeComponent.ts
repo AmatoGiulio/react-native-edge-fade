@@ -27,6 +27,13 @@ interface NativeProps extends ViewProps {
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveBackend?: string;
+  /**
+   * Internal showcase material grading. 0 keeps public progressive blur pure.
+   * Deliberately not exposed by the public JS prop types.
+   */
+  progressiveMaterialStrength?: CodegenTypes.Float;
+  /** Internal showcase material tint paired with progressiveMaterialStrength. */
+  progressiveMaterialColor?: ColorValue;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

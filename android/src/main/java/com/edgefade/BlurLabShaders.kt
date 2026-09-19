@@ -196,4 +196,49 @@ internal object BlurLabShaders {
     }
   """.trimIndent()
 
+
+  // Optional demo-only material pass. The public renderer leaves this disabled
+  // (strength = 0), preserving its pure progressive-Gaussian contract.
+  //
+  // Blur removes high frequencies, but very dark cards can still survive as
+  // large rectangular low-frequency masses. The reference material gradually
+  // compresses those masses into the surrounding surface. Drive that extinction
+  // from the SAME radius field, but with a delayed onset so the inner edge stays
+  // optically sharp and the material only takes over deeper in the blur field.
+  val materialComposite = """
+    uniform shader content;
+    uniform shader mask;
+    uniform float materialStrength;
+    uniform float3 materialColor;
+
+    half4 main(float2 coord) {
+      half4 blurred = content.eval(coord);
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+
+      // Blur starts immediately; grading deliberately starts later. This avoids
+      // the cheap "white gradient over content" look at the transition edge.
+      float material = clamp(materialStrength, 0.0, 1.0)
+        * smoothstep(0.24, 0.94, intensity);
+      if (material <= 0.0001) return blurred;
+
+      float alpha = max(float(blurred.a), 0.0001);
+      float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
+
+      // Reference-like extinction: first reduce chroma, then compress contrast,
+      // then let the blurred content dissolve into the surrounding material.
+      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+      float saturation = mix(1.0, 0.72, material);
+      rgb = mix(float3(luma), rgb, saturation);
+
+      float contrast = mix(1.0, 0.68, material);
+      rgb = (rgb - 0.5) * contrast + 0.5;
+
+      float tintAmount = 0.42 * material;
+      rgb = mix(rgb, materialColor, tintAmount);
+      rgb = clamp(rgb + 0.018 * material, 0.0, 1.0);
+
+      return half4(rgb * float(blurred.a), float(blurred.a));
+    }
+  """.trimIndent()
+
 }

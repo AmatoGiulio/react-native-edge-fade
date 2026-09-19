@@ -54,6 +54,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
    */
   internal var progressiveBackend: String = "auto"
 
+  /**
+   * Demo-only material grading applied after the Gaussian pass. Public blur stays
+   * a pure progressive Gaussian because the default strength is exactly zero.
+   */
+  internal var progressiveMaterialStrength: Float = 0f
+  internal var progressiveMaterialColor: Int = Color.rgb(239, 238, 236)
+
   // Kept temporarily for source compatibility with the 0.2.x public API.
   // Saturation/lift are intentionally ignored by Public Progressive.
   var frostSaturation: Float = 0.9f

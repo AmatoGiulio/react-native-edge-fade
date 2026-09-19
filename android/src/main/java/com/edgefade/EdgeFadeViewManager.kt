@@ -1,5 +1,6 @@
 package com.edgefade
 
+import android.graphics.Color
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
@@ -112,6 +113,16 @@ class EdgeFadeViewManager :
       "scaled" -> "scaled"
       else -> "auto"
     }
+  }
+
+  @ReactProp(name = "progressiveMaterialStrength", defaultFloat = 0f)
+  override fun setProgressiveMaterialStrength(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialStrength = value.coerceIn(0f, 1f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColor", customType = "Color")
+  override fun setProgressiveMaterialColor(view: EdgeFadeView, value: Int?) {
+    view.progressiveMaterialColor = value ?: Color.rgb(239, 238, 236)
   }
 
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)

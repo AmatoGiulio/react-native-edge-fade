@@ -27,6 +27,10 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+// Demo-only material extinction measured by eye against reference.mp4.
+// Blur remains pure everywhere else because the native default is strength=0.
+const MATERIAL_STRENGTH = 0.92;
+const MATERIAL_COLOR = '#efeeec';
 const CLOSED_DEPTH = 112;
 // Measured from the reference video (10–90% blur spread ≈ 10% of the visible
 // screen, full ramp ≈ 16%). On this device that maps to ~154dp.
@@ -178,6 +182,8 @@ export default function ProgressiveShowcaseRoute() {
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={blurProgression}
         progressiveBackend="agsl"
+        progressiveMaterialStrength={MATERIAL_STRENGTH}
+        progressiveMaterialColor={MATERIAL_COLOR}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView
@@ -393,6 +399,7 @@ const s = StyleSheet.create({
   topStoryImage: {
     width: '100%',
     aspectRatio: 1.58,
+    borderRadius: 8,
     backgroundColor: '#dddcd9',
   },
   meta: {
@@ -428,6 +435,7 @@ const s = StyleSheet.create({
   latestImage: {
     width: '39%',
     aspectRatio: 1.3,
+    borderRadius: 5,
     backgroundColor: '#dddcd9',
   },
   latestCopy: {
