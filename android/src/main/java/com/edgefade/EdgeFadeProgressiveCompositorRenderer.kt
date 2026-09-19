@@ -9,17 +9,19 @@ import android.os.Build
 import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
+import kotlin.math.ceil
 
 /**
  * Showcase-only API 33+ backdrop compositor.
  *
  * Unlike the public progressive renderer, this path does NOT vary Gaussian
- * radius per fragment. It builds one stable, high-quality fixed blur of the full
- * scene and crossfades that backdrop over the sharp scene with the edge field.
+ * radius per fragment. It builds one stable backdrop, then crossfades that
+ * backdrop over the sharp scene with the edge field.
  *
- * This is intentionally close to system-control-center rendering: the blur
- * kernel never changes spatially, so large low-frequency colour fields remain
- * smooth and there are no radius quantisation bands or "blurred rectangles".
+ * The backdrop is deliberately rendered at a low working resolution, blurred
+ * there, then bilinearly upscaled. That destroys the large rectangular
+ * low-frequency footprint of cards before compositing, producing the broad,
+ * clean colour diffusion used by system control-center style materials.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveCompositorRenderer(
@@ -58,7 +60,12 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   // transparent black at image boundaries.
   private val blurSource = RenderNode("EdgeFade.Compositor.blurSource")
 
-  // Draws blurSource through [fixedBlur -> spatial alpha compositor].
+  // Low-resolution diffusion surface. The full scene is downsampled into this
+  // node, blurred at that scale, then expanded back to native resolution.
+  private val diffusion = RenderNode("EdgeFade.Compositor.diffusion")
+
+  // Native-resolution carrier for the upscaled diffusion surface. Only the
+  // spatial alpha compositor runs here.
   private val backdrop = RenderNode("EdgeFade.Compositor.backdrop")
 
   private val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
@@ -92,9 +99,17 @@ internal class EdgeFadeProgressiveCompositorRenderer(
 
     content.setPosition(0, 0, width, height)
     blurSource.setPosition(0, 0, width, height)
+
+    val diffusionWidth =
+      ceil(width * DIFFUSION_SCALE).toInt().coerceAtLeast(1)
+    val diffusionHeight =
+      ceil(height * DIFFUSION_SCALE).toInt().coerceAtLeast(1)
+    diffusion.setPosition(0, 0, diffusionWidth, diffusionHeight)
+
     backdrop.setPosition(0, 0, width, height)
 
     if (next.radius <= 0f) {
+      diffusion.setRenderEffect(null)
       backdrop.setRenderEffect(null)
       key = next
       return true
@@ -139,10 +154,21 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         }
       }
 
+      tracePhase("EdgeFade.progressive.compositor.recordDiffusion") {
+        val recording = diffusion.beginRecording()
+        try {
+          recording.scale(DIFFUSION_SCALE, DIFFUSION_SCALE)
+          recording.drawRenderNode(blurSource)
+        } finally {
+          diffusion.endRecording()
+        }
+      }
+
       tracePhase("EdgeFade.progressive.compositor.recordBackdrop") {
         val recording = backdrop.beginRecording()
         try {
-          recording.drawRenderNode(blurSource)
+          recording.scale(1f / DIFFUSION_SCALE, 1f / DIFFUSION_SCALE)
+          recording.drawRenderNode(diffusion)
         } finally {
           backdrop.endRecording()
         }
@@ -185,17 +211,26 @@ internal class EdgeFadeProgressiveCompositorRenderer(
 
     overlay.setInputShader("mask", mask)
 
-    val fixedBlur = RenderEffect.createBlurEffect(
-      next.radius,
-      next.radius,
-      Shader.TileMode.CLAMP,
+    // Blurring after a strong downsample is the key difference from the first
+    // compositor prototype. At full resolution even a 150px Gaussian preserves
+    // a large black card as a large black rectangle. Here the same card becomes
+    // only a few dozen working pixels before the Gaussian, so its geometry
+    // dissolves into a broad colour field instead of surviving as a box.
+    val workingRadius =
+      (next.radius * DIFFUSION_SCALE * DIFFUSION_GAIN)
+        .coerceIn(1f, MAX_DIFFUSION_RADIUS_PX)
+
+    diffusion.setRenderEffect(
+      RenderEffect.createBlurEffect(
+        workingRadius,
+        workingRadius,
+        Shader.TileMode.CLAMP,
+      ),
     )
+
     val spatialComposite =
       RenderEffect.createRuntimeShaderEffect(overlay, "content")
-
-    backdrop.setRenderEffect(
-      RenderEffect.createChainEffect(spatialComposite, fixedBlur),
-    )
+    backdrop.setRenderEffect(spatialComposite)
   }
 
   private fun curveSamples(curve: String): FloatArray =
@@ -209,11 +244,21 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     }
 
   fun release() {
+    diffusion.setRenderEffect(null)
     backdrop.setRenderEffect(null)
     content.discardDisplayList()
     blurSource.discardDisplayList()
+    diffusion.discardDisplayList()
     backdrop.discardDisplayList()
     key = null
+  }
+
+  private companion object {
+    // 16% is intentionally aggressive: system-style materials favour broad
+    // low-frequency colour diffusion over geometric fidelity of the source.
+    private const val DIFFUSION_SCALE = 0.16f
+    private const val DIFFUSION_GAIN = 1.45f
+    private const val MAX_DIFFUSION_RADIUS_PX = 48f
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {
