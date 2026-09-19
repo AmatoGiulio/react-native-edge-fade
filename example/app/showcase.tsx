@@ -15,7 +15,6 @@ import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -29,12 +28,9 @@ const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const MATERIAL_STRENGTH = 0.96;
-const MATERIAL_COLOR = '#e3e0dc';
+const MATERIAL_STRENGTH = 0.82;
+const MATERIAL_COLOR = '#efeeec';
 const CLOSED_DEPTH = 112;
-// Measured from the reference video (10–90% blur spread ≈ 10% of the visible
-// screen, full ramp ≈ 16%). On this device that maps to ~154dp.
-const OPEN_RAMP_DEPTH = 160;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -122,18 +118,10 @@ export default function ProgressiveShowcaseRoute() {
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * 0.7, 620);
-  // Keep bottom size and radius progression frame-synchronised in the same
-  // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
-  // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
-  // static, which is why changing that prop appeared to do nothing.
-  const blurProgression = useDerivedValue(() => {
-    const rampDepth = interpolate(
-      progress.value,
-      [0, 1],
-      [CLOSED_DEPTH, OPEN_RAMP_DEPTH]
-    );
-    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
-  });
+  // Let the radius evolve across the entire expanded field. Dividing a fixed
+  // ramp depth by the animated bottom depth saturated most of the open panel at
+  // intensity=1, producing the flat central band that is absent in the reference.
+  const blurProgression = 1;
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
   const panelStyle = useAnimatedStyle(() => ({

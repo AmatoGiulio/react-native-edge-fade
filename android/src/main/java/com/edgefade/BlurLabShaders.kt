@@ -45,33 +45,32 @@ internal object BlurLabShaders {
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
         float radius = blurRadius * intensity;
-        float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
-        if (r >= 1.0) {
+        if (radius >= 1.0) {
           float sigma = max(radius / 2.0, 1.0);
           float weightSum = 1.0;
           float4 result = sampled;
           for (float i = 1.0; i < maxRadius; i += 2.0) {
-            if (i >= r) break;
-            float low = gaussian(i, sigma);
-            float high = gaussian(i + 1.0, sigma);
+            if (i >= radius) break;
+
+            // Fade each discrete Gaussian tap in continuously as the spatial
+            // radius crosses it. The previous floor(radius) cutoff changed the
+            // kernel in visible steps; over a tall progressive field those steps
+            // read as horizontal bands.
+            float lowGate = clamp(radius - i, 0.0, 1.0);
+            float highGate = clamp(radius - (i + 1.0), 0.0, 1.0);
+            float low = gaussian(i, sigma) * lowGate;
+            float high = gaussian(i + 1.0, sigma) * highGate;
             float weight = low + high;
-            float d = i + high / weight;
-            float2 offset = $offset;
-            float2 a = coord - offset;
-            float2 b = coord + offset;
-            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
-            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
-          }
-          float odd = mod(r, 2.0) * (1.0 - step(maxRadius, r));
-          if (odd > 0.0) {
-            float weight = gaussian(r, sigma);
-            float d = r;
-            float2 offset = $offset;
-            float2 a = coord - offset;
-            float2 b = coord + offset;
-            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
-            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+
+            if (weight > 0.000001) {
+              float d = i + high / weight;
+              float2 offset = $offset;
+              float2 a = coord - offset;
+              float2 b = coord + offset;
+              if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+              if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+            }
           }
           sampled = result / weightSum;
         }
@@ -218,7 +217,7 @@ internal object BlurLabShaders {
       // Blur starts immediately; grading deliberately starts later. This avoids
       // the cheap "white gradient over content" look at the transition edge.
       float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.18, 0.84, intensity);
+        * smoothstep(0.22, 0.92, intensity);
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
@@ -227,13 +226,15 @@ internal object BlurLabShaders {
       // Reference-like extinction: first reduce chroma, then compress contrast,
       // then let the blurred content dissolve into the surrounding material.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.82, material);
+      float saturation = mix(1.0, 0.92, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.52, material);
+      float contrast = mix(1.0, 0.74, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      float tintAmount = 0.70 * material;
+      // Keep the source chroma visible. The reference behaves more like a
+      // colored low-frequency wash than an opaque neutral frost layer.
+      float tintAmount = 0.20 * material;
       rgb = mix(rgb, materialColor, tintAmount);
       rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
 
