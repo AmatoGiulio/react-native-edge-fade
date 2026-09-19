@@ -26,17 +26,10 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
-const OPEN_MS = 560;
+const CLOSED_DEPTH = 124;
+const OPEN_MS = 580;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
-
-const REFERENCE_BLUR_CURVE = {
-  type: 'cubicBezier' as const,
-  x1: 0.4,
-  y1: 0,
-  x2: 0.65,
-  y2: 1,
-};
 
 const TOP_STORIES = [
   {
@@ -53,13 +46,6 @@ const TOP_STORIES = [
     title: 'Inside Ostiense’s New Listening Rooms',
     image: ITEMS[4],
   },
-  {
-    id: 'story-3',
-    type: 'MUSIC',
-    date: 'September 17, 2026',
-    title: 'The Quiet Architecture of a 4AM Dancefloor',
-    image: ITEMS[10],
-  },
 ];
 
 const LATEST = [
@@ -67,37 +53,29 @@ const LATEST = [
     id: 'latest-1',
     type: 'MIX',
     title: 'Nocturne 04 — Roman Electronics',
+    body: 'A slow-burn selection moving from ambient pressure to warehouse rhythm.',
     image: ITEMS[2],
   },
   {
     id: 'latest-2',
     type: 'DESIGN',
     title: 'Light Studies From San Lorenzo',
+    body: 'Independent studios exploring projection, typography and low-light spaces.',
     image: ITEMS[6],
   },
   {
     id: 'latest-3',
     type: 'LIVE',
     title: 'A Warehouse Set in Ostiense',
+    body: 'Extended sets, live visuals and a room designed around a single system.',
     image: ITEMS[8],
   },
   {
     id: 'latest-4',
     type: 'SCENE',
     title: 'Small Rooms, Long Nights',
+    body: 'Four intimate spaces keeping Rome’s after-hours culture deliberately small.',
     image: ITEMS[12],
-  },
-  {
-    id: 'latest-5',
-    type: 'VISUALS',
-    title: 'Posters From The Roman Underground',
-    image: ITEMS[14],
-  },
-  {
-    id: 'latest-6',
-    type: 'RELEASES',
-    title: 'Six Records For The Last Train Home',
-    image: ITEMS[16] ?? ITEMS[3],
   },
 ];
 
@@ -107,16 +85,21 @@ export default function ProgressiveShowcaseRoute() {
 
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
-  const bottomDepth = useSharedValue(118);
+  const bottomDepth = useSharedValue(CLOSED_DEPTH);
 
-  const expandedDepth = Math.min(height * 0.60, 560);
-  const storyWidth = Math.min(Math.max(width * 0.72, 250), 330);
+  const expandedDepth = Math.min(height * 0.6, 560);
+  const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),
     transform: [
       { translateY: interpolate(progress.value, [0, 1], [28, 0]) },
     ],
+  }));
+
+  const milkStyle = useAnimatedStyle(() => ({
+    height: bottomDepth.value * 1.08,
+    opacity: interpolate(progress.value, [0, 1], [0.74, 1]),
   }));
 
   const arrowStyle = useAnimatedStyle(() => ({
@@ -136,7 +119,7 @@ export default function ProgressiveShowcaseRoute() {
       easing: EASE,
     });
 
-    bottomDepth.value = withTiming(next ? expandedDepth : 118, {
+    bottomDepth.value = withTiming(next ? expandedDepth : CLOSED_DEPTH, {
       duration,
       easing: EASE,
     });
@@ -152,9 +135,9 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve={REFERENCE_BLUR_CURVE}
+        curve="soft"
         blurRadius={BLUR_RADIUS_DP}
-        blurProgression={0.9}
+        blurProgression={1}
         progressiveBackend="agsl"
         style={StyleSheet.absoluteFill}
       >
@@ -217,17 +200,20 @@ export default function ProgressiveShowcaseRoute() {
             <Text style={s.sectionLink}>see all stories</Text>
           </View>
 
-          <View style={s.latestGrid}>
+          <View style={s.latestList}>
             {LATEST.map((item) => (
-              <View key={item.id} style={s.latestCard}>
+              <View key={item.id} style={s.latestRow}>
                 <Image
                   source={item.image!.source}
                   style={s.latestImage}
                   contentFit="cover"
                 />
 
-                <Text style={s.latestMeta}>{item.type}</Text>
-                <Text style={s.latestTitle}>{item.title}</Text>
+                <View style={s.latestCopy}>
+                  <Text style={s.latestMeta}>{item.type}</Text>
+                  <Text style={s.latestTitle}>{item.title}</Text>
+                  <Text style={s.latestBody}>{item.body}</Text>
+                </View>
               </View>
             ))}
           </View>
@@ -244,6 +230,16 @@ export default function ProgressiveShowcaseRoute() {
           </View>
         </ScrollView>
       </ProgressiveFade>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[s.milk, { bottom: 0 }, milkStyle]}
+      >
+        <View style={[s.milkBand, s.milkBandTop]} />
+        <View style={[s.milkBand, s.milkBandMid]} />
+        <View style={[s.milkBand, s.milkBandLow]} />
+        <View style={[s.milkBand, s.milkBandBottom]} />
+      </Animated.View>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
@@ -389,23 +385,27 @@ const s = StyleSheet.create({
   latestHeader: {
     marginTop: 44,
   },
-  latestGrid: {
+  latestList: {
     paddingHorizontal: 18,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 24,
   },
-  latestCard: {
-    width: '48%',
+  latestRow: {
+    minHeight: 116,
+    flexDirection: 'row',
+    gap: 14,
+    paddingVertical: 13,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#d5d3cf',
   },
   latestImage: {
-    width: '100%',
+    width: '39%',
     aspectRatio: 1.3,
     backgroundColor: '#dddcd9',
   },
+  latestCopy: {
+    flex: 1,
+    paddingTop: 1,
+  },
   latestMeta: {
-    marginTop: 7,
     color: '#96938f',
     fontSize: 8,
     lineHeight: 10,
@@ -413,11 +413,18 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
   },
   latestTitle: {
-    marginTop: 3,
+    marginTop: 4,
     color: '#111',
-    fontSize: 12,
-    lineHeight: 15,
+    fontSize: 15,
+    lineHeight: 18,
     fontWeight: '500',
+    letterSpacing: -0.2,
+  },
+  latestBody: {
+    marginTop: 6,
+    color: '#5c5955',
+    fontSize: 9.5,
+    lineHeight: 13.5,
   },
   editorialBlock: {
     marginHorizontal: 18,
@@ -449,6 +456,36 @@ const s = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
+  milk: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  milkBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+  },
+  milkBandTop: {
+    height: '100%',
+    opacity: 0.025,
+  },
+  milkBandMid: {
+    height: '78%',
+    opacity: 0.035,
+  },
+  milkBandLow: {
+    height: '54%',
+    opacity: 0.05,
+  },
+  milkBandBottom: {
+    height: '30%',
+    opacity: 0.07,
+  },
   panel: {
     position: 'absolute',
     left: 22,
@@ -456,7 +493,7 @@ const s = StyleSheet.create({
     zIndex: 20,
   },
   panelKicker: {
-    color: 'rgba(255,255,255,0.58)',
+    color: 'rgba(255,255,255,0.62)',
     fontSize: 8,
     fontWeight: '800',
     letterSpacing: 1.4,
@@ -471,7 +508,7 @@ const s = StyleSheet.create({
   },
   panelRule: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
     marginVertical: 14,
   },
   panelRow: {
@@ -481,7 +518,7 @@ const s = StyleSheet.create({
   },
   panelTime: {
     width: 44,
-    color: 'rgba(255,255,255,0.48)',
+    color: 'rgba(255,255,255,0.5)',
     fontSize: 10,
     lineHeight: 12,
     fontWeight: '700',
@@ -497,7 +534,7 @@ const s = StyleSheet.create({
   },
   panelMeta: {
     marginTop: 2,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.54)',
     fontSize: 9,
     lineHeight: 12,
   },
@@ -521,7 +558,7 @@ const s = StyleSheet.create({
     height: 34,
     paddingHorizontal: 12,
     borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: 'rgba(0,0,0,0.34)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
