@@ -25,16 +25,17 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 104;
+const BLUR_RADIUS_PX = 500;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// V8 keeps four neighbouring blur stages and selects the local radius rather
-// than alpha-overlaying one maximum blur. This removes the broad ghost halo while
-// retaining the long, soft reference falloff.
+// V9 uses a much wider diffusion kernel, matching the reference's low-frequency
+// material field, while selecting calibrated neighbouring blur stages instead of
+// overlaying a maximum blur. Half-resolution offscreen rendering removes the
+// visible coarse texture from the 0.25x prototype.
 const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [

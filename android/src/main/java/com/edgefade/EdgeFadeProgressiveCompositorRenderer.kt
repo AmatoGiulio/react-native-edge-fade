@@ -204,7 +204,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         val passes = passCount(current.radius)
         Log.i(
           TAG,
-          "COMPOSITOR_V8_PYRAMID draw host=${current.width}x${current.height} " +
+          "COMPOSITOR_V9_PREMIUM draw host=${current.width}x${current.height} " +
             "low=${lowWidth}x${lowHeight} scale=${INPUT_SCALE} " +
             "radius=${current.radius}px levels=${passes} " +
             "hostBackground=${host.background != null}",
@@ -807,8 +807,10 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     private const val LUT_SIZE = EdgeFadeCurves.LUT_SIZE
     private val EMPTY_LUT = FloatArray(LUT_SIZE)
 
-    // Android RenderEngine constants.
-    private const val INPUT_SCALE = 0.25f
+    // Quality-first showcase scale. AOSP uses 0.25 for system-wide efficiency;
+    // this experimental path spends 4x the offscreen pixels to remove the
+    // quarter-resolution texture/moire visible in the benchmark captures.
+    private const val INPUT_SCALE = 0.5f
     private const val MAX_PASSES = 4
 
     // Internal compositor ceiling. The showcase currently runs well below it.

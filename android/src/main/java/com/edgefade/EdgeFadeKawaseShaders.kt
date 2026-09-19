@@ -190,20 +190,43 @@ internal object EdgeFadeKawaseShaders {
 
     vec4 progressiveSample(float intensity) {
       float levels = clamp(uLevelCount, 1.0, 4.0);
-      float x = clamp(intensity, 0.0, 1.0) * levels;
+      float t = clamp(intensity, 0.0, 1.0);
 
       vec4 sharp = sampleOriginal();
       vec4 b0 = texture(uBlur0, vUv);
-      if (x <= 1.0) return mix(sharp, b0, x);
+      if (levels < 1.5) return mix(sharp, b0, t);
 
       vec4 b1 = texture(uBlur1, vUv);
-      if (x <= 2.0) return mix(b0, b1, x - 1.0);
+      if (levels < 2.5) {
+        const float k0 = 0.7071068;
+        if (t <= k0) return mix(sharp, b0, t / k0);
+        return mix(b0, b1, (t - k0) / (1.0 - k0));
+      }
 
       vec4 b2 = texture(uBlur2, vUv);
-      if (x <= 3.0) return mix(b1, b2, x - 2.0);
+      if (levels < 3.5) {
+        const float k0 = 0.4082483;
+        const float k1 = 0.5773503;
+        if (t <= k0) return mix(sharp, b0, t / k0);
+        if (t <= k1) return mix(b0, b1, (t - k0) / (k1 - k0));
+        return mix(b1, b2, (t - k1) / (1.0 - k1));
+      }
 
       vec4 b3 = texture(uBlur3, vUv);
-      return mix(b2, b3, clamp(x - 3.0, 0.0, 1.0));
+
+      // Kawase stages are cumulative and therefore are NOT equally spaced blur
+      // radii. Their variance is proportional to the sum of squared pass
+      // offsets: [1, 2, 6, 15]. Use sqrt(variance) breakpoints so the spatial
+      // field maps to perceptually linear blur radius instead of under-blurring
+      // the middle of the transition.
+      const float k0 = 0.2581989; // sqrt(1 / 15)
+      const float k1 = 0.3651484; // sqrt(2 / 15)
+      const float k2 = 0.6324555; // sqrt(6 / 15)
+
+      if (t <= k0) return mix(sharp, b0, t / k0);
+      if (t <= k1) return mix(b0, b1, (t - k0) / (k1 - k0));
+      if (t <= k2) return mix(b1, b2, (t - k1) / (k2 - k1));
+      return mix(b2, b3, (t - k2) / (1.0 - k2));
     }
 
     void main() {

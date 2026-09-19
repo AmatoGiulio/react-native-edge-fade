@@ -136,7 +136,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         } else if (backend == "compositor33") {
           Log.i(
             TAG,
-            "COMPOSITOR_V8_PYRAMID selected: neighbouring-radius blur pyramid + full pixel replacement.",
+            "COMPOSITOR_V9_PREMIUM selected: half-res variance-calibrated blur pyramid.",
           )
         } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
