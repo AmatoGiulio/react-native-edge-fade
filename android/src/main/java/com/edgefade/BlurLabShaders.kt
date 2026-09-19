@@ -129,4 +129,71 @@ internal object BlurLabShaders {
       return half4(0.0, 0.0, 0.0, max(a, b));
     }
   """.trimIndent()
+
+  // Shared golden radius-mask used by both BlurLab AGSL and the public exact
+  // renderer. All curves are sampled through the same 32-entry LUT path so
+  // forcing AGSL in EdgeFadeView is pixel-equivalent to the Lab reference.
+  val maskPerEdge = """
+    uniform float2 origin;
+    uniform float2 viewSize;
+    uniform float4 edges;
+    uniform float progression;
+    uniform float curveTop[32];
+    uniform float curveBottom[32];
+    uniform float curveLeft[32];
+    uniform float curveRight[32];
+
+    float sampleTop(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveTop[i], curveTop[i + 1], x - float(i));
+      }
+      return curveTop[31];
+    }
+
+    float sampleBottom(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveBottom[i], curveBottom[i + 1], x - float(i));
+      }
+      return curveBottom[31];
+    }
+
+    float sampleLeft(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveLeft[i], curveLeft[i + 1], x - float(i));
+      }
+      return curveLeft[31];
+    }
+
+    float sampleRight(float t) {
+      float x = clamp(t, 0.0, 1.0) * 31.0;
+      for (int i = 0; i < 31; i++) {
+        if (x <= float(i + 1)) return mix(curveRight[i], curveRight[i + 1], x - float(i));
+      }
+      return curveRight[31];
+    }
+
+    float position(float distance, float depth) {
+      if (depth <= 0.0 || distance >= depth) return -1.0;
+      return clamp((1.0 - distance / depth) / progression, 0.0, 1.0);
+    }
+
+    half4 main(float2 local) {
+      float2 p = local + origin;
+      float topPos = position(p.y, edges.x);
+      float bottomPos = position(viewSize.y - p.y, edges.y);
+      float leftPos = position(p.x, edges.z);
+      float rightPos = position(viewSize.x - p.x, edges.w);
+
+      float top = topPos < 0.0 ? 0.0 : sampleTop(topPos);
+      float bottom = bottomPos < 0.0 ? 0.0 : sampleBottom(bottomPos);
+      float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
+      float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
+
+      return half4(0.0, 0.0, 0.0, max(max(top, bottom), max(left, right)));
+    }
+  """.trimIndent()
+
 }
