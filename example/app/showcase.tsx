@@ -117,7 +117,7 @@ export default function ProgressiveShowcaseRoute() {
   // The reference's blur field begins materially higher than the current demo.
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
-  const expandedDepth = Math.min(height * 0.7, 620);
+  const expandedDepth = Math.min(height * 0.78, 720);
   // Let the radius evolve across the entire expanded field. Dividing a fixed
   // ramp depth by the animated bottom depth saturated most of the open panel at
   // intensity=1, producing the flat central band that is absent in the reference.
