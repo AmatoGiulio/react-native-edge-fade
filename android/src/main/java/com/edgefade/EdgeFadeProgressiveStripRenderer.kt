@@ -8,30 +8,14 @@ import android.os.Build
 import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
-import kotlin.math.ceil
 
 /**
- * Edge-local production candidate for the API 33+ progressive blur path.
+ * Exact API 33+ progressive renderer used by the public EdgeFadeView.
  *
- * The blur is a real spatially-varying Gaussian. Every output pixel evaluates
- * the analytical/LUT edge mask, derives its own radius as
- * `maxRadius * intensity`, then uses the official AndroidX effect when selected,
- * or the attributed AGSL port of its separable Gaussian kernel in H -> V order.
- * The public selector chooses automatically; the example can force either exact
- * engine for same-scene validation.
- * There are no discrete blur levels, opacity
- * cross-fades, frost grading, lift, tint or material post-processing here.
- *
- * Strips are only a work-culling optimization: they bound GPU work to regions
- * where the radius can be non-zero. They do not quantize the blur field. Each
- * strip records padded source pixels so the Gaussian still samples real content
- * across the inner strip boundary. Top/bottom own the corners; left/right own
- * only the remaining center span, making four-edge output disjoint by geometry.
- *
- * The renderer is invoked directly from EdgeFadeView.dispatchDraw(). It records
- * the React children once, draws the sharp content with the edge bands clipped
- * out, then draws the filtered strips into those empty bands. No ViewOverlay,
- * SRC replacement layer or forced host hardware layer is involved.
+ * This path intentionally shares the Lab golden geometry, radius-mask sampling,
+ * and AGSL Gaussian kernel. For a forced AGSL backend, equal props must therefore
+ * produce the same pixels as BlurLabRenderer; the public wrapper is not allowed
+ * to reinterpret the progressive field.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveStripRenderer(
@@ -54,35 +38,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     val backend: String,
   )
 
-  private data class Rect(
-    val left: Int,
-    val top: Int,
-    val right: Int,
-    val bottom: Int,
-  ) {
-    val width: Int get() = right - left
-    val height: Int get() = bottom - top
-    val isEmpty: Boolean get() = width <= 0 || height <= 0
-  }
-
-  private data class Band(
-    val edge: Int,
-    val visible: Rect,
-    val source: Rect,
+  private data class CurveSamples(
+    val top: FloatArray,
+    val bottom: FloatArray,
+    val left: FloatArray,
+    val right: FloatArray,
   )
 
-  private data class CurveUniforms(
-    val exponent: Float,
-    val mode: Float,
-    val useLut: Float,
-    val lut: FloatArray,
-  )
-
-  private class Strip(var band: Band) {
+  private class Strip(var band: BlurLabGeometry.Band) {
     val node = RenderNode("EdgeFade.Progressive.strip")
-    val mask = RuntimeShader(EdgeFadeProgressiveBlurEffect.MASK_SHADER)
-    // Lazy so the AGSL port is compiled only when production fallback or the
-    // demo explicitly requests AGSL, even if AndroidX is present in the build.
+    val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
 
@@ -92,15 +57,11 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
   }
 
-  // Api33.renderers is a WeakHashMap keyed by EdgeFadeView. Keeping a strong
-  // host reference in the value would create value -> key retention and defeat
-  // the weak-key lifecycle if React Native ever skips an explicit drop callback.
   private val hostRef = WeakReference(host)
   private val content = RenderNode("EdgeFade.Progressive.content")
   private var key: Key? = null
   private var strips = emptyList<Strip>()
 
-  /** Compile/configure shaders before the selector commits to this backend. */
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val width = host.width
@@ -117,12 +78,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     val next = Key(
       width = width,
       height = height,
-      top = finite(host.fadeTop).coerceIn(0f, height.toFloat()),
-      bottom = finite(host.fadeBottom).coerceIn(0f, height.toFloat()),
-      left = finite(host.fadeLeft).coerceIn(0f, width.toFloat()),
-      right = finite(host.fadeRight).coerceIn(0f, width.toFloat()),
-      radius = finite(host.blurRadius).coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX),
-      progression = finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
+      top = BlurLabGeometry.edge(host.fadeTop, height),
+      bottom = BlurLabGeometry.edge(host.fadeBottom, height),
+      left = BlurLabGeometry.edge(host.fadeLeft, width),
+      right = BlurLabGeometry.edge(host.fadeRight, width),
+      radius = BlurLabGeometry.radius(host.blurRadius),
+      progression =
+        BlurLabGeometry.finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
       curveTop = host.curveTop,
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
@@ -132,9 +94,6 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     if (key == next) return true
 
-    // Radius 0 is the identity transform, not a fallback. Drop any filtered
-    // strip resources from the previous non-zero frame and let draw() render
-    // the React children directly, with no mask and no blur passes.
     if (next.radius <= 0f) {
       strips.forEach { it.release() }
       strips = emptyList()
@@ -149,32 +108,21 @@ internal class EdgeFadeProgressiveStripRenderer(
     return true
   }
 
-  /**
-   * @return true only if this renderer owned the frame. false tells the host to
-   * draw Mask instead, so an empty/invalid renderer can never blank the content.
-   */
   fun draw(canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
     val host = hostRef.get() ?: return false
-    if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) return false
+    if (host.width <= 0 || host.height <= 0 || !canvas.isHardwareAccelerated) {
+      return false
+    }
 
     Trace.beginSection("EdgeFade.progressive.strip.draw")
     try {
-      // Re-evaluate geometry before inspecting strips. Layout/prop updates can
-      // reach draw between selector transactions; never let a stale empty list
-      // suppress the child scene for a frame.
-      val prepared = tracePhase("EdgeFade.progressive.prepare") {
-        prepare()
-      }
-      if (!prepared) return false
+      if (!tracePhase("EdgeFade.progressive.prepare") { prepare() }) return false
 
       if (strips.isEmpty()) {
         recordChildren(canvas)
         return true
       }
 
-      // Materialize the child scene once. The sharp base and every filtered
-      // strip reference this same recording, so the expensive blur work stays
-      // edge-local while content identity is identical across all passes.
       tracePhase("EdgeFade.progressive.recordContent") {
         content.setPosition(0, 0, host.width, host.height)
         content.setUseCompositingLayer(true, null)
@@ -186,8 +134,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
-      // Draw sharp content exactly once, excluding every edge band. Those bands
-      // remain empty at this stage; no later replacement blend is necessary.
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
         try {
@@ -198,11 +144,10 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
-      // Fill the empty edge bands with their true progressive Gaussian output.
-      // Visible ownership is already disjoint by geometry, while each source is
-      // expanded by maxRadius + one paired bilinear tap for correct sampling.
-      for (strip in strips) {
+      for (index in strips.indices) {
+        val strip = strips[index]
         val src = strip.band.source
+
         tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
           val rc = strip.node.beginRecording()
           try {
@@ -223,6 +168,9 @@ internal class EdgeFadeProgressiveStripRenderer(
               visible.right.toFloat(),
               visible.bottom.toFloat(),
             )
+            for (previous in 0 until index) {
+              clipOut(canvas, strips[previous].band.visible)
+            }
             canvas.translate(src.left.toFloat(), src.top.toFloat())
             canvas.drawRenderNode(strip.node)
           } finally {
@@ -230,6 +178,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           }
         }
       }
+
       return true
     } finally {
       Trace.endSection()
@@ -237,25 +186,39 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private fun configure(next: Key) {
-    val bands = bands(next)
+    val bands =
+      BlurLabGeometry.bands(
+        next.width,
+        next.height,
+        floatArrayOf(next.top, next.bottom, next.left, next.right),
+        next.radius,
+      )
+
+    val curves =
+      CurveSamples(
+        top = curveSamples(next.curveTop),
+        bottom = curveSamples(next.curveBottom),
+        left = curveSamples(next.curveLeft),
+        right = curveSamples(next.curveRight),
+      )
+
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
       (previous.remove(band.edge) ?: Strip(band)).also { strip ->
         strip.band = band
-        configureStrip(strip, next)
+        configureStrip(strip, next, curves)
       }
     }
     previous.values.forEach { it.release() }
   }
 
-  private fun configureStrip(strip: Strip, key: Key) {
+  private fun configureStrip(
+    strip: Strip,
+    key: Key,
+    curves: CurveSamples,
+  ) {
     val source = strip.band.source
     strip.node.setPosition(0, 0, source.width, source.height)
-
-    val topCurve = curveUniforms(key.curveTop)
-    val bottomCurve = curveUniforms(key.curveBottom)
-    val leftCurve = curveUniforms(key.curveLeft)
-    val rightCurve = curveUniforms(key.curveRight)
 
     strip.mask.setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())
     strip.mask.setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())
@@ -264,27 +227,10 @@ internal class EdgeFadeProgressiveStripRenderer(
       floatArrayOf(key.top, key.bottom, key.left, key.right),
     )
     strip.mask.setFloatUniform("progression", key.progression)
-    strip.mask.setFloatUniform(
-      "curveExp",
-      floatArrayOf(
-        topCurve.exponent,
-        bottomCurve.exponent,
-        leftCurve.exponent,
-        rightCurve.exponent,
-      ),
-    )
-    strip.mask.setFloatUniform(
-      "curveMode",
-      floatArrayOf(topCurve.mode, bottomCurve.mode, leftCurve.mode, rightCurve.mode),
-    )
-    strip.mask.setFloatUniform(
-      "useLut",
-      floatArrayOf(topCurve.useLut, bottomCurve.useLut, leftCurve.useLut, rightCurve.useLut),
-    )
-    strip.mask.setFloatUniform("curveTopLut", topCurve.lut)
-    strip.mask.setFloatUniform("curveBottomLut", bottomCurve.lut)
-    strip.mask.setFloatUniform("curveLeftLut", leftCurve.lut)
-    strip.mask.setFloatUniform("curveRightLut", rightCurve.lut)
+    strip.mask.setFloatUniform("curveTop", curves.top)
+    strip.mask.setFloatUniform("curveBottom", curves.bottom)
+    strip.mask.setFloatUniform("curveLeft", curves.left)
+    strip.mask.setFloatUniform("curveRight", curves.right)
 
     if (key.backend == "androidx") {
       strip.node.setRenderEffect(
@@ -307,67 +253,17 @@ internal class EdgeFadeProgressiveStripRenderer(
     )
   }
 
-  private fun curveUniforms(curve: String): CurveUniforms {
-    val preset = EdgeFadeCurves.agslPresetParams(curve)
-    if (preset != null) {
-      return CurveUniforms(preset.first, preset.second, 0f, EMPTY_LUT)
+  private fun curveSamples(curve: String): FloatArray =
+    FloatArray(EdgeFadeCurves.LUT_SIZE) { index ->
+      BlurLabGeometry.finite(
+        EdgeFadeCurves.presenceAt(
+          curve,
+          index.toFloat() / (EdgeFadeCurves.LUT_SIZE - 1).toFloat(),
+        ),
+      ).coerceIn(0f, 1f)
     }
 
-    val alpha = requireNotNull(EdgeFadeCurves.parseCustomLUT(curve)) {
-      "Unsupported progressive curve: $curve"
-    }
-    // The public mask outputs radius presence, while serialized custom curves
-    // carry alpha (inner=1 -> outer=0). Convert once on configuration; the GPU
-    // linearly interpolates these 32 samples exactly like EdgeFade mask mode.
-    val presence = FloatArray(alpha.size) { index -> (1f - alpha[index]).coerceIn(0f, 1f) }
-    return CurveUniforms(1f, 0f, 1f, presence)
-  }
-
-  /**
-   * Output ownership is disjoint before RenderEffects are allocated:
-   * top/bottom own the full-width corners; side strips own only the center span.
-   * Each source rect then grows by max radius + one paired bilinear tap.
-   */
-  private fun bands(key: Key): List<Band> {
-    val width = key.width
-    val height = key.height
-    val top = ceil(key.top).toInt().coerceIn(0, height)
-    val bottom = ceil(key.bottom).toInt().coerceIn(0, height)
-    val left = ceil(key.left).toInt().coerceIn(0, width)
-    val right = ceil(key.right).toInt().coerceIn(0, width)
-    val pad = ceil(key.radius).toInt() + 1
-
-    val result = ArrayList<Band>(4)
-
-    fun add(edge: Int, visible: Rect) {
-      if (visible.isEmpty) return
-      val source = Rect(
-        (visible.left - pad).coerceAtLeast(0),
-        (visible.top - pad).coerceAtLeast(0),
-        (visible.right + pad).coerceAtMost(width),
-        (visible.bottom + pad).coerceAtMost(height),
-      )
-      result += Band(edge, visible, source)
-    }
-
-    // Top owns overlap with bottom if pathological depths cover the whole view.
-    add(EDGE_TOP, Rect(0, 0, width, top))
-    val bottomTop = (height - bottom).coerceAtLeast(top)
-    add(EDGE_BOTTOM, Rect(0, bottomTop, width, height))
-
-    val centerTop = top
-    val centerBottom = (height - bottom).coerceAtLeast(centerTop)
-    if (centerBottom > centerTop) {
-      add(EDGE_LEFT, Rect(0, centerTop, left, centerBottom))
-      // Left owns pathological horizontal overlap.
-      val rightLeft = (width - right).coerceAtLeast(left)
-      add(EDGE_RIGHT, Rect(rightLeft, centerTop, width, centerBottom))
-    }
-
-    return result
-  }
-
-  private fun clipOut(canvas: Canvas, rect: Rect) {
+  private fun clipOut(canvas: Canvas, rect: BlurLabGeometry.Rect) {
     canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
   }
 
@@ -390,21 +286,10 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private fun edgeName(edge: Int): String = when (edge) {
-    EDGE_TOP -> "top"
-    EDGE_BOTTOM -> "bottom"
-    EDGE_LEFT -> "left"
-    EDGE_RIGHT -> "right"
+    0 -> "top"
+    1 -> "bottom"
+    2 -> "left"
+    3 -> "right"
     else -> "unknown"
-  }
-
-  private fun finite(value: Float, fallback: Float = 0f): Float =
-    if (value.isFinite()) value else fallback
-
-  private companion object {
-    private val EMPTY_LUT = FloatArray(EdgeFadeCurves.LUT_SIZE)
-    private const val EDGE_TOP = 0
-    private const val EDGE_BOTTOM = 1
-    private const val EDGE_LEFT = 2
-    private const val EDGE_RIGHT = 3
   }
 }
