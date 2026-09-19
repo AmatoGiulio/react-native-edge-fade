@@ -30,6 +30,13 @@ const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
+const REFERENCE_BLUR_CURVE = {
+  type: 'cubicBezier' as const,
+  x1: 0.4,
+  y1: 0,
+  x2: 0.65,
+  y2: 1,
+};
 
 const POSTS = [
   {
@@ -127,9 +134,9 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve="smooth"
+        curve={REFERENCE_BLUR_CURVE}
         blurRadius={BLUR_RADIUS_DP}
-        blurProgression={1}
+        blurProgression={0.9}
         progressiveBackend="agsl"
         style={StyleSheet.absoluteFill}
       >
