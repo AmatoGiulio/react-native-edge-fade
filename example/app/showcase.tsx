@@ -15,6 +15,7 @@ import Animated, {
   Easing,
   interpolate,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -28,32 +29,32 @@ const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const MATERIAL_STRENGTH = 0.82;
+const MATERIAL_STRENGTH = 0.72;
 const MATERIAL_COLOR = '#efeeec';
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// Measured reference profile. Keep the endpoints smooth: the previous
-// radius-domain remap introduced two visible knees (hard onset + hard finish).
-// The improved lower coverage comes from the deeper expanded field, not from
-// those knees, so retain the 66% field while restoring the airy t^1.79 ramp.
+// Fitted from the reference open/closed frames. Measurable Gaussian spread is
+// almost zero through the upper ~40% of the transition, then accelerates toward
+// the maximum near the bottom. Material grading uses the raw geometric field and
+// is intentionally broader; blur radius itself follows this delayed quadratic.
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
   values: [
     1.0,
-    0.9883,
-    0.9595,
-    0.9163,
-    0.8599,
-    0.7912,
-    0.7107,
-    0.6188,
-    0.5159,
-    0.4023,
-    0.2783,
-    0.1442,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.9992,
+    0.9722,
+    0.9066,
+    0.8025,
+    0.6597,
+    0.4784,
+    0.2585,
     0.0,
   ],
 };
@@ -118,11 +119,20 @@ export default function ProgressiveShowcaseRoute() {
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * 0.78, 720);
-  // Let the radius evolve across the entire expanded field. Dividing a fixed
-  // ramp depth by the animated bottom depth saturated most of the open panel at
-  // intensity=1, producing the flat central band that is absent in the reference.
-  const blurProgression = 1;
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
+  const openRampDepth = storyWidth / 1.58;
+
+  // The reference transition occupies roughly one hero-image height. The field
+  // itself extends to the bottom of the screen, but the radius reaches maximum
+  // over this local ramp instead of evolving across the entire panel.
+  const blurProgression = useDerivedValue(() => {
+    const rampDepth = interpolate(
+      progress.value,
+      [0, 1],
+      [CLOSED_DEPTH, openRampDepth]
+    );
+    return Math.min(1, rampDepth / Math.max(bottomDepth.value, 1));
+  });
 
   const panelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),

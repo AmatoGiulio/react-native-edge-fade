@@ -196,47 +196,61 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
-  // Optional demo-only material pass. The public renderer leaves this disabled
-  // (strength = 0), preserving its pure progressive-Gaussian contract.
+  // Optional demo-only material pass. Public progressive blur keeps strength=0.
   //
-  // Blur removes high frequencies, but very dark cards can still survive as
-  // large rectangular low-frequency masses. The reference material gradually
-  // compresses those masses into the surrounding surface. Drive that extinction
-  // from the SAME radius field, but with a delayed onset so the inner edge stays
-  // optically sharp and the material only takes over deeper in the blur field.
+  // Reference measurements show two different spatial behaviours:
+  //   1. material/contrast starts changing before measurable Gaussian spread;
+  //   2. blur radius stays near zero until the lower part of the ramp, then rises fast.
+  //
+  // Do not drive material from blur intensity. Reconstruct the raw geometric
+  // edge position here so grading can begin earlier while the Gaussian curve
+  // remains deliberately back-loaded.
   val materialComposite = """
     uniform shader content;
-    uniform shader mask;
+    uniform float2 origin;
+    uniform float2 viewSize;
+    uniform float4 edges;
+    uniform float progression;
     uniform float materialStrength;
     uniform float3 materialColor;
 
+    float position(float distance, float depth) {
+      if (depth <= 0.0 || distance >= depth) return 0.0;
+      return clamp((1.0 - distance / depth) / progression, 0.0, 1.0);
+    }
+
+    float smoother(float x) {
+      float t = clamp(x, 0.0, 1.0);
+      return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    }
+
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float2 p = coord + origin;
 
-      // Blur starts immediately; grading deliberately starts later. This avoids
-      // the cheap "white gradient over content" look at the transition edge.
-      float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.22, 0.92, intensity);
+      float raw = max(
+        max(position(p.y, edges.x), position(viewSize.y - p.y, edges.y)),
+        max(position(p.x, edges.z), position(viewSize.x - p.x, edges.w))
+      );
+
+      float material = clamp(materialStrength, 0.0, 1.0) * smoother(raw);
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
-
-      // Reference-like extinction: first reduce chroma, then compress contrast,
-      // then let the blurred content dissolve into the surrounding material.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.92, material);
+
+      // Keep the source colour visible. The material mainly compresses contrast;
+      // tint is intentionally small so coloured imagery remains a coloured wash.
+      float saturation = mix(1.0, 0.84, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.74, material);
+      float contrast = mix(1.0, 0.78, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      // Keep the source chroma visible. The reference behaves more like a
-      // colored low-frequency wash than an opaque neutral frost layer.
-      float tintAmount = 0.20 * material;
+      float tintAmount = 0.08 * material;
       rgb = mix(rgb, materialColor, tintAmount);
-      rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
+      rgb = clamp(rgb + 0.008 * material, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
