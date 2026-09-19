@@ -204,15 +204,6 @@ export default function ProgressiveShowcaseRoute() {
       </AnimatedEdgeFadeView>
 
       <Animated.View
-        pointerEvents="none"
-        style={[
-          s.milkyVeil,
-          { bottom: 0 },
-          veilStyle,
-        ]}
-      />
-
-      <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
         style={[
           s.menu,
