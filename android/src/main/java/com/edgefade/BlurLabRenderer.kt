@@ -28,7 +28,7 @@ internal class BlurLabRenderer {
 
   private class Strip(var band: BlurLabGeometry.Band) {
     val node = RenderNode("EdgeFade.BlurLab.strip")
-    val mask = RuntimeShader(BlurLabShaders.mask)
+    val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     var horizontal: RuntimeShader? = null
     var vertical: RuntimeShader? = null
 
@@ -196,7 +196,10 @@ internal class BlurLabRenderer {
       )
       strip.mask.setFloatUniform("edges", edges)
       strip.mask.setFloatUniform("progression", next.progression)
-      strip.mask.setFloatUniform("curve", curveSamples)
+      strip.mask.setFloatUniform("curveTop", curveSamples)
+      strip.mask.setFloatUniform("curveBottom", curveSamples)
+      strip.mask.setFloatUniform("curveLeft", curveSamples)
+      strip.mask.setFloatUniform("curveRight", curveSamples)
 
       val effect =
         if (next.backend == "androidx") {
