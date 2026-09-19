@@ -145,13 +145,11 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     start: startSV ? { size: 0 } : (props.start as EdgeFadeViewProps['start']),
     end: endSV ? { size: 0 } : (props.end as EdgeFadeViewProps['end']),
     radius: radiusSV ? undefined : (props.radius as number | undefined),
-    // Seed native with the SharedValue's current numeric value. animatedProps
-    // owns subsequent UI-thread updates without changing blur semantics.
-    blurRadius: blurRadiusSV
-      ? blurRadiusSV.value
-      : (props.blurRadius as number | undefined),
+    // Keep render-time SharedValue reads off the JS thread. animatedProps owns
+    // the real values on the UI thread, exactly like animated edge sizes above.
+    blurRadius: blurRadiusSV ? 0 : (props.blurRadius as number | undefined),
     blurProgression: blurProgressionSV
-      ? blurProgressionSV.value
+      ? 1
       : (props.blurProgression as number | undefined),
   };
 
