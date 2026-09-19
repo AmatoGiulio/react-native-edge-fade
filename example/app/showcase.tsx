@@ -25,17 +25,16 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 128;
+const BLUR_RADIUS_PX = 104;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The compositor uses a true quarter-resolution Kawase diffusion surface.
-// Keep the source colour/luminance neutral and use smootherstep for the spatial
-// reveal so the blurred backdrop does not appear as a bright halo before it is
-// actually needed.
+// V8 keeps four neighbouring blur stages and selects the local radius rather
+// than alpha-overlaying one maximum blur. This removes the broad ghost halo while
+// retaining the long, soft reference falloff.
 const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [

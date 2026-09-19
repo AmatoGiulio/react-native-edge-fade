@@ -62,7 +62,13 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   )
 
   private data class FinalUniforms(
-    val content: Int,
+    val original: Int,
+    val originalTexMatrix: Int,
+    val blur0: Int,
+    val blur1: Int,
+    val blur2: Int,
+    val blur3: Int,
+    val levelCount: Int,
     val viewSize: Int,
     val edges: Int,
     val progression: Int,
@@ -73,8 +79,6 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     val curveBottomLut: Int,
     val curveLeftLut: Int,
     val curveRightLut: Int,
-    val contrast: Int,
-    val saturation: Int,
   )
 
   private class OutputFrame(
@@ -111,8 +115,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   private var sourceRenderer: HardwareRenderer? = null
 
   private var sourceTextureId = 0
-  private var textureA = 0
-  private var textureB = 0
+  private var blurTextures = IntArray(MAX_PASSES)
   private var framebufferId = 0
   private var vertexArrayId = 0
   private var vertexBufferId = 0
@@ -201,17 +204,17 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         val passes = passCount(current.radius)
         Log.i(
           TAG,
-          "COMPOSITOR_V6_KAWASE draw host=${current.width}x${current.height} " +
+          "COMPOSITOR_V8_PYRAMID draw host=${current.width}x${current.height} " +
             "low=${lowWidth}x${lowHeight} scale=${INPUT_SCALE} " +
-            "radius=${current.radius}px passes=${passes} " +
-            "contrast=${BACKDROP_CONTRAST} saturation=${BACKDROP_SATURATION} " +
+            "radius=${current.radius}px levels=${passes} " +
             "hostBackground=${host.background != null}",
         )
         announcedDraw = true
       }
 
       try {
-        canvas.drawRenderNode(content)
+        // The output frame already contains the sharp source wherever the local
+        // blur field is zero, and progressively blurred replacements elsewhere.
         canvas.drawBitmap(frame.bitmap, 0f, 0f, null)
         retainUntilFrameCommit(host, frame)
         return true
@@ -248,8 +251,11 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     val passes = passCount(key.radius)
     val radiusByPasses = (key.radius * 0.5f) / passes.toFloat()
 
-    // Pass 0: full-resolution SurfaceTexture -> true quarter-resolution FBO.
-    attachTarget(textureA)
+    // Preserve every intermediate blur stage. The previous implementation only
+    // kept the maximum blur and alpha-crossfaded it over sharp content, which
+    // creates a visible glow/duplicate edge. Interpolating neighbouring blur
+    // radii gives an actual progressive-radius field.
+    attachTarget(blurTextures[0])
     GLES30.glViewport(0, 0, lowWidth, lowHeight)
     GLES30.glDisable(GLES30.GL_BLEND)
     GLES30.glUseProgram(firstProgram)
@@ -264,17 +270,12 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     )
     drawQuad()
 
-    var readTexture = textureA
-    var writeTexture = textureB
-
-    // Match Android RenderEngine: later offsets grow with the pass index while
-    // ping-ponging between two quarter-resolution surfaces.
     for (index in 1 until passes) {
-      attachTarget(writeTexture)
+      attachTarget(blurTextures[index])
       GLES30.glViewport(0, 0, lowWidth, lowHeight)
       GLES30.glUseProgram(kawaseProgram)
       GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-      GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, readTexture)
+      GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, blurTextures[index - 1])
       GLES30.glUniform1i(kawaseContentLoc, 0)
       val factor = index.toFloat()
       GLES30.glUniform2f(
@@ -283,23 +284,39 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         factor * radiusByPasses / key.height.toFloat(),
       )
       drawQuad()
-
-      val swap = readTexture
-      readTexture = writeTexture
-      writeTexture = swap
     }
 
-    // Final native-resolution overlay. Linear filtering upscales the low-res
-    // diffusion texture; the edge field only controls overlay alpha.
     GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     GLES30.glViewport(0, 0, key.width, key.height)
     GLES30.glDisable(GLES30.GL_BLEND)
-    GLES30.glClearColor(0f, 0f, 0f, 0f)
+    GLES30.glClearColor(0f, 0f, 0f, 1f)
     GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
     GLES30.glUseProgram(finalProgram)
+
     GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, readTexture)
-    GLES30.glUniform1i(final.content, 0)
+    GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, sourceTextureId)
+    GLES30.glUniform1i(final.original, 0)
+    GLES30.glUniformMatrix4fv(
+      final.originalTexMatrix,
+      1,
+      false,
+      sourceTransform,
+      0,
+    )
+
+    val lastLevel = passes - 1
+    val levelTextures = IntArray(MAX_PASSES) { index ->
+      blurTextures[minOf(index, lastLevel)]
+    }
+    val blurUniforms =
+      intArrayOf(final.blur0, final.blur1, final.blur2, final.blur3)
+    for (index in 0 until MAX_PASSES) {
+      GLES30.glActiveTexture(GLES30.GL_TEXTURE1 + index)
+      GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, levelTextures[index])
+      GLES30.glUniform1i(blurUniforms[index], 1 + index)
+    }
+    GLES30.glUniform1f(final.levelCount, passes.toFloat())
+
     setFinalUniforms(final, key)
     drawQuad()
 
@@ -365,8 +382,6 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     GLES30.glUniform1fv(uniforms.curveBottomLut, LUT_SIZE, bottom.lut, 0)
     GLES30.glUniform1fv(uniforms.curveLeftLut, LUT_SIZE, left.lut, 0)
     GLES30.glUniform1fv(uniforms.curveRightLut, LUT_SIZE, right.lut, 0)
-    GLES30.glUniform1f(uniforms.contrast, BACKDROP_CONTRAST)
-    GLES30.glUniform1f(uniforms.saturation, BACKDROP_SATURATION)
   }
 
   private fun curveUniforms(curve: String): CurveUniforms {
@@ -484,15 +499,17 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     sourceSurface = producerSurface
     sourceRenderer = hardwareRenderer
 
-    textureA = createTexture(lowWidth, lowHeight)
-    textureB = createTexture(lowWidth, lowHeight)
+    blurTextures = IntArray(MAX_PASSES) { createTexture(lowWidth, lowHeight) }
     val fb = IntArray(1)
     GLES30.glGenFramebuffers(1, fb, 0)
     framebufferId = fb[0]
 
     firstProgram = createProgram(EdgeFadeKawaseShaders.VERTEX, EdgeFadeKawaseShaders.FIRST_PASS)
     kawaseProgram = createProgram(EdgeFadeKawaseShaders.VERTEX, EdgeFadeKawaseShaders.KAWASE_PASS)
-    finalProgram = createProgram(EdgeFadeKawaseShaders.VERTEX, EdgeFadeKawaseShaders.FINAL_OVERLAY)
+    finalProgram = createProgram(
+      EdgeFadeKawaseShaders.VERTEX,
+      EdgeFadeKawaseShaders.FINAL_PROGRESSIVE,
+    )
 
     firstContentLoc = uniform(firstProgram, "uContent")
     firstTexMatrixLoc = uniform(firstProgram, "uTexMatrix")
@@ -502,7 +519,13 @@ internal class EdgeFadeProgressiveCompositorRenderer(
 
     finalUniforms =
       FinalUniforms(
-        content = uniform(finalProgram, "uContent"),
+        original = uniform(finalProgram, "uOriginal"),
+        originalTexMatrix = uniform(finalProgram, "uOriginalTexMatrix"),
+        blur0 = uniform(finalProgram, "uBlur0"),
+        blur1 = uniform(finalProgram, "uBlur1"),
+        blur2 = uniform(finalProgram, "uBlur2"),
+        blur3 = uniform(finalProgram, "uBlur3"),
+        levelCount = uniform(finalProgram, "uLevelCount"),
         viewSize = uniform(finalProgram, "uViewSize"),
         edges = uniform(finalProgram, "uEdges"),
         progression = uniform(finalProgram, "uProgression"),
@@ -513,8 +536,6 @@ internal class EdgeFadeProgressiveCompositorRenderer(
         curveBottomLut = uniform(finalProgram, "uCurveBottomLut[0]"),
         curveLeftLut = uniform(finalProgram, "uCurveLeftLut[0]"),
         curveRightLut = uniform(finalProgram, "uCurveRightLut[0]"),
-        contrast = uniform(finalProgram, "uContrast"),
-        saturation = uniform(finalProgram, "uSaturation"),
       )
 
     createQuad()
@@ -720,8 +741,10 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     ) {
       runCatching { makeCurrent() }
       if (framebufferId != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(framebufferId), 0)
-      if (textureA != 0) GLES30.glDeleteTextures(1, intArrayOf(textureA), 0)
-      if (textureB != 0) GLES30.glDeleteTextures(1, intArrayOf(textureB), 0)
+      val liveBlurTextures = blurTextures.filter { it != 0 }.toIntArray()
+      if (liveBlurTextures.isNotEmpty()) {
+        GLES30.glDeleteTextures(liveBlurTextures.size, liveBlurTextures, 0)
+      }
       if (sourceTextureId != 0) GLES30.glDeleteTextures(1, intArrayOf(sourceTextureId), 0)
       if (vertexBufferId != 0) GLES30.glDeleteBuffers(1, intArrayOf(vertexBufferId), 0)
       if (vertexArrayId != 0) GLES30.glDeleteVertexArrays(1, intArrayOf(vertexArrayId), 0)
@@ -748,8 +771,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     eglSurface = EGL14.EGL_NO_SURFACE
 
     sourceTextureId = 0
-    textureA = 0
-    textureB = 0
+    blurTextures = IntArray(MAX_PASSES)
     framebufferId = 0
     vertexArrayId = 0
     vertexBufferId = 0
@@ -789,11 +811,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     private const val INPUT_SCALE = 0.25f
     private const val MAX_PASSES = 4
 
-    // Showcase quality controls. No neutral tint is applied.
+    // Internal compositor ceiling. The showcase currently runs well below it.
     private const val MAX_RADIUS_PX = 640f
-    // Preserve the source luminance/chroma exactly. The previous compression
-    // lifted dark imagery into a pale fog and exaggerated the Kawase bloom.
-    private const val BACKDROP_CONTRAST = 1.0f
-    private const val BACKDROP_SATURATION = 1.0f
   }
 }

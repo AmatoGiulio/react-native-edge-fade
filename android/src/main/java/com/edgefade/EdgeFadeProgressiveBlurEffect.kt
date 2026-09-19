@@ -136,7 +136,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         } else if (backend == "compositor33") {
           Log.i(
             TAG,
-            "COMPOSITOR_V6_KAWASE selected: opaque-host quarter-res Kawase + spatial crossfade.",
+            "COMPOSITOR_V8_PYRAMID selected: neighbouring-radius blur pyramid + full pixel replacement.",
           )
         } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")

@@ -160,15 +160,21 @@ internal object EdgeFadeKawaseShaders {
     }
   """
 
-  val FINAL_OVERLAY = """#version 300 es
+  val FINAL_PROGRESSIVE = """#version 300 es
+    #extension GL_OES_EGL_image_external_essl3 : require
     precision highp float;
+    precision highp samplerExternalOES;
 
     in vec2 vUv;
     layout(location = 0) out vec4 outColor;
 
-    uniform sampler2D uContent;
-    uniform float uContrast;
-    uniform float uSaturation;
+    uniform samplerExternalOES uOriginal;
+    uniform mat4 uOriginalTexMatrix;
+    uniform sampler2D uBlur0;
+    uniform sampler2D uBlur1;
+    uniform sampler2D uBlur2;
+    uniform sampler2D uBlur3;
+    uniform float uLevelCount;
 
     $MASK_FUNCTIONS
 
@@ -176,22 +182,38 @@ internal object EdgeFadeKawaseShaders {
       return vec2(vUv.x * uViewSize.x, (1.0 - vUv.y) * uViewSize.y);
     }
 
+    vec4 sampleOriginal() {
+      vec2 p = clamp(vUv, vec2(0.0), vec2(1.0));
+      vec2 transformed = (uOriginalTexMatrix * vec4(p, 0.0, 1.0)).xy;
+      return texture(uOriginal, transformed);
+    }
+
+    vec4 progressiveSample(float intensity) {
+      float levels = clamp(uLevelCount, 1.0, 4.0);
+      float x = clamp(intensity, 0.0, 1.0) * levels;
+
+      vec4 sharp = sampleOriginal();
+      vec4 b0 = texture(uBlur0, vUv);
+      if (x <= 1.0) return mix(sharp, b0, x);
+
+      vec4 b1 = texture(uBlur1, vUv);
+      if (x <= 2.0) return mix(b0, b1, x - 1.0);
+
+      vec4 b2 = texture(uBlur2, vUv);
+      if (x <= 3.0) return mix(b1, b2, x - 2.0);
+
+      vec4 b3 = texture(uBlur3, vUv);
+      return mix(b2, b3, clamp(x - 3.0, 0.0, 1.0));
+    }
+
     void main() {
-      float amount = maskIntensity(viewCoord());
-      if (amount <= 0.0001) {
-        outColor = vec4(0.0);
-        return;
-      }
+      float intensity = maskIntensity(viewCoord());
 
-      vec3 rgb = texture(uContent, vUv).rgb;
-      float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
-      rgb = mix(vec3(luma), rgb, uSaturation);
-      rgb = (rgb - 0.5) * uContrast + 0.5;
-      rgb = clamp(rgb, 0.0, 1.0);
-
-      // Premultiplied alpha: the hardware Bitmap is drawn SRC_OVER on top of
-      // the sharp scene.
-      outColor = vec4(rgb * amount, amount);
+      // Full pixel replacement at the local blur level. We never alpha-overlay
+      // the maximum blur over the sharp scene; that was the source of the broad
+      // glow/ghost halo in the previous compositor.
+      vec4 color = progressiveSample(intensity);
+      outColor = vec4(color.rgb, 1.0);
     }
   """
 }
