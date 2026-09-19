@@ -15,7 +15,15 @@ type EdgeProp =
 
 export interface AnimatedEdgeFadeViewProps extends Omit<
   EdgeFadeViewProps,
-  'top' | 'bottom' | 'left' | 'right' | 'start' | 'end' | 'radius'
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'start'
+  | 'end'
+  | 'radius'
+  | 'blurRadius'
+  | 'blurProgression'
 > {
   top?: EdgeProp;
   bottom?: EdgeProp;
@@ -24,6 +32,8 @@ export interface AnimatedEdgeFadeViewProps extends Omit<
   start?: EdgeProp;
   end?: EdgeProp;
   radius?: number | SharedValueLike<number>;
+  blurRadius?: number | SharedValueLike<number>;
+  blurProgression?: number | SharedValueLike<number>;
 }
 
 // ── Reanimated soft peer dependency ────────────────────────────────────────────
@@ -54,7 +64,9 @@ function useEdgeFadeAnimatedProps(
   rightSV: SharedValueLike<number> | null,
   startSV: SharedValueLike<number> | null,
   endSV: SharedValueLike<number> | null,
-  radiusSV: SharedValueLike<number> | null
+  radiusSV: SharedValueLike<number> | null,
+  blurRadiusSV: SharedValueLike<number> | null,
+  blurProgressionSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -67,6 +79,10 @@ function useEdgeFadeAnimatedProps(
     if (startSV) out.fadeLeft = startSV.value; // LTR mapping (matches static API default)
     if (endSV) out.fadeRight = endSV.value;
     if (radiusSV) out.fadeRadius = radiusSV.value;
+    if (blurRadiusSV) out.blurRadius = blurRadiusSV.value;
+    // Public blurProgression maps to the historical native frostProgression
+    // prop. Keep the mapping here so animated and static APIs stay identical.
+    if (blurProgressionSV) out.frostProgression = blurProgressionSV.value;
     return out;
   });
 }
@@ -106,6 +122,12 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const radiusSV = isSharedValue(props.radius)
     ? (props.radius as SharedValueLike<number>)
     : null;
+  const blurRadiusSV = isSharedValue(props.blurRadius)
+    ? (props.blurRadius as SharedValueLike<number>)
+    : null;
+  const blurProgressionSV = isSharedValue(props.blurProgression)
+    ? (props.blurProgression as SharedValueLike<number>)
+    : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
   // an ACTIVE edge with zero size — so resolveNativeProps still resolves the
@@ -123,6 +145,14 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     start: startSV ? { size: 0 } : (props.start as EdgeFadeViewProps['start']),
     end: endSV ? { size: 0 } : (props.end as EdgeFadeViewProps['end']),
     radius: radiusSV ? undefined : (props.radius as number | undefined),
+    // Seed native with the SharedValue's current numeric value. animatedProps
+    // owns subsequent UI-thread updates without changing blur semantics.
+    blurRadius: blurRadiusSV
+      ? blurRadiusSV.value
+      : (props.blurRadius as number | undefined),
+    blurProgression: blurProgressionSV
+      ? blurProgressionSV.value
+      : (props.blurProgression as number | undefined),
   };
 
   const n = resolveNativeProps(staticProps);
@@ -164,7 +194,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     rightSV,
     startSV,
     endSV,
-    radiusSV
+    radiusSV,
+    blurRadiusSV,
+    blurProgressionSV
   );
 
   return (
