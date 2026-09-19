@@ -24,7 +24,9 @@ import { STILLS_ITEMS } from '@/data/catalog';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
-const ITEMS = STILLS_ITEMS.slice(0, 18);
+// Reference-matched scene palette: use warm/pink/blue imagery so the blur is
+// evaluated against the same kind of colourful source material as the video.
+const ITEMS = STILLS_ITEMS;
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 // Demo-only material extinction measured by eye against reference.mp4.
@@ -69,14 +71,14 @@ const TOP_STORIES = [
     type: 'SCENE REPORT',
     date: 'September 19, 2026',
     title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[0],
+    image: ITEMS[23],
   },
   {
     id: 'story-2',
     type: 'FEATURES',
     date: 'September 18, 2026',
     title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[4],
+    image: ITEMS[16],
   },
 ];
 
@@ -86,14 +88,14 @@ const LATEST = [
     type: 'MIX',
     title: 'Nocturne 04 — Roman Electronics',
     body: 'A slow-burn selection moving from ambient pressure to warehouse rhythm.',
-    image: ITEMS[2],
+    image: ITEMS[25],
   },
   {
     id: 'latest-2',
     type: 'DESIGN',
     title: 'Light Studies From San Lorenzo',
     body: 'Independent studios exploring projection, typography and low-light spaces.',
-    image: ITEMS[6],
+    image: ITEMS[27],
   },
   {
     id: 'latest-3',
@@ -107,7 +109,7 @@ const LATEST = [
     type: 'SCENE',
     title: 'Small Rooms, Long Nights',
     body: 'Four intimate spaces keeping Rome’s after-hours culture deliberately small.',
-    image: ITEMS[12],
+    image: ITEMS[31],
   },
 ];
 
