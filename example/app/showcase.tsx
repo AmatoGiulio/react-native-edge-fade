@@ -26,7 +26,7 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS.slice(0, 18);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
-const CLOSED_DEPTH = 124;
+const CLOSED_DEPTH = 112;
 const OPEN_MS = 580;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -224,20 +224,6 @@ export default function ProgressiveShowcaseRoute() {
             </Text>
           </View>
         </ScrollView>
-      </ProgressiveFade>
-
-      <ProgressiveFade
-        pointerEvents="none"
-        mode="overlay"
-        top={0}
-        bottom={bottomDepth}
-        left={0}
-        right={0}
-        curve="smoother"
-        color="rgba(246,244,240,0.48)"
-        style={[StyleSheet.absoluteFill, s.tintLayer]}
-      >
-        <View style={StyleSheet.absoluteFill} />
       </ProgressiveFade>
 
       <Animated.View
@@ -454,9 +440,6 @@ const s = StyleSheet.create({
     color: '#4b4946',
     fontSize: 11,
     lineHeight: 16,
-  },
-  tintLayer: {
-    zIndex: 10,
   },
   panel: {
     position: 'absolute',
