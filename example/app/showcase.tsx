@@ -25,16 +25,16 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 420;
+const BLUR_RADIUS_PX = 120;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The compositor uses a large uniform Gaussian. "smooth" brings the fully
-// diffused backdrop in earlier than smootherstep so sharp card geometry does not
-// survive too far into the material field.
+// The compositor now uses a true quarter-resolution Kawase diffusion surface.
+// 120 physical px maps to four moderate low-res passes instead of the destructive
+// 420px experiment used by the RenderEffect prototype.
 const REFERENCE_COMPOSITOR_CURVE = 'smooth' as const;
 
 const TOP_STORIES = [
