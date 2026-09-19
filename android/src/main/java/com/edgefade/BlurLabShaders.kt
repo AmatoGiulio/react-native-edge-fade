@@ -218,7 +218,7 @@ internal object BlurLabShaders {
       // Blur starts immediately; grading deliberately starts later. This avoids
       // the cheap "white gradient over content" look at the transition edge.
       float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.24, 0.94, intensity);
+        * smoothstep(0.18, 0.84, intensity);
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
@@ -227,15 +227,15 @@ internal object BlurLabShaders {
       // Reference-like extinction: first reduce chroma, then compress contrast,
       // then let the blurred content dissolve into the surrounding material.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.72, material);
+      float saturation = mix(1.0, 0.82, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.68, material);
+      float contrast = mix(1.0, 0.52, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      float tintAmount = 0.42 * material;
+      float tintAmount = 0.70 * material;
       rgb = mix(rgb, materialColor, tintAmount);
-      rgb = clamp(rgb + 0.018 * material, 0.0, 1.0);
+      rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }

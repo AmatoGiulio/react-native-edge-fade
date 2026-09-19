@@ -29,8 +29,8 @@ const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const MATERIAL_STRENGTH = 0.92;
-const MATERIAL_COLOR = '#efeeec';
+const MATERIAL_STRENGTH = 0.96;
+const MATERIAL_COLOR = '#e3e0dc';
 const CLOSED_DEPTH = 112;
 // Measured from the reference video (10–90% blur spread ≈ 10% of the visible
 // screen, full ramp ≈ 16%). On this device that maps to ~154dp.
