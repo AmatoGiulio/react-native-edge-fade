@@ -29,8 +29,11 @@ function sleep(ms) {
 }
 
 function run(command, args, options = {}) {
+  const hasEncoding = Object.prototype.hasOwnProperty.call(options, 'encoding');
   return execFileSync(command, args, {
-    encoding: options.encoding ?? 'utf8',
+    // Important: encoding:null must stay null for binary adb output. Using ??
+    // here converted null back to utf8 and corrupted screencap PNG bytes.
+    encoding: hasEncoding ? options.encoding : 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     stdio: options.stdio ?? ['ignore', 'pipe', 'pipe'],
   });
@@ -117,7 +120,18 @@ function capture(name) {
   const png = adb(['exec-out', 'screencap', '-p'], {
     encoding: null,
   });
+
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!Buffer.isBuffer(png) || png.length < signature.length || !png.subarray(0, 8).equals(signature)) {
+    throw new Error(
+      `adb screencap did not return a valid PNG buffer for "${name}".`
+    );
+  }
+
   writeFileSync(path, png);
+  console.log(
+    `[showcase-benchmark] ${name} PNG: ${Math.round(png.length / 1024)} KiB`
+  );
   return path;
 }
 
