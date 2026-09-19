@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   PixelRatio,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  View,
   useWindowDimensions,
+  View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, router } from 'expo-router';
@@ -14,22 +14,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   interpolate,
-  interpolateColor,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
-
-const ProgressiveFade = AnimatedEdgeFadeView as any;
 import { STILLS_ITEMS } from '@/data/catalog';
 
-const ITEMS = STILLS_ITEMS.slice(0, 14);
-const OPEN_MS = 560;
+const ProgressiveFade = AnimatedEdgeFadeView as any;
+
+const ITEMS = STILLS_ITEMS.slice(0, 16);
 const BLUR_RADIUS_PX = 150;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+const OPEN_MS = 560;
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
+
 const REFERENCE_BLUR_CURVE = {
   type: 'cubicBezier' as const,
   x1: 0.4,
@@ -38,62 +38,70 @@ const REFERENCE_BLUR_CURVE = {
   y2: 1,
 };
 
-const POSTS = [
+const STORIES = [
   {
-    id: 'afterglow',
-    author: 'afterglow',
-    meta: 'Nocturne Festival · Napoli',
-    hero: ITEMS[0],
-    side: ITEMS[2],
-    caption: 'A new stage opens after midnight.',
+    id: 'mix',
+    time: '07:00',
+    type: 'MIX DEL GIORNO',
+    title: 'Signals From The Floor',
+    dek: 'Hypnotic techno, broken rhythm and late-night electronics from Rome.',
+    image: ITEMS[1],
   },
   {
-    id: 'midnight-runway',
-    author: 'midnight.runway',
-    meta: 'SS27 · Guest installation',
-    grid: [ITEMS[3], ITEMS[4], ITEMS[5], ITEMS[6]],
-    caption: 'Fashion film, live score, one room.',
+    id: 'feature',
+    time: '17:15',
+    type: 'MAGAZINE',
+    title: 'Three rooms shaping the new Roman underground',
+    dek: 'Small clubs, independent crews and a different idea of nightlife.',
+    image: ITEMS[7],
   },
   {
-    id: 'signal-room',
-    author: 'signal.room',
-    meta: 'Warehouse 24 · Live session',
-    hero: ITEMS[7] ?? ITEMS[1],
-    side: ITEMS[8] ?? ITEMS[0],
-    caption: 'Doors 23:30 · limited capacity.',
+    id: 'festival',
+    time: '16:00',
+    type: 'FESTIVAL',
+    title: 'Forma announces a two-night warehouse edition',
+    dek: 'Live AV, installations and extended sets across the old industrial district.',
+    image: ITEMS[10],
   },
+  {
+    id: 'studio',
+    time: '14:20',
+    type: 'STUDIO',
+    title: 'Inside the visual language of after-hours Rome',
+    dek: 'Design, light and sound come together in a new independent series.',
+    image: ITEMS[5],
+  },
+];
+
+const RANKED = [
+  'Lorenzo Senni returns with a new live set',
+  'Maceo Plex announces Rome warehouse date',
+  'A new listening bar opens in Ostiense',
+  'The week in electronic music: 10 essential releases',
 ];
 
 export default function ProgressiveShowcaseRoute() {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
 
   const [open, setOpen] = useState(false);
-  const [dark, setDark] = useState(false);
-
   const progress = useSharedValue(0);
-  const themeProgress = useSharedValue(0);
-  const bottomDepth = useSharedValue(122);
+  const bottomDepth = useSharedValue(116);
 
-  const expandedDepth = Math.min(height * 0.57, 520);
-
-  const surfaceStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#f4f4f2', '#101010']
-    ),
-  }));
+  const expandedDepth = Math.min(height * 0.60, 560);
+  const isWide = width >= 760;
 
   const menuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.2, 1]),
+    opacity: interpolate(progress.value, [0.12, 0.44, 1], [0, 0.15, 1]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [22, 0]) },
+      { translateY: interpolate(progress.value, [0, 1], [26, 0]) },
     ],
   }));
 
-  const collapsedLabelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.34, 0.5], [1, 0.28, 0]),
+  const triggerStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: `${interpolate(progress.value, [0, 1], [0, 180])}deg` },
+    ],
   }));
 
   const togglePanel = () => {
@@ -106,26 +114,16 @@ export default function ProgressiveShowcaseRoute() {
       easing: EASE,
     });
 
-    bottomDepth.value = withTiming(next ? expandedDepth : 122, {
+    bottomDepth.value = withTiming(next ? expandedDepth : 116, {
       duration,
       easing: EASE,
     });
   };
 
-  const setTheme = (nextDark: boolean) => {
-    setDark(nextDark);
-    themeProgress.value = withTiming(nextDark ? 1 : 0, {
-      duration: 420,
-      easing: EASE,
-    });
-  };
-
-  const fg = dark ? '#f7f7f5' : '#151515';
-  const muted = dark ? 'rgba(255,255,255,0.52)' : 'rgba(0,0,0,0.48)';
-  const divider = dark ? '#232323' : '#dfdfdc';
+  const lead = useMemo(() => STORIES[0]!, []);
 
   return (
-    <Animated.View style={[s.page, surfaceStyle]}>
+    <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <ProgressiveFade
@@ -145,316 +143,456 @@ export default function ProgressiveShowcaseRoute() {
           contentContainerStyle={[
             s.scrollContent,
             {
-              paddingTop: insets.top + 14,
-              paddingBottom: insets.bottom + 190,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom + 180,
             },
           ]}
           showsVerticalScrollIndicator={false}
           bounces
           overScrollMode="never"
         >
-          <View style={s.topbar}>
-            <Text style={[s.brand, { color: fg }]}>NOCTURNE</Text>
-            <View style={s.topActions}>
-              <Text style={[s.topAction, { color: fg }]}>○</Text>
-              <Pressable
-                hitSlop={12}
-                onPress={() => router.back()}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <Text style={[s.close, { color: fg }]}>×</Text>
-              </Pressable>
+          <View style={s.nav}>
+            <Text style={s.mark}>N</Text>
+
+            <View style={s.navLinks}>
+              <Text style={s.navLink}>EVENTI</Text>
+              <Text style={s.navLink}>MUSICA</Text>
+              <Text style={s.navLink}>MAGAZINE</Text>
+              <Text style={s.navLink}>ROMA</Text>
             </View>
+
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={14}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Text style={s.close}>×</Text>
+            </Pressable>
           </View>
 
-          <Text style={[s.sectionKicker, { color: muted }]}>FRIDAY · 23:30</Text>
-          <Text style={[s.sectionTitle, { color: fg }]}>
-            Music, fashion and image after dark.
-          </Text>
+          <View style={s.headerRule} />
 
-          {POSTS.map((post, postIndex) => (
-            <View key={post.id}>
-              <View style={s.profileRow}>
+          <View style={[s.contentRow, !isWide && s.contentRowNarrow]}>
+            <View style={[s.mainColumn, !isWide && s.mainColumnNarrow]}>
+              <Text style={s.kicker}>
+                {lead.time} · {lead.type}
+              </Text>
+              <Text style={s.leadTitle}>{lead.title}</Text>
+              <Text style={s.leadDek}>{lead.dek}</Text>
+
+              <View style={s.leadMediaRow}>
                 <Image
-                  source={(ITEMS[(postIndex + 9) % ITEMS.length] ?? ITEMS[0])!.source}
-                  style={s.avatar}
+                  source={lead.image!.source}
+                  style={s.leadImage}
                   contentFit="cover"
                 />
-                <View style={s.profileText}>
-                  <Text style={[s.handle, { color: fg }]}>{post.author}</Text>
-                  <Text style={[s.byline, { color: muted }]}>{post.meta}</Text>
+                <View style={s.leadTextBlock}>
+                  <Text style={s.meta}>VEN, 21:30 · LIVE</Text>
+                  <Text style={s.sideHeadline}>
+                    Late-night frequencies from the capital
+                  </Text>
+                  <Text style={s.sideDek}>
+                    A visual and sonic diary of the city after midnight.
+                  </Text>
                 </View>
-                <Text style={[s.more, { color: muted }]}>•••</Text>
               </View>
 
-              {'grid' in post && post.grid ? (
-                <View style={s.grid}>
-                  {post.grid.map((item, index) => (
-                    <Image
-                      key={item!.id}
-                      source={item!.source}
-                      style={index === 0 ? s.gridWide : s.gridTile}
-                      contentFit="cover"
-                    />
-                  ))}
-                </View>
-              ) : (
-                <View style={s.heroRow}>
-                  <Image source={post.hero!.source} style={s.heroLarge} contentFit="cover" />
-                  <Image source={post.side!.source} style={s.heroSmall} contentFit="cover" />
-                </View>
-              )}
+              {STORIES.slice(1).map((story) => (
+                <View key={story.id} style={s.storyRow}>
+                  <Image
+                    source={story.image!.source}
+                    style={s.storyImage}
+                    contentFit="cover"
+                  />
 
-              <Text style={[s.caption, { color: muted }]}>{post.caption}</Text>
-              <View style={[s.divider, { backgroundColor: divider }]} />
+                  <View style={s.storyCopy}>
+                    <Text style={s.meta}>
+                      {story.time} · {story.type}
+                    </Text>
+                    <Text style={s.storyTitle}>{story.title}</Text>
+                    <Text style={s.storyDek}>{story.dek}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
+
+            <View style={[s.sidebar, !isWide && s.sidebarNarrow]}>
+              <Text style={s.sidebarLabel}>ORA</Text>
+
+              {RANKED.map((item, index) => (
+                <View key={item} style={s.rankRow}>
+                  <Text style={s.rankNumber}>{index + 1}</Text>
+                  <Text style={s.rankTitle}>{item}</Text>
+                </View>
+              ))}
+
+              <View style={s.poster}>
+                <Image
+                  source={(ITEMS[12] ?? ITEMS[3])!.source}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                />
+                <View style={s.posterScrim} />
+                <Text style={s.posterEyebrow}>NEXT FRIDAY</Text>
+                <Text style={s.posterTitle}>VOID / ROMA</Text>
+                <Text style={s.posterMeta}>00:00 — 08:00</Text>
+              </View>
+            </View>
+          </View>
         </ScrollView>
       </ProgressiveFade>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
-        style={[
-          s.menu,
-          { bottom: insets.bottom + 80 },
-          menuStyle,
-        ]}
+        style={[s.panel, { bottom: insets.bottom + 80 }, menuStyle]}
       >
-        <Image
-          source={(ITEMS[10] ?? ITEMS[3])!.source}
-          style={s.menuAvatar}
-          contentFit="cover"
-        />
-        <Text style={s.menuItem}>Lineup</Text>
-        <Text style={s.menuItem}>Schedule</Text>
-        <Text style={s.menuItem}>Passes</Text>
-        <Text style={s.menuItem}>Archive</Text>
+        <Text style={s.panelEyebrow}>TONIGHT</Text>
+        <Text style={s.panelTitle}>ROMA AFTER DARK</Text>
+
+        <View style={s.panelRule} />
+
+        <View style={s.panelRow}>
+          <Text style={s.panelTime}>23:30</Text>
+          <View style={s.panelCopy}>
+            <Text style={s.panelName}>Forma / Warehouse Edition</Text>
+            <Text style={s.panelMeta}>Ostiense · live AV · extended sets</Text>
+          </View>
+        </View>
+
+        <View style={s.panelRow}>
+          <Text style={s.panelTime}>01:00</Text>
+          <View style={s.panelCopy}>
+            <Text style={s.panelName}>Nocturne — Room II</Text>
+            <Text style={s.panelMeta}>San Lorenzo · techno · visual installation</Text>
+          </View>
+        </View>
+
+        <View style={s.panelRow}>
+          <Text style={s.panelTime}>03:30</Text>
+          <View style={s.panelCopy}>
+            <Text style={s.panelName}>After / Secret Location</Text>
+            <Text style={s.panelMeta}>limited capacity · entry via list</Text>
+          </View>
+        </View>
       </Animated.View>
 
       <View style={[s.bottomBar, { bottom: insets.bottom + 12 }]}>
-        <View style={s.segmented}>
-          <Pressable
-            onPress={() => setTheme(true)}
-            style={[s.segment, dark && s.segmentActive]}
-          >
-            <Text style={[s.segmentText, dark && s.segmentTextActive]}>Dark</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTheme(false)}
-            style={[s.segment, !dark && s.segmentActive]}
-          >
-            <Text style={[s.segmentText, !dark && s.segmentTextActive]}>Light</Text>
-          </Pressable>
-        </View>
+        <Text style={s.bottomWordmark}>N / ROMA</Text>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={open ? 'Close menu' : 'Open menu'}
+          accessibilityLabel={open ? 'Close tonight panel' : 'Open tonight panel'}
           onPress={togglePanel}
           style={s.menuTrigger}
         >
-          <Animated.Text style={[s.menuTriggerLabel, collapsedLabelStyle]}>
-            MENU
-          </Animated.Text>
-          <Text style={s.menuTriggerIcon}>{open ? '↓' : '↑'}</Text>
+          <Text style={s.menuTriggerText}>TONIGHT</Text>
+          <Animated.Text style={[s.menuTriggerIcon, triggerStyle]}>↑</Animated.Text>
         </Pressable>
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   page: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   scrollContent: {
+    minHeight: '100%',
+  },
+  nav: {
+    height: 58,
     paddingHorizontal: 18,
-  },
-  topbar: {
-    height: 42,
+    backgroundColor: '#050505',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
-  brand: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+  mark: {
+    width: 36,
+    color: '#fff',
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '900',
+    fontStyle: 'italic',
   },
-  topActions: {
+  navLinks: {
+    flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+    gap: 18,
   },
-  topAction: {
-    fontSize: 19,
-    lineHeight: 20,
+  navLink: {
+    color: '#fff',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   close: {
+    color: '#fff',
     fontSize: 24,
     lineHeight: 26,
     fontWeight: '300',
   },
-  sectionKicker: {
-    marginTop: 18,
-    fontSize: 9,
-    lineHeight: 12,
-    letterSpacing: 1.5,
-    fontWeight: '700',
+  headerRule: {
+    height: 1,
+    backgroundColor: '#ececea',
   },
-  sectionTitle: {
-    marginTop: 6,
-    marginBottom: 18,
-    maxWidth: 280,
-    fontSize: 25,
-    lineHeight: 28,
-    letterSpacing: -0.8,
-    fontWeight: '700',
-  },
-  profileRow: {
+  contentRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 11,
+    gap: 26,
+    paddingHorizontal: 18,
+    paddingTop: 18,
   },
-  avatar: {
-    width: 27,
-    height: 27,
-    borderRadius: 13.5,
+  contentRowNarrow: {
+    gap: 14,
   },
-  profileText: {
+  mainColumn: {
     flex: 1,
-    marginLeft: 9,
+    minWidth: 0,
   },
-  handle: {
+  mainColumnNarrow: {
+    flex: 1.65,
+  },
+  sidebar: {
+    width: 220,
+    paddingTop: 8,
+  },
+  sidebarNarrow: {
+    width: 118,
+  },
+  kicker: {
+    color: '#b2b2ae',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+  },
+  leadTitle: {
+    marginTop: 5,
+    color: '#0d0d0d',
+    fontSize: 31,
+    lineHeight: 32,
+    fontWeight: '900',
+    letterSpacing: -1.3,
+  },
+  leadDek: {
+    marginTop: 9,
+    color: '#202020',
+    fontSize: 12,
+    lineHeight: 17,
+    maxWidth: 520,
+  },
+  leadMediaRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 6,
+  },
+  leadImage: {
+    width: '44%',
+    aspectRatio: 1.55,
+    backgroundColor: '#e8e8e5',
+  },
+  leadTextBlock: {
+    flex: 1,
+    paddingTop: 2,
+  },
+  meta: {
+    color: '#aaa9a5',
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  sideHeadline: {
+    marginTop: 5,
+    color: '#0d0d0d',
+    fontSize: 19,
+    lineHeight: 20,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  sideDek: {
+    marginTop: 6,
+    color: '#272727',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  storyRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e2e2df',
+  },
+  storyImage: {
+    width: '44%',
+    aspectRatio: 1.55,
+    backgroundColor: '#e8e8e5',
+  },
+  storyCopy: {
+    flex: 1,
+    paddingTop: 1,
+  },
+  storyTitle: {
+    marginTop: 4,
+    color: '#101010',
+    fontSize: 18,
+    lineHeight: 20,
+    fontWeight: '900',
+    letterSpacing: -0.45,
+  },
+  storyDek: {
+    marginTop: 5,
+    color: '#2a2a2a',
+    fontSize: 9.5,
+    lineHeight: 13.5,
+  },
+  sidebarLabel: {
+    color: '#aaa9a5',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  rankRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#dededb',
+  },
+  rankNumber: {
+    width: 18,
+    color: '#b2b2ae',
+    fontSize: 20,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  rankTitle: {
+    flex: 1,
+    color: '#111',
     fontSize: 11,
-    lineHeight: 13,
+    lineHeight: 14,
     fontWeight: '700',
   },
-  byline: {
-    marginTop: 1,
-    fontSize: 8.5,
-    lineHeight: 10.5,
+  poster: {
+    height: 190,
+    marginTop: 28,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+    justifyContent: 'flex-end',
+    padding: 12,
   },
-  more: {
+  posterScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+  },
+  posterEyebrow: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  posterTitle: {
+    marginTop: 3,
+    color: '#fff',
+    fontSize: 20,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
+  posterMeta: {
+    marginTop: 3,
+    color: 'rgba(255,255,255,0.74)',
     fontSize: 9,
-    letterSpacing: 1,
   },
-  heroRow: {
-    height: 205,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  heroLarge: {
-    flex: 1.55,
-    borderRadius: 12,
-  },
-  heroSmall: {
-    flex: 0.82,
-    borderRadius: 12,
-  },
-  grid: {
-    height: 234,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  gridWide: {
-    width: '59%',
-    height: 113,
-    borderRadius: 12,
-  },
-  gridTile: {
-    flexGrow: 1,
-    width: '36%',
-    height: 113,
-    borderRadius: 12,
-  },
-  caption: {
-    marginTop: 10,
-    fontSize: 8.5,
-    lineHeight: 12,
-    letterSpacing: 0.2,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginTop: 16,
-    marginBottom: 7,
-  },
-  menu: {
+  panel: {
     position: 'absolute',
     left: 24,
     right: 24,
     zIndex: 20,
   },
-  menuAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    marginBottom: 15,
+  panelEyebrow: {
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 1.4,
   },
-  menuItem: {
+  panelTitle: {
+    marginTop: 6,
+    color: '#fff',
+    fontSize: 26,
+    lineHeight: 28,
+    fontWeight: '900',
+    letterSpacing: -0.7,
+  },
+  panelRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    marginVertical: 14,
+  },
+  panelRow: {
+    flexDirection: 'row',
+    gap: 14,
+    paddingVertical: 10,
+  },
+  panelTime: {
+    width: 46,
+    color: 'rgba(255,255,255,0.48)',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  panelCopy: {
+    flex: 1,
+  },
+  panelName: {
     color: '#fff',
     fontSize: 13,
-    lineHeight: 23,
-    fontWeight: '600',
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  panelMeta: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.52)',
+    fontSize: 9,
+    lineHeight: 12,
   },
   bottomBar: {
     position: 'absolute',
     left: 22,
     right: 22,
-    height: 52,
+    height: 50,
     zIndex: 30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  segmented: {
-    height: 34,
-    padding: 3,
-    borderRadius: 17,
-    backgroundColor: 'rgba(18,18,18,0.46)',
-    flexDirection: 'row',
-  },
-  segment: {
-    minWidth: 57,
-    paddingHorizontal: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-  },
-  segmentActive: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-  },
-  segmentText: {
-    color: 'rgba(255,255,255,0.66)',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    color: '#151515',
+  bottomWordmark: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
   },
   menuTrigger: {
-    minWidth: 72,
     height: 34,
     paddingHorizontal: 12,
     borderRadius: 17,
-    backgroundColor: 'rgba(18,18,18,0.46)',
+    backgroundColor: 'rgba(0,0,0,0.46)',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
+    gap: 8,
   },
-  menuTriggerLabel: {
+  menuTriggerText: {
     color: '#fff',
     fontSize: 8,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 1.2,
   },
   menuTriggerIcon: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
 });
