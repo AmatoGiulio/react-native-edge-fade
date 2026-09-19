@@ -81,8 +81,14 @@ for token in (
 ):
     assert token in scaled
 
-# Both exact and scaled renderers consume the same production radius mask.
-assert "EdgeFadeProgressiveBlurEffect.MASK_SHADER" in exact
+# Exact AGSL/AndroidX now shares the Lab golden LUT mask/geometry so forcing
+# AGSL through the public component is visually equivalent to the Lab reference.
+assert "BlurLabShaders.maskPerEdge" in exact
+assert "BlurLabGeometry.bands(" in exact
+assert "EdgeFadeCurves.presenceAt(" in exact
+assert "for (previous in 0 until index)" in exact
+
+# Scaled remains a separate production renderer and keeps its own mask path.
 assert "EdgeFadeProgressiveBlurEffect.MASK_SHADER" in scaled
 assert 'val exactBackend = when (host.progressiveBackend)' in exact
 assert 'backend = exactBackend' in exact
