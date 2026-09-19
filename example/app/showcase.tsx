@@ -25,17 +25,18 @@ import { STILLS_ITEMS } from '@/data/catalog';
 const ProgressiveFade = AnimatedEdgeFadeView as any;
 
 const ITEMS = STILLS_ITEMS.slice(0, 18);
-const BLUR_RADIUS_PX = 120;
+const BLUR_RADIUS_PX = 104;
 const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// The compositor now uses a true quarter-resolution Kawase diffusion surface.
-// 120 physical px maps to four moderate low-res passes instead of the destructive
-// 420px experiment used by the RenderEffect prototype.
-const REFERENCE_COMPOSITOR_CURVE = 'smooth' as const;
+// The compositor uses a true quarter-resolution Kawase diffusion surface.
+// Keep the source colour/luminance neutral and use smootherstep for the spatial
+// reveal so the blurred backdrop does not appear as a bright halo before it is
+// actually needed.
+const REFERENCE_COMPOSITOR_CURVE = 'smoother' as const;
 
 const TOP_STORIES = [
   {

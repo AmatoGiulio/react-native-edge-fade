@@ -791,7 +791,9 @@ internal class EdgeFadeProgressiveCompositorRenderer(
 
     // Showcase quality controls. No neutral tint is applied.
     private const val MAX_RADIUS_PX = 640f
-    private const val BACKDROP_CONTRAST = 0.88f
-    private const val BACKDROP_SATURATION = 1.04f
+    // Preserve the source luminance/chroma exactly. The previous compression
+    // lifted dark imagery into a pale fog and exaggerated the Kawase bloom.
+    private const val BACKDROP_CONTRAST = 1.0f
+    private const val BACKDROP_SATURATION = 1.0f
   }
 }
