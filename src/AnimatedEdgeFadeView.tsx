@@ -17,7 +17,15 @@ type EdgeProp =
 
 export interface AnimatedEdgeFadeViewProps extends Omit<
   EdgeFadeViewProps,
-  'top' | 'bottom' | 'left' | 'right' | 'start' | 'end' | 'radius'
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'start'
+  | 'end'
+  | 'radius'
+  | 'blurRadius'
+  | 'blurProgression'
 > {
   top?: EdgeProp;
   bottom?: EdgeProp;
@@ -26,6 +34,8 @@ export interface AnimatedEdgeFadeViewProps extends Omit<
   start?: EdgeProp;
   end?: EdgeProp;
   radius?: number | SharedValueLike<number>;
+  blurRadius?: number | SharedValueLike<number>;
+  blurProgression?: number | SharedValueLike<number>;
 }
 
 function unwrap<T>(v: T | SharedValueLike<T> | undefined): T | undefined {
@@ -52,6 +62,8 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     start: unwrapEdge(props.start),
     end: unwrapEdge(props.end),
     radius: unwrap(props.radius),
+    blurRadius: unwrap(props.blurRadius),
+    blurProgression: unwrap(props.blurProgression),
   };
 
   return <EdgeFadeView {...unwrapped} />;
