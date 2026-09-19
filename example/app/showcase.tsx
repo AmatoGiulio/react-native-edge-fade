@@ -30,29 +30,31 @@ const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSED_DEPTH = 112;
 // Measured from the reference video (10–90% blur spread ≈ 10% of the visible
 // screen, full ramp ≈ 16%). On this device that maps to ~154dp.
-const OPEN_RAMP_DEPTH = 154;
+const OPEN_RAMP_DEPTH = 160;
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// Reverse-engineered from the reference edge-spread profile.
-// Native custom stops are alpha values; EdgeFade converts them back to blur
-// presence, yielding approximately presence(t) = t^1.79.
+// Empirical radius-domain transfer fitted from REF vs OUR video.
+// The previous t^1.79 curve had the correct geometric depth, but at 150px
+// most perceptual sharpness loss collapsed into a tiny radius window (~23-34px).
+// These alpha stops deliberately hold that radius band across most of the ramp,
+// then finish strongly at the bottom where the reference becomes fully diffuse.
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
   values: [
     1.0,
-    0.9883,
-    0.9595,
-    0.9163,
-    0.8599,
-    0.7912,
-    0.7107,
-    0.6188,
-    0.5159,
-    0.4023,
-    0.2783,
-    0.1442,
+    0.9080,
+    0.8484,
+    0.8430,
+    0.8377,
+    0.8303,
+    0.8199,
+    0.8094,
+    0.7968,
+    0.7854,
+    0.7778,
+    0.5193,
     0.0,
   ],
 };
@@ -113,7 +115,7 @@ export default function ProgressiveShowcaseRoute() {
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(CLOSED_DEPTH);
 
-  const expandedDepth = Math.min(height * 0.6, 560);
+  const expandedDepth = Math.min(height * 0.66, 560);
   // Keep bottom size and radius progression frame-synchronised in the same
   // AnimatedEdgeFadeView animatedProps transaction. This used to be impossible:
   // AnimatedEdgeFadeView animated edge sizes but silently left blurProgression
