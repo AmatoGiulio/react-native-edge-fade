@@ -202,14 +202,27 @@ internal object BlurLabShaders {
   val compositorOverlay = """
     uniform shader content;
     uniform shader mask;
+    uniform float contrast;
+    uniform float saturation;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float mixAmount = clamp(mask.eval(coord).a, 0.0, 1.0);
+      if (mixAmount <= 0.0001) return half4(0.0);
 
-      // Return a premultiplied overlay. SRC_OVER against the already-drawn sharp
-      // scene yields exactly: sharp * (1-mix) + blurred * mix.
-      return blurred * half4(mixAmount);
+      float alpha = max(float(blurred.a), 0.0001);
+      float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
+
+      // System-style frosted backdrops are not only a huge Gaussian: they also
+      // compress luminance contrast so large dark source rectangles stop reading
+      // as literal rectangles. A small saturation boost preserves the source
+      // colour while doing so. No tint is introduced here.
+      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+      rgb = mix(float3(luma), rgb, saturation);
+      rgb = (rgb - 0.5) * contrast + 0.5;
+      rgb = clamp(rgb, 0.0, 1.0);
+
+      return half4(rgb * float(blurred.a), float(blurred.a)) * half4(mixAmount);
     }
   """.trimIndent()
 

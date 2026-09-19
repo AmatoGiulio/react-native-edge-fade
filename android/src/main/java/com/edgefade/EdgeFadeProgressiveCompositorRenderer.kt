@@ -7,6 +7,7 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
+import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 
@@ -14,12 +15,17 @@ import java.lang.ref.WeakReference
  * Showcase-only API 33+ backdrop compositor.
  *
  * Unlike the public progressive renderer, this path does NOT vary Gaussian
- * radius per fragment. It builds one stable, high-quality fixed blur of the full
- * scene and crossfades that backdrop over the sharp scene with the edge field.
+ * radius per fragment. It builds one stable backdrop, then crossfades that
+ * backdrop over the sharp scene with the edge field.
  *
- * This is intentionally close to system-control-center rendering: the blur
- * kernel never changes spatially, so large low-frequency colour fields remain
- * smooth and there are no radius quantisation bands or "blurred rectangles".
+ * V4 uses one genuinely large UNIFORM HWUI Gaussian. Spatially-varying AndroidX
+ * blur is capped at 150px, but a uniform RenderEffect blur is not; the previous
+ * compositor accidentally inherited the progressive 150px clamp and therefore
+ * never reached system-material diffusion scale.
+ *
+ * A single large stable kernel is closer to system control-center rendering than
+ * stacking several clamped progressive-sized kernels, and avoids any per-pixel
+ * radius quantisation by construction.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveCompositorRenderer(
@@ -58,13 +64,14 @@ internal class EdgeFadeProgressiveCompositorRenderer(
   // transparent black at image boundaries.
   private val blurSource = RenderNode("EdgeFade.Compositor.blurSource")
 
-  // Draws blurSource through [fixedBlur -> spatial alpha compositor].
+  // Native-resolution carrier for the strongly diffused backdrop.
   private val backdrop = RenderNode("EdgeFade.Compositor.backdrop")
 
   private val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
   private val overlay = RuntimeShader(BlurLabShaders.compositorOverlay)
 
   private var key: Key? = null
+  private var announcedDraw = false
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -79,7 +86,9 @@ internal class EdgeFadeProgressiveCompositorRenderer(
       bottom = BlurLabGeometry.edge(host.fadeBottom, height),
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
-      radius = BlurLabGeometry.radius(host.blurRadius),
+      radius =
+        BlurLabGeometry.finite(host.blurRadius)
+          .coerceIn(0f, COMPOSITOR_MAX_RADIUS_PX),
       progression =
         BlurLabGeometry.finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
       curveTop = host.curveTop,
@@ -92,6 +101,7 @@ internal class EdgeFadeProgressiveCompositorRenderer(
 
     content.setPosition(0, 0, width, height)
     blurSource.setPosition(0, 0, width, height)
+
     backdrop.setPosition(0, 0, width, height)
 
     if (next.radius <= 0f) {
@@ -115,9 +125,22 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     try {
       if (!prepare()) return false
 
-      if ((key?.radius ?: 0f) <= 0f) {
+      val current = key
+      if ((current?.radius ?: 0f) <= 0f) {
         recordChildren(canvas)
         return true
+      }
+
+      if (!announcedDraw && current != null) {
+        Log.i(
+          TAG,
+          "COMPOSITOR_V4 draw host=${current.width}x${current.height} " +
+            "uniformRadius=${current.radius}px max=${COMPOSITOR_MAX_RADIUS_PX}px " +
+            "contrast=${BACKDROP_CONTRAST} saturation=${BACKDROP_SATURATION} " +
+            "bottom=${current.bottom}px progression=${current.progression} " +
+            "hostBackground=${host.background != null}",
+        )
+        announcedDraw = true
       }
 
       tracePhase("EdgeFade.progressive.compositor.recordContent") {
@@ -184,17 +207,22 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     mask.setFloatUniform("curveRight", curves.right)
 
     overlay.setInputShader("mask", mask)
+    overlay.setFloatUniform("contrast", BACKDROP_CONTRAST)
+    overlay.setFloatUniform("saturation", BACKDROP_SATURATION)
 
-    val fixedBlur = RenderEffect.createBlurEffect(
-      next.radius,
-      next.radius,
-      Shader.TileMode.CLAMP,
-    )
+    // One large uniform blur. Do not route through BlurLabGeometry.radius():
+    // that helper intentionally caps progressive/spatial blur to 150px.
+    val systemBlur =
+      RenderEffect.createBlurEffect(
+        next.radius,
+        next.radius,
+        Shader.TileMode.CLAMP,
+      )
+
     val spatialComposite =
       RenderEffect.createRuntimeShaderEffect(overlay, "content")
-
     backdrop.setRenderEffect(
-      RenderEffect.createChainEffect(spatialComposite, fixedBlur),
+      RenderEffect.createChainEffect(spatialComposite, systemBlur),
     )
   }
 
@@ -214,6 +242,17 @@ internal class EdgeFadeProgressiveCompositorRenderer(
     blurSource.discardDisplayList()
     backdrop.discardDisplayList()
     key = null
+    announcedDraw = false
+  }
+
+  private companion object {
+    private const val TAG = "EdgeFadeCompositor"
+
+    // Internal experimental ceiling only. Uniform RenderEffect blur is not bound
+    // by the 150px progressive-radius cap.
+    private const val COMPOSITOR_MAX_RADIUS_PX = 640f
+    private const val BACKDROP_CONTRAST = 0.68f
+    private const val BACKDROP_SATURATION = 1.06f
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {

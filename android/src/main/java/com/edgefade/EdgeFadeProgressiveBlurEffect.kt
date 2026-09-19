@@ -136,7 +136,7 @@ internal object EdgeFadeProgressiveBlurEffect {
         } else if (backend == "compositor33") {
           Log.i(
             TAG,
-            "Using fixed-Gaussian compositor blur on API 33+ (sharp/full-blur spatial crossfade).",
+            "COMPOSITOR_V4 selected: large uniform Gaussian + spatial crossfade on API 33+.",
           )
         } else if (backend == "androidx33") {
           Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
