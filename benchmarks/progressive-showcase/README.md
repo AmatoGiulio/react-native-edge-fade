@@ -35,3 +35,26 @@ yarn benchmark:showcase --serial <adb-serial>
 or set `ADB_SERIAL`.
 
 The example app must already be installed and, for a development build, Metro must be available.
+
+
+## Preview
+
+After every run the script also writes:
+
+```text
+benchmarks/progressive-showcase/current/index.html
+```
+
+On macOS it opens that page automatically with **Closed** and **Open** side by side.
+
+Disable auto-open with:
+
+```bash
+yarn benchmark:showcase --no-open
+```
+
+Cold Expo Image decoding can take longer than route interactivity. The default benchmark waits 2200ms before the closed capture. Override it when needed:
+
+```bash
+yarn benchmark:showcase --settle-ms 3500
+```
