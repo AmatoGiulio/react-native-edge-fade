@@ -97,11 +97,6 @@ export default function ProgressiveShowcaseRoute() {
     ],
   }));
 
-  const milkStyle = useAnimatedStyle(() => ({
-    height: bottomDepth.value * 1.08,
-    opacity: interpolate(progress.value, [0, 1], [0.74, 1]),
-  }));
-
   const arrowStyle = useAnimatedStyle(() => ({
     transform: [
       { rotate: `${interpolate(progress.value, [0, 1], [0, 180])}deg` },
@@ -135,7 +130,7 @@ export default function ProgressiveShowcaseRoute() {
         bottom={bottomDepth}
         left={0}
         right={0}
-        curve="soft"
+        curve="smooth"
         blurRadius={BLUR_RADIUS_DP}
         blurProgression={1}
         progressiveBackend="agsl"
@@ -231,15 +226,19 @@ export default function ProgressiveShowcaseRoute() {
         </ScrollView>
       </ProgressiveFade>
 
-      <Animated.View
+      <ProgressiveFade
         pointerEvents="none"
-        style={[s.milk, { bottom: 0 }, milkStyle]}
+        mode="overlay"
+        top={0}
+        bottom={bottomDepth}
+        left={0}
+        right={0}
+        curve="smoother"
+        color="rgba(246,244,240,0.48)"
+        style={[StyleSheet.absoluteFill, s.tintLayer]}
       >
-        <View style={[s.milkBand, s.milkBandTop]} />
-        <View style={[s.milkBand, s.milkBandMid]} />
-        <View style={[s.milkBand, s.milkBandLow]} />
-        <View style={[s.milkBand, s.milkBandBottom]} />
-      </Animated.View>
+        <View style={StyleSheet.absoluteFill} />
+      </ProgressiveFade>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
@@ -456,35 +455,8 @@ const s = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
   },
-  milk: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    overflow: 'hidden',
+  tintLayer: {
     zIndex: 10,
-  },
-  milkBand: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#fff',
-  },
-  milkBandTop: {
-    height: '100%',
-    opacity: 0.025,
-  },
-  milkBandMid: {
-    height: '78%',
-    opacity: 0.035,
-  },
-  milkBandLow: {
-    height: '54%',
-    opacity: 0.05,
-  },
-  milkBandBottom: {
-    height: '30%',
-    opacity: 0.07,
   },
   panel: {
     position: 'absolute',
