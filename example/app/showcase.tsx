@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  PixelRatio,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,8 @@ import { STILLS_ITEMS } from '@/data/catalog';
 
 const ITEMS = STILLS_ITEMS.slice(0, 14);
 const OPEN_MS = 560;
+const BLUR_RADIUS_PX = 150;
+const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
 const CLOSE_MS = 460;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
@@ -70,16 +73,6 @@ export default function ProgressiveShowcaseRoute() {
       themeProgress.value,
       [0, 1],
       ['#f4f4f2', '#101010']
-    ),
-  }));
-
-  const veilStyle = useAnimatedStyle(() => ({
-    height: interpolate(progress.value, [0, 1], [122, expandedDepth]),
-    opacity: interpolate(progress.value, [0, 1], [0.38, 0.58]),
-    backgroundColor: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['rgba(255,255,255,0.96)', 'rgba(15,15,15,0.82)']
     ),
   }));
 
@@ -133,7 +126,7 @@ export default function ProgressiveShowcaseRoute() {
         left={0}
         right={0}
         curve="smooth"
-        blurRadius={150}
+        blurRadius={BLUR_RADIUS_DP}
         blurProgression={1}
         style={StyleSheet.absoluteFill}
       >
@@ -387,11 +380,6 @@ const s = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginTop: 16,
     marginBottom: 7,
-  },
-  milkyVeil: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
   },
   menu: {
     position: 'absolute',
