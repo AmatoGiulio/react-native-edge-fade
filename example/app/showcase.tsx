@@ -30,30 +30,11 @@ const ITEMS = STILLS_ITEMS;
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const DEFAULT_MATERIAL_STRENGTH = 0.16;
-const MATERIAL_TONES: Record<string, string> = {
-  light: '#e3e0dc',
-  warm: '#cec8c3',
-  smoke: '#bbb6b2',
-};
-const DEFAULT_MATERIAL_TONE = 'smoke';
-// Stage 6 winner: 0.90 compresses the white shoulder close to the reference
-// without crushing the retained coloured low-frequency structure.
-const DEFAULT_MATERIAL_EXPOSURE = 0.90;
-// Keep the compact closed footer dense enough to extinguish the dark card.
-// Stage 9 open-surface sweep: s84 best matches the reference balance — it
-// removes the low-frequency dark-card mass without flattening the local colour
-// and translucency into the gray slab visible at s90–s95.
-const DEFAULT_CLOSED_MATERIAL_SURFACE = 0.95;
-const DEFAULT_OPEN_MATERIAL_SURFACE = 0.84;
-// Stage 8 full-frame winner:
-// - closed: g100 preserves the compact translucent footer without a gray slab
-// - open: g44 puts the material takeover at the same vertical band as the ref
-const DEFAULT_CLOSED_MATERIAL_SURFACE_PROGRESSION = 1.0;
-const DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION = 0.44;
+const DEFAULT_MATERIAL_STRENGTH = 0.36;
+const MATERIAL_COLOR = '#e3e0dc';
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
-const DEFAULT_EXPANDED_SCALE = 0.78;
+const DEFAULT_EXPANDED_SCALE = 0.7;
 
 function clampNumber(
   value: string | undefined,
@@ -98,14 +79,14 @@ const TOP_STORIES = [
     type: 'SCENE REPORT',
     date: 'September 19, 2026',
     title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[8],
+    image: ITEMS[23],
   },
   {
     id: 'story-2',
     type: 'FEATURES',
     date: 'September 18, 2026',
     title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[26],
+    image: ITEMS[16],
   },
 ];
 
@@ -115,28 +96,28 @@ const LATEST = [
     type: 'MIX',
     title: 'Nocturne 04 — Roman Electronics',
     body: 'A slow-burn selection moving from ambient pressure to warehouse rhythm.',
-    image: ITEMS[27],
+    image: ITEMS[25],
   },
   {
     id: 'latest-2',
     type: 'DESIGN',
     title: 'Light Studies From San Lorenzo',
     body: 'Independent studios exploring projection, typography and low-light spaces.',
-    image: ITEMS[28],
+    image: ITEMS[27],
   },
   {
     id: 'latest-3',
     type: 'LIVE',
     title: 'A Warehouse Set in Ostiense',
     body: 'Extended sets, live visuals and a room designed around a single system.',
-    image: ITEMS[16],
+    image: ITEMS[8],
   },
   {
     id: 'latest-4',
     type: 'SCENE',
     title: 'Small Rooms, Long Nights',
     body: 'Four intimate spaces keeping Rome’s after-hours culture deliberately small.',
-    image: ITEMS[8],
+    image: ITEMS[31],
   },
 ];
 
@@ -146,17 +127,8 @@ export default function ProgressiveShowcaseRoute() {
   const params = useLocalSearchParams<{ bench?: string | string[] }>();
 
   const benchParam = Array.isArray(params.bench) ? params.bench[0] : params.bench;
-  const [
-    materialRaw,
-    progressionRaw,
-    radiusRaw,
-    depthRaw,
-    scaleRaw,
-    toneRaw,
-    exposureRaw,
-    surfaceRaw,
-    surfaceProgressionRaw,
-  ] = (benchParam ?? '').split(',');
+  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] =
+    (benchParam ?? '').split(',');
 
   const materialStrength = clampNumber(
     materialRaw,
@@ -188,26 +160,6 @@ export default function ProgressiveShowcaseRoute() {
     0.45,
     0.9
   );
-  const materialTone =
-    MATERIAL_TONES[toneRaw ?? ''] ?? MATERIAL_TONES[DEFAULT_MATERIAL_TONE];
-  const materialExposure = clampNumber(
-    exposureRaw,
-    DEFAULT_MATERIAL_EXPOSURE,
-    0.5,
-    1.2
-  );
-  const openMaterialSurface = clampNumber(
-    surfaceRaw,
-    DEFAULT_OPEN_MATERIAL_SURFACE,
-    0,
-    1
-  );
-  const openMaterialSurfaceProgression = clampNumber(
-    surfaceProgressionRaw,
-    DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION,
-    0.15,
-    1
-  );
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
   const [open, setOpen] = useState(false);
@@ -223,23 +175,6 @@ export default function ProgressiveShowcaseRoute() {
   // almost the entire panel, matching the long continuous falloff in the ref.
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
-  );
-  const materialSurface = useDerivedValue(() =>
-    interpolate(
-      progress.value,
-      [0, 1],
-      [DEFAULT_CLOSED_MATERIAL_SURFACE, openMaterialSurface]
-    )
-  );
-  const materialSurfaceProgression = useDerivedValue(() =>
-    interpolate(
-      progress.value,
-      [0, 1],
-      [
-        DEFAULT_CLOSED_MATERIAL_SURFACE_PROGRESSION,
-        openMaterialSurfaceProgression,
-      ]
-    )
   );
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
@@ -290,10 +225,7 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend="agsl"
         progressiveMaterialStrength={materialStrength}
-        progressiveMaterialColor={materialTone}
-        progressiveMaterialExposure={materialExposure}
-        progressiveMaterialSurface={materialSurface}
-        progressiveMaterialSurfaceProgression={materialSurfaceProgression}
+        progressiveMaterialColor={MATERIAL_COLOR}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView

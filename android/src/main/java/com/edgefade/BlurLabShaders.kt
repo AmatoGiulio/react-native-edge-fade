@@ -192,18 +192,7 @@ internal object BlurLabShaders {
       float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
       float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
 
-      float radiusField = max(max(top, bottom), max(left, right));
-      float surfacePosition =
-        max(max(max(topPos, bottomPos), max(leftPos, rightPos)), 0.0);
-
-      // Alpha remains the exact blur-radius field. Red is raw geometry used
-      // only by the optional showcase material pass; public pure blur ignores it.
-      return half4(
-        clamp(surfacePosition, 0.0, 1.0),
-        0.0,
-        0.0,
-        radiusField
-      );
+      return half4(0.0, 0.0, 0.0, max(max(top, bottom), max(left, right)));
     }
   """.trimIndent()
 
@@ -221,30 +210,16 @@ internal object BlurLabShaders {
     uniform shader mask;
     uniform float materialStrength;
     uniform float3 materialColor;
-    uniform float materialExposure;
-    uniform float materialSurface;
-    uniform float materialSurfaceProgression;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      half4 field = mask.eval(coord);
-      float intensity = clamp(float(field.a), 0.0, 1.0);
-      float surfacePosition = clamp(float(field.r), 0.0, 1.0);
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
 
-      // The Gaussian keeps the measured eased radius curve. The reference's
-      // translucent material sheet spans a much broader geometric field, so
-      // drive it from raw band position instead of blur intensity.
-      float gradeField = smoothstep(0.18, 0.84, intensity);
-      float surfaceEnd = clamp(materialSurfaceProgression, 0.15, 1.0);
-      float surfaceField = smoothstep(0.0, surfaceEnd, surfacePosition);
-      float material = clamp(materialStrength, 0.0, 1.0) * gradeField;
-      float surface = clamp(materialSurface, 0.0, 1.0) * surfaceField;
-
-      if (
-        material <= 0.0001 &&
-        surface <= 0.0001 &&
-        abs(materialExposure - 1.0) <= 0.0001
-      ) return blurred;
+      // Blur starts immediately; grading deliberately starts later. This avoids
+      // the cheap "white gradient over content" look at the transition edge.
+      float material = clamp(materialStrength, 0.0, 1.0)
+        * smoothstep(0.18, 0.84, intensity);
+      if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
@@ -261,17 +236,6 @@ internal object BlurLabShaders {
       float tintAmount = 0.70 * material;
       rgb = mix(rgb, materialColor, tintAmount);
       rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
-
-      // Surface density is the missing piece from the reference: a broad,
-      // translucent smoke-colored sheet that compresses BOTH white background
-      // and dark imagery while still retaining the blurred source underneath.
-      rgb = mix(rgb, materialColor, surface);
-
-      // Exposure remains available as a secondary calibration axis, but follows
-      // the broad surface field instead of the delayed grading field.
-      float exposure =
-        mix(1.0, clamp(materialExposure, 0.5, 1.2), surfaceField);
-      rgb = clamp(rgb * exposure, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
