@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   interpolate,
+  interpolateColor,
+  type SharedValue,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -74,29 +76,64 @@ function AccountRow({
   name,
   subtitle,
   date,
+  themeProgress,
 }: {
   avatar: (typeof ITEMS)[number];
   name: string;
   subtitle: string;
   date: string;
+  themeProgress: SharedValue<number>;
 }) {
+  const primaryTextStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#111111', '#f3f2ef']
+    ),
+  }));
+  const secondaryTextStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#222222', '#d9d7d2']
+    ),
+  }));
+  const dateStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#aaa7a2', '#85827d']
+    ),
+  }));
+  const badgeStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#efeeec', '#121210']
+    ),
+  }));
+
   return (
     <View style={s.accountRow}>
       <View style={s.accountIdentity}>
         <View style={s.avatarWrap}>
           <Image source={avatar.source} style={s.avatar} contentFit="cover" />
-          <View style={s.badge}>
+          <Animated.View style={[s.badge, badgeStyle]}>
             <View style={s.badgeDot} />
-          </View>
+          </Animated.View>
         </View>
 
         <View>
-          <Text style={s.accountName}>{name}</Text>
-          <Text style={s.accountSubtitle}>{subtitle}</Text>
+          <Animated.Text style={[s.accountName, primaryTextStyle]}>
+            {name}
+          </Animated.Text>
+          <Animated.Text style={[s.accountSubtitle, secondaryTextStyle]}>
+            {subtitle}
+          </Animated.Text>
         </View>
       </View>
 
-      <Text style={s.accountDate}>{date}</Text>
+      <Animated.Text style={[s.accountDate, dateStyle]}>{date}</Animated.Text>
     </View>
   );
 }
@@ -143,7 +180,9 @@ export default function ProgressiveShowcaseRoute() {
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
   const [open, setOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const progress = useSharedValue(0);
+  const themeProgress = useSharedValue(0);
 
   const expandedDepth = Math.min(height * expandedScale, 720);
   const bottomDepth = useDerivedValue(() =>
@@ -195,8 +234,71 @@ export default function ProgressiveShowcaseRoute() {
   }));
 
   const openMenuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.46, 0.74, 1], [0, 0, 0.8, 1]),
+    opacity: interpolate(progress.value, [0, 0.52, 0.78, 1], [0, 0, 0.86, 1]),
   }));
+
+  const menuAvatarStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.5, 0.72, 1], [0, 0.74, 1]),
+    transform: [
+      {
+        scale: interpolate(progress.value, [0.5, 1], [0.97, 1]),
+      },
+    ],
+  }));
+
+  const menuLinksStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.58, 0.82, 1], [0, 0.78, 1]),
+  }));
+
+  const menuControlStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0.68, 0.9, 1], [0, 0.84, 1]),
+  }));
+
+  const surfaceStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#efeeec', '#121210']
+    ),
+  }));
+
+  const segmentedThumbStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: interpolate(themeProgress.value, [0, 1], [65, 0]),
+      },
+    ],
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#fbfaf8', '#242321']
+    ),
+  }));
+
+  const darkLabelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(255,255,255,0.56)', '#ffffff']
+    ),
+  }));
+
+  const lightLabelStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#232220', 'rgba(255,255,255,0.58)']
+    ),
+  }));
+
+  const setTheme = (nextDark: boolean) => {
+    if (nextDark === darkMode) return;
+    setDarkMode(nextDark);
+    themeProgress.value = withTiming(nextDark ? 1 : 0, {
+      duration: OPEN_MS,
+      easing: EASE,
+    });
+  };
 
   const togglePanel = () => {
     const next = !open;
@@ -212,6 +314,7 @@ export default function ProgressiveShowcaseRoute() {
   return (
     <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, surfaceStyle]} />
 
       <ProgressiveFade
         mode="blur"
@@ -258,6 +361,7 @@ export default function ProgressiveShowcaseRoute() {
               name="roma.daily"
               subtitle="by Studio 19"
               date="Today"
+              themeProgress={themeProgress}
             />
           </View>
 
@@ -312,6 +416,7 @@ export default function ProgressiveShowcaseRoute() {
               name="roma.afterdark"
               subtitle="A visual diary from Rome"
               date="May 12"
+              themeProgress={themeProgress}
             />
           </View>
 
@@ -357,6 +462,8 @@ export default function ProgressiveShowcaseRoute() {
           </View>
           <Text style={s.closedNavLabel}>Perfection</Text>
         </Pressable>
+
+        <Text style={[s.closedNavLabel, s.closedNavSettings]}>Settings</Text>
       </Animated.View>
 
       <Animated.View
@@ -371,46 +478,55 @@ export default function ProgressiveShowcaseRoute() {
           openMenuStyle,
         ]}
       >
-        <Image
-          source={ITEMS[25]!.source}
-          style={s.menuAvatar}
-          contentFit="cover"
-        />
+        <Animated.View style={menuAvatarStyle}>
+          <Image
+            source={ITEMS[25]!.source}
+            style={s.menuAvatar}
+            contentFit="cover"
+          />
+        </Animated.View>
 
-        <View style={s.menuLinks}>
+        <Animated.View style={[s.menuLinks, menuLinksStyle]}>
           <Text style={s.menuLink}>Subscription</Text>
           <Text style={s.menuLink}>Extension</Text>
           <Text style={s.menuLink}>About</Text>
-        </View>
+        </Animated.View>
 
-        <View style={s.menuBottomRow}>
+        <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
           <View style={s.segmented}>
-            <Text style={s.segmentedMuted}>Dark</Text>
+            <Animated.View
+              pointerEvents="none"
+              style={[s.segmentedThumb, segmentedThumbStyle]}
+            />
+
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Close expanded glass menu"
-              onPress={togglePanel}
-              hitSlop={12}
-              style={s.segmentedSelected}
+              accessibilityLabel="Use dark appearance"
+              accessibilityState={{ selected: darkMode }}
+              onPress={() => setTheme(true)}
+              hitSlop={8}
+              style={s.segmentedChoice}
             >
-              <Text style={s.segmentedSelectedText}>Light</Text>
+              <Animated.Text style={[s.segmentedLabel, darkLabelStyle]}>
+                Dark
+              </Animated.Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Use light appearance"
+              accessibilityState={{ selected: !darkMode }}
+              onPress={() => setTheme(false)}
+              hitSlop={8}
+              style={s.segmentedChoice}
+            >
+              <Animated.Text style={[s.segmentedLabel, lightLabelStyle]}>
+                Light
+              </Animated.Text>
             </Pressable>
           </View>
-        </View>
+        </Animated.View>
       </Animated.View>
-
-      <View
-        pointerEvents="none"
-        style={[
-          s.persistentSettings,
-          {
-            right: sceneLeft,
-            bottom: insets.bottom + 18,
-          },
-        ]}
-      >
-        <Text style={s.menuSettings}>Settings</Text>
-      </View>
     </View>
   );
 }
@@ -520,6 +636,11 @@ const s = StyleSheet.create({
     left: 0,
     bottom: 0,
   },
+  closedNavSettings: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+  },
   closedNavCenter: {
     minWidth: 96,
     alignItems: 'center',
@@ -533,20 +654,25 @@ const s = StyleSheet.create({
     fontWeight: '500',
   },
   perfectionIcon: {
-    width: 23,
-    height: 19,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.78)',
+    width: 24,
+    height: 20,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.97)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(255,255,255,1)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   perfectionInner: {
     width: 15,
     height: 11,
     borderRadius: 2.5,
-    backgroundColor: 'rgba(235,232,228,0.58)',
+    backgroundColor: 'rgba(224,220,214,0.96)',
   },
 
   openMenu: {
@@ -580,38 +706,36 @@ const s = StyleSheet.create({
     height: 36,
     padding: 3,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.43)',
+    backgroundColor: 'rgba(255,255,255,0.34)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.34)',
     flexDirection: 'row',
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  segmentedMuted: {
-    width: 62,
-    textAlign: 'center',
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  segmentedSelected: {
-    flex: 1,
+  segmentedThumb: {
+    position: 'absolute',
+    left: 3,
+    top: 3,
+    width: 65,
     height: 30,
     borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  segmentedChoice: {
+    flex: 1,
+    height: 30,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
-  segmentedSelectedText: {
-    color: '#222',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  persistentSettings: {
-    position: 'absolute',
-    zIndex: 40,
-  },
-  menuSettings: {
-    color: 'rgba(255,255,255,0.9)',
+  segmentedLabel: {
     fontSize: 11,
     lineHeight: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });
