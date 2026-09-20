@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -27,17 +27,25 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 // Reference-matched scene palette: use warm/pink/blue imagery so the blur is
 // evaluated against the same kind of colourful source material as the video.
 const ITEMS = STILLS_ITEMS;
-const BLUR_RADIUS_PX = 150;
-const BLUR_RADIUS_DP = BLUR_RADIUS_PX / PixelRatio.get();
+const DEFAULT_BLUR_RADIUS_PX = 150;
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const MATERIAL_STRENGTH = 0.96;
+const DEFAULT_MATERIAL_STRENGTH = 0.96;
 const MATERIAL_COLOR = '#e3e0dc';
-const CLOSED_DEPTH = 112;
-// Keep almost the whole expanded field in transition. The previous fixed 160dp
-// ramp left ~75% of the open panel pinned at maximum blur/material strength,
-// producing the large flat opaque band visible in the benchmark.
-const OPEN_PROGRESSION = 0.88;
+const DEFAULT_CLOSED_DEPTH = 112;
+const DEFAULT_OPEN_PROGRESSION = 0.88;
+const DEFAULT_EXPANDED_SCALE = 0.7;
+
+function clampNumber(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
@@ -116,20 +124,57 @@ const LATEST = [
 export default function ProgressiveShowcaseRoute() {
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
+  const params = useLocalSearchParams<{ bench?: string | string[] }>();
+
+  const benchParam = Array.isArray(params.bench) ? params.bench[0] : params.bench;
+  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] =
+    (benchParam ?? '').split(',');
+
+  const materialStrength = clampNumber(
+    materialRaw,
+    DEFAULT_MATERIAL_STRENGTH,
+    0,
+    1
+  );
+  const openProgression = clampNumber(
+    progressionRaw,
+    DEFAULT_OPEN_PROGRESSION,
+    0.2,
+    1
+  );
+  const blurRadiusPx = clampNumber(
+    radiusRaw,
+    DEFAULT_BLUR_RADIUS_PX,
+    1,
+    150
+  );
+  const closedDepth = clampNumber(
+    depthRaw,
+    DEFAULT_CLOSED_DEPTH,
+    48,
+    240
+  );
+  const expandedScale = clampNumber(
+    scaleRaw,
+    DEFAULT_EXPANDED_SCALE,
+    0.45,
+    0.9
+  );
+  const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
-  const bottomDepth = useSharedValue(CLOSED_DEPTH);
+  const bottomDepth = useSharedValue(closedDepth);
 
   // The reference's blur field begins materially higher than the current demo.
   // Keep the measured airy curve/ramp unchanged and move the whole field upward
   // instead of distorting the radius transfer again.
-  const expandedDepth = Math.min(height * 0.7, 620);
+  const expandedDepth = Math.min(height * expandedScale, 720);
   // Closed uses the full compact depth as the ramp. Open keeps only a small
   // fully-material region at the bottom and lets blur/material evolve across
   // almost the entire panel, matching the long continuous falloff in the ref.
   const blurProgression = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [1, OPEN_PROGRESSION])
+    interpolate(progress.value, [0, 1], [1, openProgression])
   );
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
@@ -157,7 +202,7 @@ export default function ProgressiveShowcaseRoute() {
       easing: EASE,
     });
 
-    const nextDepth = next ? expandedDepth : CLOSED_DEPTH;
+    const nextDepth = next ? expandedDepth : closedDepth;
 
     bottomDepth.value = withTiming(nextDepth, {
       duration,
@@ -176,10 +221,10 @@ export default function ProgressiveShowcaseRoute() {
         left={0}
         right={0}
         curve={REFERENCE_BLUR_CURVE}
-        blurRadius={BLUR_RADIUS_DP}
+        blurRadius={blurRadiusDp}
         blurProgression={blurProgression}
         progressiveBackend="agsl"
-        progressiveMaterialStrength={MATERIAL_STRENGTH}
+        progressiveMaterialStrength={materialStrength}
         progressiveMaterialColor={MATERIAL_COLOR}
         style={StyleSheet.absoluteFill}
       >
