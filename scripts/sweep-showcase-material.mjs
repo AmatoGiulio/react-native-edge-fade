@@ -50,23 +50,37 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-const quickProfiles = [
-  { id: 'blur-only', material: 0.0, progression: 0.96 },
-  { id: 'glass-12', material: 0.12, progression: 0.96 },
-  { id: 'glass-24', material: 0.24, progression: 0.96 },
-  { id: 'glass-36', material: 0.36, progression: 0.96 },
-  { id: 'glass-24-long', material: 0.24, progression: 1.0 },
-  { id: 'glass-36-long', material: 0.36, progression: 1.0 },
-  { id: 'glass-24-current-ramp', material: 0.24, progression: 0.88 },
-  { id: 'current', material: 0.96, progression: 0.88 },
-];
+// Stage 2: the first sweep ruled out the old 0.96 wash and showed the useful
+// range around material 0.24 with a full-length progression. Sweep onset/depth
+// next, without changing the measured 150px radius.
+const quickProfiles = [];
+for (const material of [0.16, 0.24, 0.32]) {
+  for (const scale of [0.62, 0.70, 0.78]) {
+    const m = String(Math.round(material * 100)).padStart(2, '0');
+    const s = String(Math.round(scale * 100));
+    quickProfiles.push({
+      id: 'm' + m + '-s' + s,
+      material,
+      progression: 1.0,
+      scale,
+    });
+  }
+}
 
 const fullProfiles = [];
-for (const material of [0, 0.12, 0.24, 0.36, 0.48, 0.64, 0.8, 0.96]) {
-  for (const progression of [0.88, 0.94, 1.0]) {
-    const m = String(Math.round(material * 100)).padStart(2, '0');
-    const p = String(Math.round(progression * 100));
-    fullProfiles.push({ id: 'm' + m + '-p' + p, material, progression });
+for (const material of [0.08, 0.16, 0.24, 0.32, 0.40]) {
+  for (const progression of [0.94, 1.0]) {
+    for (const scale of [0.62, 0.70, 0.78]) {
+      const m = String(Math.round(material * 100)).padStart(2, '0');
+      const p = String(Math.round(progression * 100));
+      const s = String(Math.round(scale * 100));
+      fullProfiles.push({
+        id: 'm' + m + '-p' + p + '-s' + s,
+        material,
+        progression,
+        scale,
+      });
+    }
   }
 }
 
@@ -98,18 +112,40 @@ if (hasReference) {
 }
 
 console.log('[showcase-sweep] run: ' + outputRoot);
-console.log('[showcase-sweep] ' + profiles.length + ' profiles · radius=150px · closedDepth=112 · expandedScale=0.70');
+console.log(
+  '[showcase-sweep] ' +
+    profiles.length +
+    ' profiles · radius=150px · closedDepth=112 · stage2 material/field-depth sweep'
+);
 
 for (const [index, profile] of profiles.entries()) {
-  const route = 'edgefade://showcase?bench=' + profile.material + ',' + profile.progression + ',150,112,0.70';
+  const route =
+    'edgefade://showcase?bench=' +
+    profile.material +
+    ',' +
+    profile.progression +
+    ',150,112,' +
+    profile.scale;
   const relativeOutput =
     'benchmarks/progressive-showcase/sweep/runs/' +
     outputRoot.split('/').pop();
   const prefix =
     String(index + 1).padStart(2, '0') + '-' + profile.id;
 
-  console.log('\n[showcase-sweep] [' + (index + 1) + '/' + profiles.length + '] ' + profile.id +
-    ' material=' + profile.material + ' progression=' + profile.progression);
+  console.log(
+    '\n[showcase-sweep] [' +
+      (index + 1) +
+      '/' +
+      profiles.length +
+      '] ' +
+      profile.id +
+      ' material=' +
+      profile.material +
+      ' progression=' +
+      profile.progression +
+      ' scale=' +
+      profile.scale
+  );
 
   const args = [
     captureScript,
@@ -129,7 +165,15 @@ const cards = profiles.map((profile, index) => {
   const prefix = String(index + 1).padStart(2, '0') + '-' + profile.id;
   return [
     '<section class="profile">',
-    '<header><strong>' + prefix + '</strong><span>material ' + profile.material + ' · progression ' + profile.progression + '</span></header>',
+    '<header><strong>' +
+      prefix +
+      '</strong><span>material ' +
+      profile.material +
+      ' · progression ' +
+      profile.progression +
+      ' · scale ' +
+      profile.scale +
+      '</span></header>',
     '<div class="pair">',
     '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
     '<figure><figcaption>open</figcaption><img src="./' + prefix + '-open.png?t=' + Date.now() + '"></figure>',
@@ -162,7 +206,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Radius locked at 150px. Compare wash/color retention and vertical continuity.</p>',
+  '<p class="lead">Stage 2: radius 150px, progression near full-length. Compare material wash and vertical field depth.</p>',
   referenceSection,
   cards,
   '</body></html>',
