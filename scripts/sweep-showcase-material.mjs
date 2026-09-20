@@ -50,38 +50,42 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 7: Stage 6 puts exposure at 0.90. The remaining mismatch is spatial:
-// white mid-field survives too long because the material sheet is still tied to
-// the eased blur-radius curve. Sweep raw geometric surface progression instead.
-const makeGeometryProfile = (surfaceProgression) => ({
-  id: 'g' + String(Math.round(surfaceProgression * 100)).padStart(2, '0'),
+// Stage 8: the Stage 7 captures make the endpoint mismatch explicit.
+// Closed wants g100 (compact blur stays translucent); open wants a much earlier
+// material takeover around g25-g35. Keep closed fixed at 1.0 in the app and
+// sweep only the OPEN geometry endpoint carried by the ninth bench value.
+const makeOpenGeometryProfile = (openSurfaceProgression) => ({
+  id: 'open-g' + String(Math.round(openSurfaceProgression * 100)).padStart(2, '0'),
   material: 0.16,
   progression: 1.0,
   scale: 0.78,
   tone: 'smoke',
   exposure: 0.90,
   surface: 0.95,
-  surfaceProgression,
+  surfaceProgression: openSurfaceProgression,
 });
 
-const quickProfiles = [0.25, 0.35, 0.45, 0.60, 0.80, 1.0].map(
-  makeGeometryProfile
+const quickProfiles = [0.22, 0.26, 0.30, 0.34, 0.38, 0.44].map(
+  makeOpenGeometryProfile
 );
 
 const fullProfiles = [
   0.18,
+  0.20,
   0.22,
+  0.24,
   0.26,
+  0.28,
   0.30,
-  0.35,
+  0.32,
+  0.34,
+  0.36,
+  0.38,
   0.40,
-  0.45,
-  0.50,
-  0.60,
-  0.70,
-  0.85,
-  1.0,
-].map(makeGeometryProfile);
+  0.44,
+  0.48,
+  0.52,
+].map(makeOpenGeometryProfile);
 
 const profiles = full ? fullProfiles : quickProfiles;
 const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
@@ -114,7 +118,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=0.90 · surface=0.95 · stage7 geometry sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=0.90 · surface=0.95 · closed-g100 · stage8 open-geometry sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -158,8 +162,9 @@ for (const [index, profile] of profiles.entries()) {
       profile.exposure +
       ' surface=' +
       profile.surface +
-      ' surfaceProgression=' +
-      profile.surfaceProgression
+      ' openSurfaceProgression=' +
+      profile.surfaceProgression +
+      ' closedSurfaceProgression=1.0'
   );
 
   const args = [
@@ -194,8 +199,8 @@ const cards = profiles.map((profile, index) => {
       profile.exposure +
       ' · surface ' +
       profile.surface +
-      ' · surface progression ' +
-      profile.surfaceProgression +
+      ' · closed g100 · open g' +
+      Math.round(profile.surfaceProgression * 100) +
       '</span></header>',
     '<div class="pair">',
     '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
@@ -229,7 +234,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 7: radius 150px · blur progression 1.0 · scale 0.78 · material 0.16 · smoke · exposure 0.90 · surface 0.95. Sweep raw geometric material progression independently from blur radius.</p>',
+  '<p class="lead">Stage 8: closed material geometry is fixed at g100. Sweep only the open endpoint (g18-g52) while the panel animation interpolates between them.</p>',
   referenceSection,
   cards,
   '</body></html>',

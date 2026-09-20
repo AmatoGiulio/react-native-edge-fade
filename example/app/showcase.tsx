@@ -43,7 +43,11 @@ const DEFAULT_MATERIAL_EXPOSURE = 0.90;
 // Stage 5 winner: the broad smoke sheet needs to be almost fully established
 // to suppress the rectangular low-frequency image masses seen in the old demo.
 const DEFAULT_MATERIAL_SURFACE = 0.95;
-const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.7;
+// Stage 7 endpoint split:
+// - closed: g100 preserves the compact translucent footer without a gray slab
+// - open: ~g30 matches the reference's much earlier material takeover
+const DEFAULT_CLOSED_MATERIAL_SURFACE_PROGRESSION = 1.0;
+const DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION = 0.30;
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.78;
@@ -195,9 +199,9 @@ export default function ProgressiveShowcaseRoute() {
     0,
     1
   );
-  const materialSurfaceProgression = clampNumber(
+  const openMaterialSurfaceProgression = clampNumber(
     surfaceProgressionRaw,
-    DEFAULT_MATERIAL_SURFACE_PROGRESSION,
+    DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION,
     0.15,
     1
   );
@@ -216,6 +220,16 @@ export default function ProgressiveShowcaseRoute() {
   // almost the entire panel, matching the long continuous falloff in the ref.
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
+  );
+  const materialSurfaceProgression = useDerivedValue(() =>
+    interpolate(
+      progress.value,
+      [0, 1],
+      [
+        DEFAULT_CLOSED_MATERIAL_SURFACE_PROGRESSION,
+        openMaterialSurfaceProgression,
+      ]
+    )
   );
   const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
