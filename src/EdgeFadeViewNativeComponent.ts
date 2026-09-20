@@ -44,6 +44,11 @@ interface NativeProps extends ViewProps {
    * material color over a broader field than the grading pass.
    */
   progressiveMaterialSurface?: CodegenTypes.Float;
+  /**
+   * Internal showcase material geometry. Smaller values make the translucent
+   * sheet reach full density earlier across the edge band.
+   */
+  progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

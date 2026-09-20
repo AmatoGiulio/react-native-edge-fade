@@ -50,38 +50,38 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 6: Stage 5 identified surface=0.95 as the strongest match for broad
-// material extinction. The remaining mismatch is the white/highlight shoulder:
-// our p95 is still near 249 while the reference sits around 227. Exposure now
-// follows the broad surfaceField, so re-sweep it with surface locked at 0.95.
-const makeExposureProfile = (exposure) => ({
-  id: 'e' + String(Math.round(exposure * 100)).padStart(2, '0'),
+// Stage 7: Stage 6 puts exposure at 0.90. The remaining mismatch is spatial:
+// white mid-field survives too long because the material sheet is still tied to
+// the eased blur-radius curve. Sweep raw geometric surface progression instead.
+const makeGeometryProfile = (surfaceProgression) => ({
+  id: 'g' + String(Math.round(surfaceProgression * 100)).padStart(2, '0'),
   material: 0.16,
   progression: 1.0,
   scale: 0.78,
   tone: 'smoke',
-  exposure,
+  exposure: 0.90,
   surface: 0.95,
+  surfaceProgression,
 });
 
-const quickProfiles = [0.82, 0.86, 0.90, 0.94, 0.98].map(
-  makeExposureProfile
+const quickProfiles = [0.25, 0.35, 0.45, 0.60, 0.80, 1.0].map(
+  makeGeometryProfile
 );
 
 const fullProfiles = [
-  0.78,
-  0.80,
-  0.82,
-  0.84,
-  0.86,
-  0.88,
-  0.90,
-  0.92,
-  0.94,
-  0.96,
-  0.98,
+  0.18,
+  0.22,
+  0.26,
+  0.30,
+  0.35,
+  0.40,
+  0.45,
+  0.50,
+  0.60,
+  0.70,
+  0.85,
   1.0,
-].map(makeExposureProfile);
+].map(makeGeometryProfile);
 
 const profiles = full ? fullProfiles : quickProfiles;
 const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
@@ -114,7 +114,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · surface=0.95 · stage6 exposure sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=0.90 · surface=0.95 · stage7 geometry sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -130,7 +130,9 @@ for (const [index, profile] of profiles.entries()) {
     ',' +
     profile.exposure +
     ',' +
-    profile.surface;
+    profile.surface +
+    ',' +
+    profile.surfaceProgression;
   const relativeOutput =
     'benchmarks/progressive-showcase/sweep/runs/' +
     outputRoot.split('/').pop();
@@ -155,7 +157,9 @@ for (const [index, profile] of profiles.entries()) {
       ' exposure=' +
       profile.exposure +
       ' surface=' +
-      profile.surface
+      profile.surface +
+      ' surfaceProgression=' +
+      profile.surfaceProgression
   );
 
   const args = [
@@ -190,6 +194,8 @@ const cards = profiles.map((profile, index) => {
       profile.exposure +
       ' · surface ' +
       profile.surface +
+      ' · surface progression ' +
+      profile.surfaceProgression +
       '</span></header>',
     '<div class="pair">',
     '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
@@ -223,7 +229,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 6: radius 150px · progression 1.0 · scale 0.78 · material 0.16 · smoke · surface 0.95. Sweep only broad-field exposure to compress the white shoulder.</p>',
+  '<p class="lead">Stage 7: radius 150px · blur progression 1.0 · scale 0.78 · material 0.16 · smoke · exposure 0.90 · surface 0.95. Sweep raw geometric material progression independently from blur radius.</p>',
   referenceSection,
   cards,
   '</body></html>',

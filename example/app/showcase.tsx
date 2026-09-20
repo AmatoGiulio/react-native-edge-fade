@@ -37,10 +37,13 @@ const MATERIAL_TONES: Record<string, string> = {
   smoke: '#bbb6b2',
 };
 const DEFAULT_MATERIAL_TONE = 'smoke';
-const DEFAULT_MATERIAL_EXPOSURE = 1.0;
+// Stage 6 winner: 0.90 compresses the white shoulder close to the reference
+// without crushing the retained coloured low-frequency structure.
+const DEFAULT_MATERIAL_EXPOSURE = 0.90;
 // Stage 5 winner: the broad smoke sheet needs to be almost fully established
 // to suppress the rectangular low-frequency image masses seen in the old demo.
 const DEFAULT_MATERIAL_SURFACE = 0.95;
+const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.7;
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.78;
@@ -145,6 +148,7 @@ export default function ProgressiveShowcaseRoute() {
     toneRaw,
     exposureRaw,
     surfaceRaw,
+    surfaceProgressionRaw,
   ] = (benchParam ?? '').split(',');
 
   const materialStrength = clampNumber(
@@ -189,6 +193,12 @@ export default function ProgressiveShowcaseRoute() {
     surfaceRaw,
     DEFAULT_MATERIAL_SURFACE,
     0,
+    1
+  );
+  const materialSurfaceProgression = clampNumber(
+    surfaceProgressionRaw,
+    DEFAULT_MATERIAL_SURFACE_PROGRESSION,
+    0.15,
     1
   );
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
@@ -259,6 +269,7 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialColor={materialTone}
         progressiveMaterialExposure={materialExposure}
         progressiveMaterialSurface={materialSurface}
+        progressiveMaterialSurfaceProgression={materialSurfaceProgression}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView

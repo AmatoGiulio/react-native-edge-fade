@@ -192,7 +192,18 @@ internal object BlurLabShaders {
       float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
       float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
 
-      return half4(0.0, 0.0, 0.0, max(max(top, bottom), max(left, right)));
+      float radiusField = max(max(top, bottom), max(left, right));
+      float surfacePosition =
+        max(max(max(topPos, bottomPos), max(leftPos, rightPos)), 0.0);
+
+      // Alpha remains the exact blur-radius field. Red is raw geometry used
+      // only by the optional showcase material pass; public pure blur ignores it.
+      return half4(
+        clamp(surfacePosition, 0.0, 1.0),
+        0.0,
+        0.0,
+        radiusField
+      );
     }
   """.trimIndent()
 
@@ -212,16 +223,20 @@ internal object BlurLabShaders {
     uniform float3 materialColor;
     uniform float materialExposure;
     uniform float materialSurface;
+    uniform float materialSurfaceProgression;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      half4 field = mask.eval(coord);
+      float intensity = clamp(float(field.a), 0.0, 1.0);
+      float surfacePosition = clamp(float(field.r), 0.0, 1.0);
 
-      // Keep grading delayed, but let the physical material sheet establish
-      // density much earlier. Stage 4 proved that changing exposure only affected
-      // a small fraction of the frame because it followed this delayed field.
+      // The Gaussian keeps the measured eased radius curve. The reference's
+      // translucent material sheet spans a much broader geometric field, so
+      // drive it from raw band position instead of blur intensity.
       float gradeField = smoothstep(0.18, 0.84, intensity);
-      float surfaceField = smoothstep(0.015, 0.62, intensity);
+      float surfaceEnd = clamp(materialSurfaceProgression, 0.15, 1.0);
+      float surfaceField = smoothstep(0.0, surfaceEnd, surfacePosition);
       float material = clamp(materialStrength, 0.0, 1.0) * gradeField;
       float surface = clamp(materialSurface, 0.0, 1.0) * surfaceField;
 
