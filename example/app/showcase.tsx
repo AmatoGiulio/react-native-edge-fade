@@ -28,13 +28,10 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS;
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
-// Reference-oriented opalescent substrate. Blur remains a single Gaussian;
-// these values only tune the post-blur material response.
-const DEFAULT_MATERIAL_STRENGTH = 0.96;
-const DEFAULT_MATERIAL_EXPOSURE = 0.98;
-const DEFAULT_MATERIAL_SURFACE = 0.78;
-const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
-const LIGHT_MATERIAL_COLOR = '#c8c8cb';
+// Optical baseline restored from the measured glass-36 run.
+// Keep layout/theme work, but reset the material itself before iterating again.
+const DEFAULT_MATERIAL_STRENGTH = 0.36;
+const LIGHT_MATERIAL_COLOR = '#e3e0dc';
 // The reference dark material is not black: its dense body sits around a
 // neutral/silver mid-grey and lets source colour survive as a subdued stain.
 const DARK_MATERIAL_COLOR = '#7b7c82';
@@ -385,11 +382,6 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialStrength={materialStrength}
         progressiveMaterialColor={
           darkMode ? DARK_MATERIAL_COLOR : LIGHT_MATERIAL_COLOR
-        }
-        progressiveMaterialExposure={DEFAULT_MATERIAL_EXPOSURE}
-        progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
-        progressiveMaterialSurfaceProgression={
-          DEFAULT_MATERIAL_SURFACE_PROGRESSION
         }
         style={StyleSheet.absoluteFill}
       >

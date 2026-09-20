@@ -39,9 +39,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     val backend: String,
     val materialStrength: Float,
     val materialColor: Int,
-    val materialExposure: Float,
-    val materialSurface: Float,
-    val materialSurfaceProgression: Float,
   )
 
   private data class CurveSamples(
@@ -100,13 +97,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialStrength =
         BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
-      materialExposure =
-        BlurLabGeometry.finite(host.progressiveMaterialExposure, 1f).coerceIn(0.5f, 1.2f),
-      materialSurface =
-        BlurLabGeometry.finite(host.progressiveMaterialSurface).coerceIn(0f, 1f),
-      materialSurfaceProgression =
-        BlurLabGeometry.finite(host.progressiveMaterialSurfaceProgression, 0.7f)
-          .coerceIn(0.15f, 1f),
     )
 
     if (key == next) return true
@@ -268,28 +258,12 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
-        strip.material.setFloatUniform(
-          "origin",
-          source.left.toFloat(),
-          source.top.toFloat(),
-        )
-        strip.material.setFloatUniform(
-          "viewSize",
-          key.width.toFloat(),
-          key.height.toFloat(),
-        )
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
           Color.red(key.materialColor) / 255f,
           Color.green(key.materialColor) / 255f,
           Color.blue(key.materialColor) / 255f,
-        )
-        strip.material.setFloatUniform("materialExposure", key.materialExposure)
-        strip.material.setFloatUniform("materialSurface", key.materialSurface)
-        strip.material.setFloatUniform(
-          "materialSurfaceProgression",
-          key.materialSurfaceProgression,
         )
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
