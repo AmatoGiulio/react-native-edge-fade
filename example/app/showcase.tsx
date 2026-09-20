@@ -32,8 +32,11 @@ const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
-const OPEN_MS = 500;
-const CLOSE_MS = 420;
+// Reference timing: the material reaches the expanded state in roughly
+// 300 ms and collapses materially faster. Keep one shared timeline for blur
+// depth and chrome so no layer can drift vertically or temporally.
+const OPEN_MS = 300;
+const CLOSE_MS = 220;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
 const REFERENCE_BLUR_CURVE = {
@@ -141,9 +144,11 @@ export default function ProgressiveShowcaseRoute() {
 
   const [open, setOpen] = useState(false);
   const progress = useSharedValue(0);
-  const bottomDepth = useSharedValue(closedDepth);
 
   const expandedDepth = Math.min(height * expandedScale, 720);
+  const bottomDepth = useDerivedValue(() =>
+    interpolate(progress.value, [0, 1], [closedDepth, expandedDepth])
+  );
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
@@ -199,10 +204,6 @@ export default function ProgressiveShowcaseRoute() {
 
     const duration = next ? OPEN_MS : CLOSE_MS;
     progress.value = withTiming(next ? 1 : 0, {
-      duration,
-      easing: EASE,
-    });
-    bottomDepth.value = withTiming(next ? expandedDepth : closedDepth, {
       duration,
       easing: EASE,
     });
@@ -342,7 +343,7 @@ export default function ProgressiveShowcaseRoute() {
           closedNavStyle,
         ]}
       >
-        <Text style={s.closedNavLabel}>View</Text>
+        <Text style={[s.closedNavLabel, s.closedNavView]}>View</Text>
 
         <Pressable
           accessibilityRole="button"
@@ -356,8 +357,6 @@ export default function ProgressiveShowcaseRoute() {
           </View>
           <Text style={s.closedNavLabel}>Perfection</Text>
         </Pressable>
-
-        <Text style={s.closedNavLabel}>Settings</Text>
       </Animated.View>
 
       <Animated.View
@@ -397,10 +396,21 @@ export default function ProgressiveShowcaseRoute() {
               <Text style={s.segmentedSelectedText}>Light</Text>
             </Pressable>
           </View>
-
-          <Text style={s.menuSettings}>Settings</Text>
         </View>
       </Animated.View>
+
+      <View
+        pointerEvents="none"
+        style={[
+          s.persistentSettings,
+          {
+            right: sceneLeft,
+            bottom: insets.bottom + 18,
+          },
+        ]}
+      >
+        <Text style={s.menuSettings}>Settings</Text>
+      </View>
     </View>
   );
 }
@@ -503,7 +513,12 @@ const s = StyleSheet.create({
     height: 54,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+  },
+  closedNavView: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
   },
   closedNavCenter: {
     minWidth: 96,
@@ -558,7 +573,7 @@ const s = StyleSheet.create({
     marginTop: 25,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   segmented: {
     width: 136,
@@ -588,6 +603,10 @@ const s = StyleSheet.create({
     color: '#222',
     fontSize: 11,
     fontWeight: '600',
+  },
+  persistentSettings: {
+    position: 'absolute',
+    zIndex: 40,
   },
   menuSettings: {
     color: 'rgba(255,255,255,0.9)',
