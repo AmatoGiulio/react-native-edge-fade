@@ -30,11 +30,11 @@ const ITEMS = STILLS_ITEMS;
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Reference-oriented opalescent substrate. Blur remains a single Gaussian;
 // these values only tune the post-blur material response.
-const DEFAULT_MATERIAL_STRENGTH = 0.92;
+const DEFAULT_MATERIAL_STRENGTH = 0.96;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
-const DEFAULT_MATERIAL_SURFACE = 0.68;
-const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.72;
-const LIGHT_MATERIAL_COLOR = '#dadbdd';
+const DEFAULT_MATERIAL_SURFACE = 0.78;
+const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
+const LIGHT_MATERIAL_COLOR = '#c8c8cb';
 const DARK_MATERIAL_COLOR = '#141516';
 const DEFAULT_CLOSED_DEPTH = 112;
 // 04-open-s90 remains the optical baseline selected against reference.mp4.
