@@ -35,6 +35,10 @@ internal object BlurLabShaders {
       uniform shader mask;
       uniform float blurRadius;
       uniform float2 extent;
+      // Material mode uses continuous tap support so the progressive radius
+      // cannot quantize into visible horizontal bands. Public strength=0 keeps
+      // the legacy paired-tap kernel pixel-identical.
+      uniform float continuousSupport;
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -47,7 +51,34 @@ internal object BlurLabShaders {
         float radius = blurRadius * intensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
-        if (r >= 1.0) {
+
+        if (continuousSupport > 0.5 && radius > 0.0) {
+          float sigma = max(radius / 2.0, 1.0);
+          float weightSum = 1.0;
+          float4 result = sampled;
+
+          // Fade every new sample into the kernel over a one-pixel radius
+          // interval. The support grows continuously instead of snapping at
+          // floor(radius), which is what produced the dark-mode scan lines.
+          for (float i = 1.0; i < maxRadius; i += 2.0) {
+            if (radius <= i - 0.5) break;
+
+            float lowCoverage = smoothstep(i - 0.5, i + 0.5, radius);
+            float highCoverage = smoothstep(i + 0.5, i + 1.5, radius);
+            float low = gaussian(i, sigma) * lowCoverage;
+            float high = gaussian(i + 1.0, sigma) * highCoverage;
+            float weight = low + high;
+            if (weight <= 0.000001) continue;
+
+            float d = i + high / weight;
+            float2 offset = $offset;
+            float2 a = coord - offset;
+            float2 b = coord + offset;
+            if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+            if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+          }
+          sampled = result / weightSum;
+        } else if (r >= 1.0) {
           float sigma = max(radius / 2.0, 1.0);
           float weightSum = 1.0;
           float4 result = sampled;

@@ -275,6 +275,10 @@ internal class EdgeFadeProgressiveStripRenderer(
           shader.setInputShader("mask", strip.mask)
           shader.setFloatUniform("blurRadius", key.radius)
           shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+          shader.setFloatUniform(
+            "continuousSupport",
+            if (key.materialStrength > 0f) 1f else 0f,
+          )
         }
 
         RenderEffect.createChainEffect(
