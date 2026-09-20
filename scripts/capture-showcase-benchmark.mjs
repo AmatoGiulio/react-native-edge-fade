@@ -376,6 +376,13 @@ const previewOpen = metadata.files.openFocus ?? metadata.files.open;
 const focusLabel = metadata.focus
   ? `${metadata.focus.normalizedSize.width}×${metadata.focus.normalizedSize.height} normalized crop · top ${metadata.focus.topRatio}`
   : 'full screenshot';
+const cacheBust = Date.now();
+const closedFocusMedia = metadata.files.closedFocus
+  ? `<object data="./${metadata.files.closedFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Closed focused benchmark"></object>`
+  : `<img src="./${metadata.files.closed}?t=${cacheBust}" alt="Closed benchmark" />`;
+const openFocusMedia = metadata.files.openFocus
+  ? `<object data="./${metadata.files.openFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Open focused benchmark"></object>`
+  : `<img src="./${metadata.files.open}?t=${cacheBust}" alt="Open benchmark" />`;
 
 const previewHtml = `<!doctype html>
 <html>
@@ -413,16 +420,19 @@ const previewHtml = `<!doctype html>
     letter-spacing: .08em;
     color: #aaa;
   }
-  img {
+  img, object {
     display: block;
     width: 100%;
-    object-fit: contain;
     background: #222;
     border: 1px solid #333;
   }
-  .focused img {
+  img { object-fit: contain; }
+  .focused img, .focused object {
     aspect-ratio: ${focusWidth} / ${focusHeight};
     max-height: calc(100vh - 145px);
+  }
+  .focused object {
+    pointer-events: none;
   }
   details {
     margin-top: 20px;
@@ -449,11 +459,11 @@ const previewHtml = `<!doctype html>
   <div class="grid focused">
     <figure>
       <figcaption>Closed · focus</figcaption>
-      <img src="./${previewClosed}?t=${Date.now()}" alt="Closed focused benchmark" />
+      ${closedFocusMedia}
     </figure>
     <figure>
       <figcaption>Open · focus</figcaption>
-      <img src="./${previewOpen}?t=${Date.now()}" alt="Open focused benchmark" />
+      ${openFocusMedia}
     </figure>
   </div>
   <details>
