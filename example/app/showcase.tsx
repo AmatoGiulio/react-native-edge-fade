@@ -251,6 +251,14 @@ export default function ProgressiveShowcaseRoute() {
     opacity: interpolate(progress.value, [0.58, 0.82, 1], [0, 0.78, 1]),
   }));
 
+  const menuLinkTextStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#242321', 'rgba(255,255,255,0.94)']
+    ),
+  }));
+
   const menuControlStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.68, 0.9, 1], [0, 0.84, 1]),
   }));
@@ -489,9 +497,15 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
 
         <Animated.View style={[s.menuLinks, menuLinksStyle]}>
-          <Text style={s.menuLink}>Subscription</Text>
-          <Text style={s.menuLink}>Extension</Text>
-          <Text style={s.menuLink}>About</Text>
+          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
+            Subscription
+          </Animated.Text>
+          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
+            Extension
+          </Animated.Text>
+          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
+            About
+          </Animated.Text>
         </Animated.View>
 
         <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
@@ -692,7 +706,6 @@ const s = StyleSheet.create({
     gap: 15,
   },
   menuLink: {
-    color: 'rgba(255,255,255,0.94)',
     fontSize: 12,
     lineHeight: 15,
     fontWeight: '500',
