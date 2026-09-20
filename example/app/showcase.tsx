@@ -28,8 +28,8 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS;
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
-const DEFAULT_MATERIAL_STRENGTH = 0.50;
-const LIGHT_MATERIAL_COLOR = '#e7e2dc';
+const DEFAULT_MATERIAL_STRENGTH = 0.68;
+const LIGHT_MATERIAL_COLOR = '#e2ded8';
 const DARK_MATERIAL_COLOR = '#1a1917';
 const DEFAULT_CLOSED_DEPTH = 112;
 // 04-open-s90 remains the optical baseline selected against reference.mp4.
@@ -278,9 +278,14 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
-  const segmentWidth = Math.min(182, width * 0.24);
-  const segmentHeight = 38;
-  const segmentHalf = segmentWidth / 2;
+  // Match the reference pill geometry: compact height, wider track and an
+  // exact 2 px optical inset. The previous half-width used the OUTER width,
+  // which made the selected pill overrun the track and get clipped on the right.
+  const segmentWidth = Math.min(154, width * 0.32);
+  const segmentHeight = 32;
+  const segmentInset = 2;
+  const segmentInnerWidth = segmentWidth - segmentInset * 2;
+  const segmentHalf = segmentInnerWidth / 2;
 
   const segmentTrackStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
@@ -564,6 +569,7 @@ export default function ProgressiveShowcaseRoute() {
                 width: segmentWidth,
                 height: segmentHeight,
                 borderRadius: segmentHeight / 2,
+                padding: segmentInset,
               },
               segmentTrackStyle,
             ]}
@@ -573,8 +579,10 @@ export default function ProgressiveShowcaseRoute() {
               style={[
                 s.themeSegmentPill,
                 {
-                  height: segmentHeight - 4,
-                  borderRadius: (segmentHeight - 4) / 2,
+                  left: segmentInset,
+                  top: segmentInset,
+                  height: segmentHeight - segmentInset * 2,
+                  borderRadius: (segmentHeight - segmentInset * 2) / 2,
                 },
                 segmentPillStyle,
               ]}
@@ -793,17 +801,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 2,
   },
   themeSegmentPill: {
     position: 'absolute',
-    left: 2,
-    top: 2,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
   themeSegmentHit: {
