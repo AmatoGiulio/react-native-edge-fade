@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -23,37 +23,20 @@ import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 import { STILLS_ITEMS } from '@/data/catalog';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
-
-// Reference-matched scene palette: use warm/pink/blue imagery so the blur is
-// evaluated against the same kind of colourful source material as the video.
 const ITEMS = STILLS_ITEMS;
+
 const DEFAULT_BLUR_RADIUS_PX = 150;
-// Demo-only material extinction measured by eye against reference.mp4.
-// Blur remains pure everywhere else because the native default is strength=0.
 const DEFAULT_MATERIAL_STRENGTH = 0.36;
 const MATERIAL_COLOR = '#e3e0dc';
 const DEFAULT_CLOSED_DEPTH = 112;
-const DEFAULT_OPEN_PROGRESSION = 1.0;
+// 04-open-s90 is the visual baseline selected against reference.mp4.
+const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
-function clampNumber(
-  value: string | undefined,
-  fallback: number,
-  min: number,
-  max: number
-) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, parsed));
-}
 const OPEN_MS = 500;
 const CLOSE_MS = 420;
 const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
-// Measured reference profile. Keep the endpoints smooth: the previous
-// radius-domain remap introduced two visible knees (hard onset + hard finish).
-// The improved lower coverage comes from the deeper expanded field, not from
-// those knees, so retain the 66% field while restoring the airy t^1.79 ramp.
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
   values: [
@@ -73,53 +56,46 @@ const REFERENCE_BLUR_CURVE = {
   ],
 };
 
-const TOP_STORIES = [
-  {
-    id: 'story-1',
-    type: 'SCENE REPORT',
-    date: 'September 19, 2026',
-    title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[23],
-  },
-  {
-    id: 'story-2',
-    type: 'FEATURES',
-    date: 'September 18, 2026',
-    title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[16],
-  },
-];
+function clampNumber(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number
+) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
 
-const LATEST = [
-  {
-    id: 'latest-1',
-    type: 'MIX',
-    title: 'Nocturne 04 — Roman Electronics',
-    body: 'A slow-burn selection moving from ambient pressure to warehouse rhythm.',
-    image: ITEMS[25],
-  },
-  {
-    id: 'latest-2',
-    type: 'DESIGN',
-    title: 'Light Studies From San Lorenzo',
-    body: 'Independent studios exploring projection, typography and low-light spaces.',
-    image: ITEMS[27],
-  },
-  {
-    id: 'latest-3',
-    type: 'LIVE',
-    title: 'A Warehouse Set in Ostiense',
-    body: 'Extended sets, live visuals and a room designed around a single system.',
-    image: ITEMS[8],
-  },
-  {
-    id: 'latest-4',
-    type: 'SCENE',
-    title: 'Small Rooms, Long Nights',
-    body: 'Four intimate spaces keeping Rome’s after-hours culture deliberately small.',
-    image: ITEMS[31],
-  },
-];
+function AccountRow({
+  avatar,
+  name,
+  subtitle,
+  date,
+}: {
+  avatar: (typeof ITEMS)[number];
+  name: string;
+  subtitle: string;
+  date: string;
+}) {
+  return (
+    <View style={s.accountRow}>
+      <View style={s.accountIdentity}>
+        <View style={s.avatarWrap}>
+          <Image source={avatar.source} style={s.avatar} contentFit="cover" />
+          <View style={s.badge}>
+            <View style={s.badgeDot} />
+          </View>
+        </View>
+        <View>
+          <Text style={s.accountName}>{name}</Text>
+          <Text style={s.accountSubtitle}>{subtitle}</Text>
+        </View>
+      </View>
+      <Text style={s.accountDate}>{date}</Text>
+    </View>
+  );
+}
 
 export default function ProgressiveShowcaseRoute() {
   const insets = useSafeAreaInsets();
@@ -166,28 +142,30 @@ export default function ProgressiveShowcaseRoute() {
   const progress = useSharedValue(0);
   const bottomDepth = useSharedValue(closedDepth);
 
-  // The reference's blur field begins materially higher than the current demo.
-  // Keep the measured airy curve/ramp unchanged and move the whole field upward
-  // instead of distorting the radius transfer again.
   const expandedDepth = Math.min(height * expandedScale, 720);
-  // Closed uses the full compact depth as the ramp. Open keeps only a small
-  // fully-material region at the bottom and lets blur/material evolve across
-  // almost the entire panel, matching the long continuous falloff in the ref.
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
-  const storyWidth = Math.min(Math.max(width * 0.78, 268), 350);
 
-  const panelStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.12, 0.42, 1], [0, 0.18, 1]),
+  // Geometry mirrors the reference scene: a cropped previous card, an author
+  // row + two-up gallery, then another author row + a large post underneath.
+  // Keeping the same composition makes blur comparisons meaningful.
+  const contentWidth = width - 44;
+  const previousHeight = Math.min(height * 0.25, 460);
+  const pairHeight = Math.min(height * 0.265, 500);
+  const lowerHeight = Math.min(height * 0.36, 670);
+
+  const closedNavStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.24, 0.48], [1, 0.72, 0]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [28, 0]) },
+      { translateY: interpolate(progress.value, [0, 1], [0, 8]) },
     ],
   }));
 
-  const arrowStyle = useAnimatedStyle(() => ({
+  const openMenuStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.28, 0.62, 1], [0, 0, 0.78, 1]),
     transform: [
-      { rotate: `${interpolate(progress.value, [0, 1], [0, 180])}deg` },
+      { translateY: interpolate(progress.value, [0, 1], [18, 0]) },
     ],
   }));
 
@@ -196,15 +174,12 @@ export default function ProgressiveShowcaseRoute() {
     setOpen(next);
 
     const duration = next ? OPEN_MS : CLOSE_MS;
-
     progress.value = withTiming(next ? 1 : 0, {
       duration,
       easing: EASE,
     });
 
-    const nextDepth = next ? expandedDepth : closedDepth;
-
-    bottomDepth.value = withTiming(nextDepth, {
+    bottomDepth.value = withTiming(next ? expandedDepth : closedDepth, {
       duration,
       easing: EASE,
     });
@@ -231,140 +206,136 @@ export default function ProgressiveShowcaseRoute() {
         <ScrollView
           style={StyleSheet.absoluteFill}
           contentContainerStyle={[
-            s.scrollContent,
+            s.feed,
             {
               paddingTop: insets.top + 6,
-              paddingBottom: insets.bottom + 190,
+              paddingBottom: insets.bottom + 42,
             },
           ]}
           showsVerticalScrollIndicator={false}
-          bounces
+          bounces={false}
           overScrollMode="never"
         >
-          <View style={s.header}>
-            <View style={s.wordmarkWrap}>
-              <View style={s.wordmarkSlash} />
-              <Text style={s.wordmark}>ROMA DAILY</Text>
+          <View style={[s.feedInner, { width: contentWidth }]}>
+            <View
+              style={[
+                s.previousCardWindow,
+                { height: previousHeight * 0.46 },
+              ]}
+            >
+              <Image
+                source={ITEMS[16]!.source}
+                style={[
+                  s.previousCard,
+                  {
+                    width: contentWidth * 0.8,
+                    height: previousHeight,
+                    top: -previousHeight * 0.54,
+                  },
+                ]}
+                contentFit="cover"
+              />
             </View>
 
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={14}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-            >
-              <Text style={s.close}>×</Text>
-            </Pressable>
-          </View>
+            <AccountRow
+              avatar={ITEMS[25]!}
+              name="roma.daily"
+              subtitle="by Studio 19"
+              date="Today"
+            />
 
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>Top Stories</Text>
-          </View>
+            <View style={[s.photoPair, { height: pairHeight }]}>
+              <Image
+                source={ITEMS[23]!.source}
+                style={s.photoPairPrimary}
+                contentFit="cover"
+              />
+              <Image
+                source={ITEMS[25]!.source}
+                style={s.photoPairSecondary}
+                contentFit="cover"
+              />
+            </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.topStoriesRow}
-          >
-            {TOP_STORIES.map((story) => (
-              <View key={story.id} style={[s.topStoryCard, { width: storyWidth }]}>
-                <Image
-                  source={story.image!.source}
-                  style={s.topStoryImage}
-                  contentFit="cover"
-                />
+            <AccountRow
+              avatar={ITEMS[27]!}
+              name="roma.afterdark"
+              subtitle="A visual diary from Rome"
+              date="May 12"
+            />
 
-                <Text style={s.meta}>
-                  {story.type} · {story.date}
-                </Text>
-                <Text style={s.topStoryTitle}>{story.title}</Text>
-              </View>
-            ))}
-          </ScrollView>
-
-          <View style={[s.sectionHeader, s.latestHeader]}>
-            <Text style={s.sectionTitle}>Latest</Text>
-            <Text style={s.sectionLink}>see all stories</Text>
-          </View>
-
-          <View style={s.latestList}>
-            {LATEST.map((item) => (
-              <View key={item.id} style={s.latestRow}>
-                <Image
-                  source={item.image!.source}
-                  style={s.latestImage}
-                  contentFit="cover"
-                />
-
-                <View style={s.latestCopy}>
-                  <Text style={s.latestMeta}>{item.type}</Text>
-                  <Text style={s.latestTitle}>{item.title}</Text>
-                  <Text style={s.latestBody}>{item.body}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-
-          <View style={s.editorialBlock}>
-            <Text style={s.editorialEyebrow}>TONIGHT IN ROME</Text>
-            <Text style={s.editorialTitle}>
-              Sound, image and concrete after dark.
-            </Text>
-            <Text style={s.editorialBody}>
-              Three spaces, four live sets and a visual programme moving from
-              Ostiense to San Lorenzo until sunrise.
-            </Text>
+            <Image
+              source={ITEMS[27]!.source}
+              style={[s.lowerPost, { height: lowerHeight }]}
+              contentFit="cover"
+            />
           </View>
         </ScrollView>
       </ProgressiveFade>
 
       <Animated.View
-        pointerEvents={open ? 'auto' : 'none'}
-        style={[s.panel, { bottom: insets.bottom + 82 }, panelStyle]}
+        pointerEvents={open ? 'none' : 'auto'}
+        style={[
+          s.closedNav,
+          { bottom: insets.bottom + 18 },
+          closedNavStyle,
+        ]}
       >
-        <Text style={s.panelKicker}>TONIGHT</Text>
-        <Text style={s.panelTitle}>ROMA AFTER DARK</Text>
-
-        <View style={s.panelRule} />
-
-        <View style={s.panelRow}>
-          <Text style={s.panelTime}>23:30</Text>
-          <View style={s.panelCopy}>
-            <Text style={s.panelName}>Forma — Warehouse Edition</Text>
-            <Text style={s.panelMeta}>Ostiense · live AV · extended sets</Text>
-          </View>
-        </View>
-
-        <View style={s.panelRow}>
-          <Text style={s.panelTime}>01:00</Text>
-          <View style={s.panelCopy}>
-            <Text style={s.panelName}>Nocturne — Room II</Text>
-            <Text style={s.panelMeta}>San Lorenzo · techno · installation</Text>
-          </View>
-        </View>
-
-        <View style={s.panelRow}>
-          <Text style={s.panelTime}>03:30</Text>
-          <View style={s.panelCopy}>
-            <Text style={s.panelName}>After — Secret Location</Text>
-            <Text style={s.panelMeta}>list only · limited capacity</Text>
-          </View>
-        </View>
-      </Animated.View>
-
-      <View style={[s.bottomBar, { bottom: insets.bottom + 12 }]}>
-        <Text style={s.bottomLabel}>ROME / 19.09.26</Text>
+        <Text style={s.closedNavLabel}>View</Text>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={open ? 'Close tonight panel' : 'Open tonight panel'}
+          accessibilityLabel="Open perfection menu"
           onPress={togglePanel}
-          style={s.trigger}
+          hitSlop={18}
+          style={s.closedNavCenter}
         >
-          <Text style={s.triggerText}>TONIGHT</Text>
-          <Animated.Text style={[s.triggerArrow, arrowStyle]}>↑</Animated.Text>
+          <View style={s.perfectionIcon}>
+            <View style={s.perfectionInner} />
+          </View>
+          <Text style={s.closedNavLabel}>Perfection</Text>
         </Pressable>
-      </View>
+
+        <Text style={s.closedNavLabel}>Settings</Text>
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={[
+          s.openMenu,
+          { bottom: insets.bottom + 17 },
+          openMenuStyle,
+        ]}
+      >
+        <Image
+          source={ITEMS[25]!.source}
+          style={s.menuAvatar}
+          contentFit="cover"
+        />
+
+        <View style={s.menuLinks}>
+          <Text style={s.menuLink}>Subscription</Text>
+          <Text style={s.menuLink}>Extension</Text>
+          <Text style={s.menuLink}>About</Text>
+        </View>
+
+        <View style={s.menuBottomRow}>
+          <View style={s.segmented}>
+            <Text style={s.segmentedMuted}>Dark</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close expanded glass menu"
+              onPress={togglePanel}
+              hitSlop={12}
+              style={s.segmentedSelected}
+            >
+              <Text style={s.segmentedSelectedText}>Light</Text>
+            </Pressable>
+          </View>
+
+          <Text style={s.menuSettings}>Settings</Text>
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -374,253 +345,208 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: '#efeeec',
   },
-  scrollContent: {
-    minHeight: '100%',
-    paddingBottom: 180,
+  feed: {
+    alignItems: 'center',
   },
-  header: {
-    height: 54,
-    paddingHorizontal: 18,
+  feedInner: {
+    alignSelf: 'center',
+  },
+  previousCardWindow: {
+    overflow: 'hidden',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  previousCard: {
+    position: 'absolute',
+    borderRadius: 9,
+    backgroundColor: '#dddcd9',
+  },
+  accountRow: {
+    minHeight: 56,
+    paddingHorizontal: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  wordmarkWrap: {
+  accountIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 10,
   },
-  wordmarkSlash: {
-    width: 18,
-    height: 8,
-    backgroundColor: '#111',
-    transform: [{ skewX: '-24deg' }],
+  avatarWrap: {
+    width: 39,
+    height: 39,
   },
-  wordmark: {
-    color: '#111',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+  avatar: {
+    width: 39,
+    height: 39,
+    borderRadius: 19.5,
+    backgroundColor: '#d8d5d0',
   },
-  close: {
-    color: '#111',
-    fontSize: 24,
-    lineHeight: 26,
-    fontWeight: '300',
-  },
-  sectionHeader: {
-    paddingHorizontal: 18,
-    marginTop: 30,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 14,
-  },
-  sectionTitle: {
-    color: '#171717',
-    fontSize: 34,
-    lineHeight: 36,
-    fontWeight: '300',
-    fontStyle: 'italic',
-    letterSpacing: -1.3,
-  },
-  sectionLink: {
-    marginBottom: 4,
-    color: '#8d8b88',
-    fontSize: 10,
-    lineHeight: 12,
-  },
-  topStoriesRow: {
-    paddingHorizontal: 18,
-    paddingRight: 28,
-    gap: 14,
-  },
-  topStoryCard: {
-    flexShrink: 0,
-  },
-  topStoryImage: {
-    width: '100%',
-    aspectRatio: 1.58,
-    borderRadius: 8,
-    backgroundColor: '#dddcd9',
-  },
-  meta: {
-    marginTop: 8,
-    color: '#96938f',
-    fontSize: 8.5,
-    lineHeight: 10.5,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  topStoryTitle: {
-    marginTop: 4,
-    color: '#111',
-    fontSize: 16,
-    lineHeight: 19,
-    fontWeight: '500',
-    letterSpacing: -0.2,
-  },
-  latestHeader: {
-    marginTop: 44,
-  },
-  latestList: {
-    paddingHorizontal: 18,
-  },
-  latestRow: {
-    minHeight: 116,
-    flexDirection: 'row',
-    gap: 14,
-    paddingVertical: 13,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#d5d3cf',
-  },
-  latestImage: {
-    width: '39%',
-    aspectRatio: 1.3,
-    borderRadius: 5,
-    backgroundColor: '#dddcd9',
-  },
-  latestCopy: {
-    flex: 1,
-    paddingTop: 1,
-  },
-  latestMeta: {
-    color: '#96938f',
-    fontSize: 8,
-    lineHeight: 10,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-  },
-  latestTitle: {
-    marginTop: 4,
-    color: '#111',
-    fontSize: 15,
-    lineHeight: 18,
-    fontWeight: '500',
-    letterSpacing: -0.2,
-  },
-  latestBody: {
-    marginTop: 6,
-    color: '#5c5955',
-    fontSize: 9.5,
-    lineHeight: 13.5,
-  },
-  editorialBlock: {
-    marginHorizontal: 18,
-    marginTop: 48,
-    paddingTop: 18,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#c9c7c3',
-  },
-  editorialEyebrow: {
-    color: '#8f8c87',
-    fontSize: 8,
-    lineHeight: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  editorialTitle: {
-    marginTop: 7,
-    maxWidth: 310,
-    color: '#111',
-    fontSize: 27,
-    lineHeight: 29,
-    fontWeight: '400',
-    letterSpacing: -0.8,
-  },
-  editorialBody: {
-    marginTop: 10,
-    maxWidth: 330,
-    color: '#4b4946',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  panel: {
+  badge: {
     position: 'absolute',
-    left: 22,
-    right: 22,
-    zIndex: 20,
+    right: -2,
+    bottom: -1,
+    width: 13,
+    height: 13,
+    borderRadius: 4,
+    backgroundColor: '#ff2f91',
+    borderWidth: 1.5,
+    borderColor: '#efeeec',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  panelKicker: {
-    color: 'rgba(255,255,255,0.62)',
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1.4,
+  badgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    borderWidth: 1,
+    borderColor: '#fff',
   },
-  panelTitle: {
-    marginTop: 5,
-    color: '#fff',
-    fontSize: 25,
-    lineHeight: 27,
-    fontWeight: '600',
-    letterSpacing: -0.6,
-  },
-  panelRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    marginVertical: 14,
-  },
-  panelRow: {
-    flexDirection: 'row',
-    gap: 14,
-    paddingVertical: 9,
-  },
-  panelTime: {
-    width: 44,
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '700',
-  },
-  panelCopy: {
-    flex: 1,
-  },
-  panelName: {
-    color: '#fff',
+  accountName: {
+    color: '#111',
     fontSize: 13,
     lineHeight: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: -0.15,
   },
-  panelMeta: {
-    marginTop: 2,
-    color: 'rgba(255,255,255,0.54)',
-    fontSize: 9,
+  accountSubtitle: {
+    marginTop: 1,
+    color: '#222',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '400',
+  },
+  accountDate: {
+    color: '#aaa7a2',
+    fontSize: 10,
     lineHeight: 12,
   },
-  bottomBar: {
+  photoPair: {
+    marginTop: 7,
+    marginBottom: 20,
+    flexDirection: 'row',
+    gap: 11,
+  },
+  photoPairPrimary: {
+    flex: 1.45,
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#d7d3ce',
+  },
+  photoPairSecondary: {
+    flex: 0.78,
+    height: '100%',
+    borderRadius: 8,
+    backgroundColor: '#d7d3ce',
+  },
+  lowerPost: {
+    width: '100%',
+    marginTop: 8,
+    borderRadius: 8,
+    backgroundColor: '#d7d3ce',
+  },
+
+  closedNav: {
     position: 'absolute',
-    left: 22,
-    right: 22,
-    height: 50,
+    left: 34,
+    right: 34,
     zIndex: 30,
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  closedNavCenter: {
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  closedNavLabel: {
+    color: 'rgba(255,255,255,0.93)',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '500',
+  },
+  perfectionIcon: {
+    width: 23,
+    height: 19,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  perfectionInner: {
+    width: 15,
+    height: 11,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(235,232,228,0.58)',
+  },
+
+  openMenu: {
+    position: 'absolute',
+    left: 34,
+    right: 34,
+    zIndex: 30,
+  },
+  menuAvatar: {
+    width: 31,
+    height: 31,
+    borderRadius: 15.5,
+    backgroundColor: '#d6d2cd',
+    marginBottom: 19,
+  },
+  menuLinks: {
+    gap: 15,
+  },
+  menuLink: {
+    color: 'rgba(255,255,255,0.94)',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '500',
+  },
+  menuBottomRow: {
+    marginTop: 25,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  bottomLabel: {
-    color: '#fff',
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  trigger: {
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.34)',
+  segmented: {
+    width: 136,
+    height: 36,
+    padding: 3,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.43)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  triggerText: {
-    color: '#fff',
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1.15,
-  },
-  triggerArrow: {
-    color: '#fff',
+  segmentedMuted: {
+    width: 62,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '500',
+  },
+  segmentedSelected: {
+    flex: 1,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedSelectedText: {
+    color: '#222',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  menuSettings: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '500',
   },
 });
