@@ -30,11 +30,11 @@ const ITEMS = STILLS_ITEMS;
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Reference-oriented opalescent substrate. Blur remains a single Gaussian;
 // these values only tune the post-blur material response.
-const DEFAULT_MATERIAL_STRENGTH = 0.86;
-const DEFAULT_MATERIAL_EXPOSURE = 1.0;
-const DEFAULT_MATERIAL_SURFACE = 0.58;
-const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.94;
-const LIGHT_MATERIAL_COLOR = '#dedfdf';
+const DEFAULT_MATERIAL_STRENGTH = 0.92;
+const DEFAULT_MATERIAL_EXPOSURE = 0.98;
+const DEFAULT_MATERIAL_SURFACE = 0.68;
+const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.72;
+const LIGHT_MATERIAL_COLOR = '#dadbdd';
 const DARK_MATERIAL_COLOR = '#141516';
 const DEFAULT_CLOSED_DEPTH = 112;
 // 04-open-s90 remains the optical baseline selected against reference.mp4.
@@ -211,7 +211,7 @@ export default function ProgressiveShowcaseRoute() {
   // that crop in the demo: keep the preceding media fully visible and aligned
   // to the same media column as the rest of the feed.
   const previousItem = ITEMS[41]!;
-  const lowerItem = ITEMS[44]!;
+  const lowerItem = ITEMS[27]!;
   const previousTop = insets.top + width * 0.015;
   const previousHeight = mediaWidth / previousItem.ratio;
 
