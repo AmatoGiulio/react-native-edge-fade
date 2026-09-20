@@ -44,10 +44,10 @@ const requestedOutputDir =
   readArg('--output-dir') ?? 'benchmarks/progressive-showcase/current';
 const outputDir = resolve(repoRoot, requestedOutputDir);
 
-// Normalize the benchmark viewport to the same framing used by the visual
-// reference crop. The raw device screenshots are still preserved; these
-// values only define the deterministic comparison crop.
-const focusEnabled = !hasArg('--no-focus');
+// Full device screenshots are the canonical benchmark. A focused crop is now
+// opt-in only; the old default crop removed the bottom navigation area and made
+// spatial comparisons against the reference misleading.
+const focusEnabled = hasArg('--focus') && !hasArg('--no-focus');
 const focusWidth = Number(readArg('--focus-width') ?? 530);
 const focusHeight = Number(readArg('--focus-height') ?? 565);
 const focusTopRatio = Number(readArg('--focus-top') ?? 0.34);
@@ -371,18 +371,12 @@ const previewPath = resolve(
   outputDir,
   filePrefix ? `${filePrefix}-index.html` : 'index.html'
 );
-const previewClosed = metadata.files.closedFocus ?? metadata.files.closed;
-const previewOpen = metadata.files.openFocus ?? metadata.files.open;
 const focusLabel = metadata.focus
-  ? `${metadata.focus.normalizedSize.width}×${metadata.focus.normalizedSize.height} normalized crop · top ${metadata.focus.topRatio}`
-  : 'full screenshot';
+  ? `${metadata.focus.normalizedSize.width}×${metadata.focus.normalizedSize.height} optional focus crop · top ${metadata.focus.topRatio}`
+  : 'full device screenshot · status bar and bottom navigation included';
 const cacheBust = Date.now();
-const closedFocusMedia = metadata.files.closedFocus
-  ? `<object data="./${metadata.files.closedFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Closed focused benchmark"></object>`
-  : `<img src="./${metadata.files.closed}?t=${cacheBust}" alt="Closed benchmark" />`;
-const openFocusMedia = metadata.files.openFocus
-  ? `<object data="./${metadata.files.openFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Open focused benchmark"></object>`
-  : `<img src="./${metadata.files.open}?t=${cacheBust}" alt="Open benchmark" />`;
+const closedPrimaryMedia = `<img src="./${metadata.files.closed}?t=${cacheBust}" alt="Closed full-device benchmark" />`;
+const openPrimaryMedia = `<img src="./${metadata.files.open}?t=${cacheBust}" alt="Open full-device benchmark" />`;
 
 const previewHtml = `<!doctype html>
 <html>
@@ -427,13 +421,18 @@ const previewHtml = `<!doctype html>
     border: 1px solid #333;
   }
   img { object-fit: contain; }
+  .primary img {
+    width: auto;
+    max-width: 100%;
+    max-height: calc(100vh - 145px);
+    margin: 0 auto;
+    object-fit: contain;
+  }
   .focused img, .focused object {
     aspect-ratio: ${focusWidth} / ${focusHeight};
     max-height: calc(100vh - 145px);
   }
-  .focused object {
-    pointer-events: none;
-  }
+  .focused object { pointer-events: none; }
   details {
     margin-top: 20px;
     border-top: 1px solid #2b2b2b;
@@ -454,31 +453,32 @@ const previewHtml = `<!doctype html>
 </style>
 </head>
 <body>
-  <h1>Progressive showcase — normalized focus</h1>
-  <p class="lead">${focusLabel}. Raw captures are preserved below.</p>
-  <div class="grid focused">
+  <h1>Progressive showcase — full device frame</h1>
+  <p class="lead">${focusLabel}. The benchmark no longer crops away the bottom of the phone.</p>
+  <div class="grid primary">
     <figure>
-      <figcaption>Closed · focus</figcaption>
-      ${closedFocusMedia}
+      <figcaption>Closed · full device</figcaption>
+      ${closedPrimaryMedia}
     </figure>
     <figure>
-      <figcaption>Open · focus</figcaption>
-      ${openFocusMedia}
+      <figcaption>Open · full device</figcaption>
+      ${openPrimaryMedia}
     </figure>
   </div>
+  ${metadata.focus ? `
   <details>
-    <summary>Full device screenshots</summary>
-    <div class="grid">
+    <summary>Optional normalized focus crop</summary>
+    <div class="grid focused">
       <figure>
-        <figcaption>Closed · full</figcaption>
-        <img src="./${metadata.files.closed}?t=${Date.now()}" alt="Closed full benchmark" />
+        <figcaption>Closed · focus</figcaption>
+        <object data="./${metadata.files.closedFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Closed focused benchmark"></object>
       </figure>
       <figure>
-        <figcaption>Open · full</figcaption>
-        <img src="./${metadata.files.open}?t=${Date.now()}" alt="Open full benchmark" />
+        <figcaption>Open · focus</figcaption>
+        <object data="./${metadata.files.openFocus}?t=${cacheBust}" type="image/svg+xml" aria-label="Open focused benchmark"></object>
       </figure>
     </div>
-  </details>
+  </details>` : ''}
   <div class="meta">
     ${metadata.device} · Android ${metadata.android} · ${metadata.wmSize}
   </div>
