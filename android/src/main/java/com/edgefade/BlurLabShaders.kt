@@ -218,6 +218,15 @@ internal object BlurLabShaders {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0001 || materialStrength <= 0.0001) return blurred;
 
+      // Deterministic pipeline probe for the showcase only.
+      // materialStrength == 1.0 is intentionally reserved while we validate the
+      // post-Gaussian material stage. If this pass is actually chained into the
+      // rendered frame, bench=1 must turn every active material pixel magenta.
+      // bench=0 remains the pure progressive Gaussian baseline.
+      if (materialStrength >= 0.9995) {
+        return half4(1.0, 0.0, 1.0, float(blurred.a));
+      }
+
       // Keep the inner/top edge airy. Blur is already present here, but the
       // substrate arrives later and relaxes into full density toward the edge.
       float progression = clamp(materialSurfaceProgression, 0.15, 1.0);
