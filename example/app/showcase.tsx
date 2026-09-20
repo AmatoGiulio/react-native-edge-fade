@@ -156,10 +156,15 @@ export default function ProgressiveShowcaseRoute() {
   const mediaLeft = sceneLeft + mediaInset;
   const mediaWidth = sceneWidth - mediaInset;
 
-  const previousTop = insets.top - width * 0.13;
-  const previousHeight = width * 0.245;
+  // The reference movie itself is cropped above the phone. Do not reproduce
+  // that crop in the demo: keep the preceding media fully visible and aligned
+  // to the same media column as the rest of the feed.
+  const previousItem = ITEMS[41]!;
+  const lowerItem = ITEMS[44]!;
+  const previousTop = insets.top + width * 0.015;
+  const previousHeight = mediaWidth / previousItem.ratio;
 
-  const firstAccountTop = insets.top + width * 0.13;
+  const firstAccountTop = previousTop + previousHeight + width * 0.04;
   const accountHeight = Math.max(52, width * 0.132);
 
   const pairTop = firstAccountTop + accountHeight + width * 0.018;
@@ -170,9 +175,12 @@ export default function ProgressiveShowcaseRoute() {
 
   const secondAccountTop = pairTop + pairHeight + width * 0.045;
   const lowerTop = secondAccountTop + accountHeight + width * 0.018;
-  const lowerHeight = Math.min(
-    Math.max(height - lowerTop + width * 0.055, mediaWidth * 0.72),
-    mediaWidth * 0.94
+  // The feed continues underneath the fixed bottom chrome in the reference.
+  // Overscan the last media beyond the viewport so the progressive field always
+  // has real image content to diffuse all the way to the home-indicator edge.
+  const lowerHeight = Math.max(
+    height - lowerTop + insets.bottom + width * 0.06,
+    mediaWidth * 0.9
   );
 
   // Reference: the chrome stays spatially pinned. Only the material field
@@ -220,17 +228,17 @@ export default function ProgressiveShowcaseRoute() {
       >
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <Image
-            source={ITEMS[16]!.source}
+            source={previousItem.source}
             style={[
               s.previousCard,
               {
                 left: mediaLeft,
                 top: previousTop,
-                width: mediaWidth * 0.92,
+                width: mediaWidth,
                 height: previousHeight,
               },
             ]}
-            contentFit="cover"
+            contentFit="contain"
           />
 
           <View
@@ -299,7 +307,7 @@ export default function ProgressiveShowcaseRoute() {
             ]}
           >
             <AccountRow
-              avatar={ITEMS[20]!}
+              avatar={lowerItem}
               name="roma.afterdark"
               subtitle="A visual diary from Rome"
               date="May 12"
@@ -307,7 +315,7 @@ export default function ProgressiveShowcaseRoute() {
           </View>
 
           <Image
-            source={ITEMS[20]!.source}
+            source={lowerItem.source}
             style={[
               s.lowerPost,
               {
