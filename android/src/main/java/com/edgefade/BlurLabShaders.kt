@@ -200,62 +200,82 @@ internal object BlurLabShaders {
   // Optional demo-only material pass. The public renderer leaves this disabled
   // (strength = 0), preserving its pure progressive-Gaussian contract.
   //
-  // Blur removes high frequencies, but very dark cards can still survive as
-  // large rectangular low-frequency masses. The reference material gradually
-  // compresses those masses into the surrounding surface. Drive that extinction
-  // from the SAME radius field, but with a delayed onset so the inner edge stays
-  // optically sharp and the material only takes over deeper in the blur field.
+  // This is intentionally ONE post-Gaussian material pass. There is no second
+  // blur, no blur stack and no multi-level approximation. The reference feel is
+  // produced by optical-density shaping: luminance is progressively absorbed by
+  // the substrate while blurred chroma is allowed to travel through it.
   val materialComposite = """
     uniform shader content;
     uniform shader mask;
     uniform float materialStrength;
     uniform float3 materialColor;
+    uniform float materialExposure;
+    uniform float materialSurface;
+    uniform float materialSurfaceProgression;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      if (intensity <= 0.0001 || materialStrength <= 0.0001) return blurred;
 
-      // Blur starts immediately; grading deliberately starts later. This avoids
-      // the cheap "white gradient over content" look at the transition edge.
-      float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.12, 0.82, intensity);
-      if (material <= 0.0001) return blurred;
+      // Keep the inner/top edge airy. Blur is already present here, but the
+      // substrate arrives later and relaxes into full density toward the edge.
+      float progression = clamp(materialSurfaceProgression, 0.15, 1.0);
+      float field = smoothstep(0.055, progression, intensity);
+      field = pow(field, 1.32);
+      float material = clamp(materialStrength, 0.0, 1.0) * field;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Reference-like pearl material. Treat the blurred image as chroma
-      // floating inside a milky substrate, rather than painting a white layer
-      // over it. This keeps the source colours present but muted and opaline.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
       float3 chroma = rgb - float3(luma);
-      float materialLuma = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
+      float materialLuma =
+        dot(materialColor, float3(0.2126, 0.7152, 0.0722))
+        * clamp(materialExposure, 0.5, 1.2);
 
-      // First collapse large-scale luminance toward the warm material surface.
-      // Dark areas lift more strongly, which removes the obvious rectangular
-      // card mass visible in the previous run.
-      float darkLift = 1.0 - smoothstep(0.20, 0.72, luma);
-      float lumaMix = (0.46 + 0.18 * darkLift) * material;
+      // Pearl substrate: remove the low-frequency luminance rectangle much more
+      // strongly than the colour. This is the core of the reference feel: the
+      // image stops reading as a card, while its orange/blue/pink colour cloud
+      // remains visible underneath the material.
+      float darkLift = 1.0 - smoothstep(0.18, 0.68, luma);
+      float deep = smoothstep(0.30, 1.0, intensity);
+      float surface = clamp(materialSurface, 0.0, 1.0) * material * deep;
+      float lumaMix = clamp(
+        material * (0.64 + 0.16 * darkLift) + surface * 0.18,
+        0.0,
+        0.94
+      );
       float pearlLuma = mix(luma, materialLuma, lumaMix);
 
-      // Keep roughly two thirds of the chroma at full material so orange/blue/
-      // pink remain perceptible under the frost, as in reference.mp4.
-      float chromaGain = mix(1.0, 0.62, material);
+      // Preserve chroma transmission deliberately. The previous material became
+      // chalky because tint and whole-RGB contrast compression killed the colour
+      // trail. Here colour is only gently damped as density rises.
+      float chromaGain = mix(1.0, 0.80, material);
+      chromaGain *= mix(1.0, 0.93, surface);
       rgb = float3(pearlLuma) + chroma * chromaGain;
 
-      // Compress what contrast remains without flattening the image entirely.
-      float contrast = mix(1.0, 0.58, material);
-      rgb = (rgb - 0.5) * contrast + 0.5;
-
-      // Final translucent substrate: enough to read as milk/pearl, not enough
-      // to erase local colour identity.
-      float tintAmount = 0.34 * material;
+      // A dense translucent sheet still needs a slight body colour, but this is
+      // intentionally small: materialColor defines the substrate, not a veil.
+      float tintAmount = 0.075 * surface;
       rgb = mix(rgb, materialColor, tintAmount);
 
-      // Very small opaline lift concentrated on dark/mid pixels.
-      float pearl = (0.018 + 0.038 * darkLift) * material;
-      rgb = clamp(rgb + pearl, 0.0, 1.0);
+      // Broad, low-amplitude pearlescent sheen. It follows the continuous radius
+      // field rather than forming a discrete band, so the finish reads satin /
+      // metallic without introducing another blur layer.
+      float sheenIn = smoothstep(0.16, 0.52, intensity);
+      float sheenOut = 1.0 - smoothstep(0.66, 1.0, intensity);
+      float sheen = sheenIn * sheenOut * material;
+      float sheenAmount = (0.014 + 0.020 * darkLift) * sheen;
+      rgb = mix(rgb, float3(1.0), sheenAmount);
 
+      // Soft shoulder near full density: prevents the outer edge from becoming
+      // flat white/grey and keeps the colour cloud alive all the way through.
+      float shoulder = smoothstep(0.72, 1.0, intensity) * material;
+      float3 transmitted = float3(materialLuma) + chroma * 0.72;
+      rgb = mix(rgb, transmitted, 0.10 * shoulder);
+
+      rgb = clamp(rgb, 0.0, 1.0);
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
   """.trimIndent()
