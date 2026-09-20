@@ -268,6 +268,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
+        strip.material.setFloatUniform(
+          "origin",
+          source.left.toFloat(),
+          source.top.toFloat(),
+        )
+        strip.material.setFloatUniform(
+          "viewSize",
+          key.width.toFloat(),
+          key.height.toFloat(),
+        )
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
