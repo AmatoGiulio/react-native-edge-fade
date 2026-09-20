@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   PixelRatio,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -314,6 +315,7 @@ export default function ProgressiveShowcaseRoute() {
   return (
     <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, surfaceStyle]} />
 
       <ProgressiveFade
