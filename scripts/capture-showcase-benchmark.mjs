@@ -37,6 +37,8 @@ const requestedSerial = readArg('--serial') ?? process.env.ADB_SERIAL;
 const settleMs = Number(readArg('--settle-ms') ?? 2200);
 const autoOpen = !hasArg('--no-open');
 const reuseApp = hasArg('--reuse-app');
+const noPreview = hasArg('--no-preview');
+const filePrefix = (readArg('--prefix') ?? '').trim();
 const route = readArg('--route') ?? DEFAULT_ROUTE;
 const requestedOutputDir =
   readArg('--output-dir') ?? 'benchmarks/progressive-showcase/current';
@@ -174,7 +176,8 @@ async function ensureClosedShowcase() {
 }
 
 function capture(name) {
-  const path = resolve(outputDir, `${name}.png`);
+  const filename = filePrefix ? `${filePrefix}-${name}.png` : `${name}.png`;
+  const path = resolve(outputDir, filename);
   const png = adb(['exec-out', 'screencap', '-p'], {
     encoding: null,
   });
@@ -245,17 +248,21 @@ const metadata = {
   android: adb(['shell', 'getprop', 'ro.build.version.release']).trim(),
   wmSize: adb(['shell', 'wm', 'size']).trim(),
   files: {
-    closed: 'closed.png',
-    open: 'open.png',
+    closed: filePrefix ? `${filePrefix}-closed.png` : 'closed.png',
+    open: filePrefix ? `${filePrefix}-open.png` : 'open.png',
   },
 };
 
+const metaFilename = filePrefix ? `${filePrefix}-meta.json` : 'meta.json';
 writeFileSync(
-  resolve(outputDir, 'meta.json'),
+  resolve(outputDir, metaFilename),
   `${JSON.stringify(metadata, null, 2)}\n`
 );
 
-const previewPath = resolve(outputDir, 'index.html');
+const previewPath = resolve(
+  outputDir,
+  filePrefix ? `${filePrefix}-index.html` : 'index.html'
+);
 const previewHtml = `<!doctype html>
 <html>
 <head>
@@ -307,11 +314,11 @@ const previewHtml = `<!doctype html>
   <div class="grid">
     <figure>
       <figcaption>Closed</figcaption>
-      <img src="./closed.png?t=${Date.now()}" alt="Closed benchmark" />
+      <img src="./${metadata.files.closed}?t=${Date.now()}" alt="Closed benchmark" />
     </figure>
     <figure>
       <figcaption>Open</figcaption>
-      <img src="./open.png?t=${Date.now()}" alt="Open benchmark" />
+      <img src="./${metadata.files.open}?t=${Date.now()}" alt="Open benchmark" />
     </figure>
   </div>
   <div class="meta">
@@ -320,17 +327,22 @@ const previewHtml = `<!doctype html>
 </body>
 </html>
 `;
-writeFileSync(previewPath, previewHtml);
+if (!noPreview) {
+  writeFileSync(previewPath, previewHtml);
+}
 
 console.log(
   `[showcase-benchmark] saved benchmark pair in ${outputDir}`
 );
-console.log(`[showcase-benchmark] preview: ${previewPath}`);
 
-if (autoOpen && process.platform === 'darwin' && existsSync(previewPath)) {
-  try {
-    run('open', [previewPath]);
-  } catch {
-    // The benchmark itself succeeded; preview opening is convenience only.
+if (!noPreview) {
+  console.log(`[showcase-benchmark] preview: ${previewPath}`);
+
+  if (autoOpen && process.platform === 'darwin' && existsSync(previewPath)) {
+    try {
+      run('open', [previewPath]);
+    } catch {
+      // The benchmark itself succeeded; preview opening is convenience only.
+    }
   }
 }

@@ -5,7 +5,26 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const captureScript = resolve(repoRoot, 'scripts', 'capture-showcase-benchmark.mjs');
-const outputRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'sweep', 'current');
+const runsRoot = resolve(
+  repoRoot,
+  'benchmarks',
+  'progressive-showcase',
+  'sweep',
+  'runs'
+);
+
+function runId(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-') +
+    '_' +
+    [pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds())].join('-');
+}
+
+const outputRoot = resolve(runsRoot, runId());
 
 function readArg(name) {
   const index = process.argv.indexOf(name);
@@ -67,11 +86,27 @@ const hasReference =
   existsSync(resolve(referenceRoot, 'open.png'));
 mkdirSync(outputRoot, { recursive: true });
 
+if (hasReference) {
+  copyFileSync(
+    resolve(referenceRoot, 'closed.png'),
+    resolve(outputRoot, 'reference-closed.png')
+  );
+  copyFileSync(
+    resolve(referenceRoot, 'open.png'),
+    resolve(outputRoot, 'reference-open.png')
+  );
+}
+
+console.log('[showcase-sweep] run: ' + outputRoot);
 console.log('[showcase-sweep] ' + profiles.length + ' profiles · radius=150px · closedDepth=112 · expandedScale=0.70');
 
 for (const [index, profile] of profiles.entries()) {
   const route = 'edgefade://showcase?bench=' + profile.material + ',' + profile.progression + ',150,112,0.70';
-  const relativeOutput = 'benchmarks/progressive-showcase/sweep/current/' + profile.id;
+  const relativeOutput =
+    'benchmarks/progressive-showcase/sweep/runs/' +
+    outputRoot.split('/').pop();
+  const prefix =
+    String(index + 1).padStart(2, '0') + '-' + profile.id;
 
   console.log('\n[showcase-sweep] [' + (index + 1) + '/' + profiles.length + '] ' + profile.id +
     ' material=' + profile.material + ' progression=' + profile.progression);
@@ -80,21 +115,24 @@ for (const [index, profile] of profiles.entries()) {
     captureScript,
     '--route', route,
     '--output-dir', relativeOutput,
+    '--prefix', prefix,
     '--settle-ms', settleMs,
     '--no-open',
+    '--no-preview',
   ];
   if (index > 0) args.push('--reuse-app');
   if (serial) args.push('--serial', serial);
   run(process.execPath, args);
 }
 
-const cards = profiles.map((profile) => {
+const cards = profiles.map((profile, index) => {
+  const prefix = String(index + 1).padStart(2, '0') + '-' + profile.id;
   return [
     '<section class="profile">',
-    '<header><strong>' + profile.id + '</strong><span>material ' + profile.material + ' · progression ' + profile.progression + '</span></header>',
+    '<header><strong>' + prefix + '</strong><span>material ' + profile.material + ' · progression ' + profile.progression + '</span></header>',
     '<div class="pair">',
-    '<figure><figcaption>closed</figcaption><img src="./' + profile.id + '/closed.png?t=' + Date.now() + '"></figure>',
-    '<figure><figcaption>open</figcaption><img src="./' + profile.id + '/open.png?t=' + Date.now() + '"></figure>',
+    '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
+    '<figure><figcaption>open</figcaption><img src="./' + prefix + '-open.png?t=' + Date.now() + '"></figure>',
     '</div>',
     '</section>',
   ].join('\n');
@@ -105,8 +143,8 @@ const referenceSection = hasReference
       '<section class="profile reference">',
       '<header><strong>REFERENCE</strong><span>fixed visual target</span></header>',
       '<div class="pair">',
-      '<figure><figcaption>closed ref</figcaption><img src="../../reference/closed.png?t=' + Date.now() + '"></figure>',
-      '<figure><figcaption>open ref</figcaption><img src="../../reference/open.png?t=' + Date.now() + '"></figure>',
+      '<figure><figcaption>closed ref</figcaption><img src="./reference-closed.png?t=' + Date.now() + '"></figure>',
+      '<figure><figcaption>open ref</figcaption><img src="./reference-open.png?t=' + Date.now() + '"></figure>',
       '</div>',
       '</section>',
     ].join('\n')
@@ -132,7 +170,18 @@ const html = [
 
 const previewPath = resolve(outputRoot, 'index.html');
 writeFileSync(previewPath, html + '\n');
-writeFileSync(resolve(outputRoot, 'profiles.json'), JSON.stringify({ full, profiles }, null, 2) + '\n');
+writeFileSync(
+  resolve(outputRoot, 'profiles.json'),
+  JSON.stringify(
+    {
+      run: outputRoot.split('/').pop(),
+      full,
+      profiles,
+    },
+    null,
+    2
+  ) + '\n'
+);
 
 console.log('\n[showcase-sweep] preview: ' + previewPath);
 
