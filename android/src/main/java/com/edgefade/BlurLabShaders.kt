@@ -200,11 +200,10 @@ internal object BlurLabShaders {
   // Optional demo-only material pass. The public renderer leaves this disabled
   // (strength = 0), preserving its pure progressive-Gaussian contract.
   //
-  // Blur removes high frequencies, but very dark cards can still survive as
-  // large rectangular low-frequency masses. The reference material gradually
-  // compresses those masses into the surrounding surface. Drive that extinction
-  // from the SAME radius field, but with a delayed onset so the inner edge stays
-  // optically sharp and the material only takes over deeper in the blur field.
+  // Reference experiment: a single continuous Gaussian carries the spatial
+  // diffusion. This pass only shapes its optical density. It converges luminance
+  // toward the material while keeping a substantial amount of blurred chroma,
+  // so colour survives as a soft luminous stain instead of a flat image block.
   val materialComposite = """
     uniform shader content;
     uniform shader mask;
@@ -214,29 +213,47 @@ internal object BlurLabShaders {
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float strength = clamp(materialStrength, 0.0, 1.0);
+      if (intensity <= 0.0001 || strength <= 0.0001) return blurred;
 
-      // Blur starts immediately; grading deliberately starts later. This avoids
-      // the cheap "white gradient over content" look at the transition edge.
-      float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.18, 0.84, intensity);
-      if (material <= 0.0001) return blurred;
+      // Airy onset, dense body. No second field and no geometric mask.
+      float field = smoothstep(0.10, 0.92, intensity);
+      field = field * field * (3.0 - 2.0 * field);
+      float material = strength * field;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Reference-like extinction: first reduce chroma, then compress contrast,
-      // then let the blurred content dissolve into the surrounding material.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.82, material);
-      rgb = mix(float3(luma), rgb, saturation);
+      float3 chroma = rgb - float3(luma);
+      float materialLuma =
+        dot(materialColor, float3(0.2126, 0.7152, 0.0722));
 
-      float contrast = mix(1.0, 0.52, material);
-      rgb = (rgb - 0.5) * contrast + 0.5;
+      // Lift dark low-frequency masses more strongly than highlights. This is
+      // what lets rectangular media dissolve without bleaching their colour.
+      float darkness = 1.0 - smoothstep(0.10, 0.72, luma);
+      float density = clamp(material * mix(0.82, 1.22, darkness), 0.0, 0.72);
 
-      float tintAmount = 0.70 * material;
-      rgb = mix(rgb, materialColor, tintAmount);
-      rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
+      // Gentle photographic toe lift gives the sheet the luminous/satin body
+      // visible in the reference instead of a muddy translucent overlay.
+      float liftedLuma = mix(luma, sqrt(max(luma, 0.0)), 0.18 * material);
+      float pearlLuma = mix(liftedLuma, materialLuma, density);
 
+      // Keep broad source colour alive under the material. Chroma is compressed,
+      // not extinguished: the Gaussian has already removed the detail.
+      float chromaGain = mix(1.0, 0.56, clamp(material * 1.65, 0.0, 1.0));
+      chromaGain *= mix(1.0, 0.86, darkness * material);
+      rgb = float3(pearlLuma) + chroma * chromaGain;
+
+      // Soft pearlescent reflection: a small luminance-dependent lift, strongest
+      // in mid/high tones and fully continuous with the same progressive field.
+      float satin =
+        material
+        * (0.020 + 0.040 * smoothstep(0.24, 0.82, liftedLuma))
+        * (1.0 - 0.30 * darkness);
+      rgb = mix(rgb, materialColor, satin);
+
+      rgb = clamp(rgb, 0.0, 1.0);
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
   """.trimIndent()
