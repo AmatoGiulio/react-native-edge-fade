@@ -38,6 +38,7 @@ const MATERIAL_TONES: Record<string, string> = {
 };
 const DEFAULT_MATERIAL_TONE = 'smoke';
 const DEFAULT_MATERIAL_EXPOSURE = 1.0;
+const DEFAULT_MATERIAL_SURFACE = 0.0;
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.78;
@@ -141,6 +142,7 @@ export default function ProgressiveShowcaseRoute() {
     scaleRaw,
     toneRaw,
     exposureRaw,
+    surfaceRaw,
   ] = (benchParam ?? '').split(',');
 
   const materialStrength = clampNumber(
@@ -180,6 +182,12 @@ export default function ProgressiveShowcaseRoute() {
     DEFAULT_MATERIAL_EXPOSURE,
     0.5,
     1.2
+  );
+  const materialSurface = clampNumber(
+    surfaceRaw,
+    DEFAULT_MATERIAL_SURFACE,
+    0,
+    1
   );
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
@@ -248,6 +256,7 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialStrength={materialStrength}
         progressiveMaterialColor={materialTone}
         progressiveMaterialExposure={materialExposure}
+        progressiveMaterialSurface={materialSurface}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView

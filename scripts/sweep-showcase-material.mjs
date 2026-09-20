@@ -50,32 +50,33 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 4: Stage 3 showed that tone is not the bottleneck: light/warm/smoke
-// are perceptually almost identical at the useful low grading strength. Keep
-// the Stage-2/3 winner geometry and smoke tone, then sweep luminance density
-// independently. This targets the remaining mismatch: our empty material is
-// around 0.88-0.90 mean luminance while the reference sits much lower.
-const quickProfiles = [0.78, 0.84, 0.90, 0.96, 1.0].map((exposure) => ({
-  id: 'e' + String(Math.round(exposure * 100)).padStart(2, '0'),
+// Stage 5: Stage 4 proved exposure was the wrong axis: even e78 changed only
+// the deepest materialized pixels while the large white mid-field stayed almost
+// untouched. The reference instead has a broad smoke-colored material sheet.
+// Sweep that sheet's density independently while keeping blur geometry fixed.
+const quickProfiles = [0.35, 0.50, 0.65, 0.80, 0.95].map((surface) => ({
+  id: 's' + String(Math.round(surface * 100)).padStart(2, '0'),
   material: 0.16,
   progression: 1.0,
   scale: 0.78,
   tone: 'smoke',
-  exposure,
+  exposure: 1.0,
+  surface,
 }));
 
 const fullProfiles = [];
 for (const material of [0.12, 0.16, 0.20]) {
-  for (const exposure of [0.76, 0.80, 0.84, 0.88, 0.92, 0.96, 1.0]) {
+  for (const surface of [0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]) {
     const m = String(Math.round(material * 100)).padStart(2, '0');
-    const e = String(Math.round(exposure * 100)).padStart(2, '0');
+    const s = String(Math.round(surface * 100)).padStart(2, '0');
     fullProfiles.push({
-      id: 'm' + m + '-e' + e,
+      id: 'm' + m + '-s' + s,
       material,
       progression: 1.0,
       scale: 0.78,
       tone: 'smoke',
-      exposure,
+      exposure: 1.0,
+      surface,
     });
   }
 }
@@ -111,7 +112,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · stage4 exposure sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=1 · stage5 surface-density sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -125,7 +126,9 @@ for (const [index, profile] of profiles.entries()) {
     ',' +
     profile.tone +
     ',' +
-    profile.exposure;
+    profile.exposure +
+    ',' +
+    profile.surface;
   const relativeOutput =
     'benchmarks/progressive-showcase/sweep/runs/' +
     outputRoot.split('/').pop();
@@ -148,7 +151,9 @@ for (const [index, profile] of profiles.entries()) {
       ' tone=' +
       profile.tone +
       ' exposure=' +
-      profile.exposure
+      profile.exposure +
+      ' surface=' +
+      profile.surface
   );
 
   const args = [
@@ -181,6 +186,8 @@ const cards = profiles.map((profile, index) => {
       profile.tone +
       ' · exposure ' +
       profile.exposure +
+      ' · surface ' +
+      profile.surface +
       '</span></header>',
     '<div class="pair">',
     '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
@@ -214,7 +221,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 4: radius 150px · progression 1.0 · scale 0.78 · material 0.16 · smoke. Sweep only material exposure/density.</p>',
+  '<p class="lead">Stage 5: radius 150px · progression 1.0 · scale 0.78 · material 0.16 · smoke · exposure 1. Sweep only broad material-surface density.</p>',
   referenceSection,
   cards,
   '</body></html>',

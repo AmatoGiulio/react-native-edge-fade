@@ -211,16 +211,25 @@ internal object BlurLabShaders {
     uniform float materialStrength;
     uniform float3 materialColor;
     uniform float materialExposure;
+    uniform float materialSurface;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
 
-      // Blur starts immediately; grading deliberately starts later. This avoids
-      // the cheap "white gradient over content" look at the transition edge.
-      float field = smoothstep(0.18, 0.84, intensity);
-      float material = clamp(materialStrength, 0.0, 1.0) * field;
-      if (material <= 0.0001) return blurred;
+      // Keep grading delayed, but let the physical material sheet establish
+      // density much earlier. Stage 4 proved that changing exposure only affected
+      // a small fraction of the frame because it followed this delayed field.
+      float gradeField = smoothstep(0.18, 0.84, intensity);
+      float surfaceField = smoothstep(0.015, 0.62, intensity);
+      float material = clamp(materialStrength, 0.0, 1.0) * gradeField;
+      float surface = clamp(materialSurface, 0.0, 1.0) * surfaceField;
+
+      if (
+        material <= 0.0001 &&
+        surface <= 0.0001 &&
+        abs(materialExposure - 1.0) <= 0.0001
+      ) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
@@ -238,10 +247,15 @@ internal object BlurLabShaders {
       rgb = mix(rgb, materialColor, tintAmount);
       rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
 
-      // Reference material is materially darker than the page background.
-      // Keep that density independent from grading strength so we can darken
-      // bright empty regions without increasing desaturation/contrast wash.
-      float exposure = mix(1.0, clamp(materialExposure, 0.5, 1.2), field);
+      // Surface density is the missing piece from the reference: a broad,
+      // translucent smoke-colored sheet that compresses BOTH white background
+      // and dark imagery while still retaining the blurred source underneath.
+      rgb = mix(rgb, materialColor, surface);
+
+      // Exposure remains available as a secondary calibration axis, but follows
+      // the broad surface field instead of the delayed grading field.
+      float exposure =
+        mix(1.0, clamp(materialExposure, 0.5, 1.2), surfaceField);
       rgb = clamp(rgb * exposure, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));

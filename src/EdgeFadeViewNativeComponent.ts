@@ -39,6 +39,11 @@ interface NativeProps extends ViewProps {
    * 1 keeps luminance unchanged. Public progressive blur never sets this.
    */
   progressiveMaterialExposure?: CodegenTypes.Float;
+  /**
+   * Internal showcase surface density. Blends the blurred scene toward the
+   * material color over a broader field than the grading pass.
+   */
+  progressiveMaterialSurface?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

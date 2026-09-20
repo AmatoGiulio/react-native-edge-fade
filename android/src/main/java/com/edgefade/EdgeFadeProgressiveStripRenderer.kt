@@ -40,6 +40,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialStrength: Float,
     val materialColor: Int,
     val materialExposure: Float,
+    val materialSurface: Float,
   )
 
   private data class CurveSamples(
@@ -100,6 +101,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialColor = host.progressiveMaterialColor,
       materialExposure =
         BlurLabGeometry.finite(host.progressiveMaterialExposure, 1f).coerceIn(0.5f, 1.2f),
+      materialSurface =
+        BlurLabGeometry.finite(host.progressiveMaterialSurface).coerceIn(0f, 1f),
     )
 
     if (key == next) return true
@@ -259,7 +262,11 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     val finalEffect =
-      if (key.materialStrength > 0f) {
+      if (
+        key.materialStrength > 0f ||
+        key.materialSurface > 0f ||
+        kotlin.math.abs(key.materialExposure - 1f) > 0.0001f
+      ) {
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
@@ -269,6 +276,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           Color.blue(key.materialColor) / 255f,
         )
         strip.material.setFloatUniform("materialExposure", key.materialExposure)
+        strip.material.setFloatUniform("materialSurface", key.materialSurface)
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
           blurEffect,

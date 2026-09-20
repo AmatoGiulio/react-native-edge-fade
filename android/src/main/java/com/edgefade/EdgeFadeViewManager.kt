@@ -130,6 +130,11 @@ class EdgeFadeViewManager :
     view.progressiveMaterialExposure = value.coerceIn(0.5f, 1.2f)
   }
 
+  @ReactProp(name = "progressiveMaterialSurface", defaultFloat = 0f)
+  override fun setProgressiveMaterialSurface(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialSurface = value.coerceIn(0f, 1f)
+  }
+
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) { view.frostSaturation = value }
 
