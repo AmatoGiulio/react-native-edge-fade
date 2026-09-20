@@ -35,7 +35,8 @@ const ITEMS = STILLS_ITEMS;
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
 const DEFAULT_MATERIAL_STRENGTH = 0.36;
-const MATERIAL_COLOR = '#e3e0dc';
+const LIGHT_MATERIAL_COLOR = '#e7e2dc';
+const DARK_MATERIAL_COLOR = '#1a1917';
 const DEFAULT_CLOSED_DEPTH = 112;
 // 04-open-s90 remains the optical baseline selected against reference.mp4.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
@@ -258,15 +259,21 @@ export default function ProgressiveShowcaseRoute() {
   }));
 
   const menuLinkTextStyle = useAnimatedStyle(() => ({
+    // The reference keeps menu copy white in both themes. The pearly material
+    // supplies contrast in light mode; a subtle shadow preserves edge clarity.
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#242321', 'rgba(255,255,255,0.94)']
+      ['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.98)']
     ),
   }));
 
   const menuControlStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.68, 0.9, 1], [0, 0.84, 1]),
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.35, 1], [0, 0, 1]),
   }));
 
   const surfaceStyle = useAnimatedStyle(() => ({
@@ -279,20 +286,22 @@ export default function ProgressiveShowcaseRoute() {
 
   const materialSegmentColors = darkMode
     ? {
-        activeContainerColor: '#37332f',
-        activeContentColor: '#f6f3ee',
-        activeBorderColor: '#6d665f',
-        inactiveContainerColor: '#171614',
-        inactiveContentColor: '#aaa39a',
-        inactiveBorderColor: '#4f4a44',
+        // Reference: selected Dark is nearly black, with a smoky graphite track.
+        activeContainerColor: '#090807',
+        activeContentColor: '#f8f5f0',
+        activeBorderColor: '#625d56',
+        inactiveContainerColor: '#45413d',
+        inactiveContentColor: '#d9d4cc',
+        inactiveBorderColor: '#625d56',
       }
     : {
-        activeContainerColor: '#faf8f4',
-        activeContentColor: '#1d1b18',
-        activeBorderColor: '#d7d1c8',
-        inactiveContainerColor: '#dedad3',
-        inactiveContentColor: '#777168',
-        inactiveBorderColor: '#c9c2b8',
+        // Reference: a warm pearl track, not a white control floating on top.
+        activeContainerColor: '#f7f4ef',
+        activeContentColor: '#171513',
+        activeBorderColor: '#d0c8bd',
+        inactiveContainerColor: '#cec8bf',
+        inactiveContentColor: '#6d675f',
+        inactiveBorderColor: '#bdb5aa',
       };
 
   const setTheme = (nextDark: boolean) => {
@@ -332,7 +341,9 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend="agsl"
         progressiveMaterialStrength={materialStrength}
-        progressiveMaterialColor={MATERIAL_COLOR}
+        progressiveMaterialColor={
+          darkMode ? DARK_MATERIAL_COLOR : LIGHT_MATERIAL_COLOR
+        }
         style={StyleSheet.absoluteFill}
       >
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -442,6 +453,18 @@ export default function ProgressiveShowcaseRoute() {
       </ProgressiveFade>
 
       <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={[StyleSheet.absoluteFill, s.openBackdrop, backdropStyle]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close perfection menu"
+          onPress={togglePanel}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      <Animated.View
         pointerEvents={open ? 'none' : 'auto'}
         style={[
           s.closedNav,
@@ -507,7 +530,7 @@ export default function ProgressiveShowcaseRoute() {
           <ComposeHost
             matchContents
             colorScheme={darkMode ? 'dark' : 'light'}
-            seedColor="#8b8176"
+            seedColor={darkMode ? '#514b45' : '#9a8f82'}
             style={s.materialThemeHost}
           >
             <SingleChoiceSegmentedButtonRow>
@@ -682,6 +705,10 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(224,220,214,0.96)',
   },
 
+  openBackdrop: {
+    zIndex: 20,
+    backgroundColor: 'transparent',
+  },
   openMenu: {
     position: 'absolute',
     zIndex: 30,
@@ -699,7 +726,10 @@ const s = StyleSheet.create({
   menuLink: {
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '500',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.18)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   menuBottomRow: {
     marginTop: 25,
