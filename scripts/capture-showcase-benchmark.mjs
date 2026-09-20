@@ -36,6 +36,7 @@ function run(command, args, options = {}) {
 const requestedSerial = readArg('--serial') ?? process.env.ADB_SERIAL;
 const settleMs = Number(readArg('--settle-ms') ?? 2200);
 const autoOpen = !hasArg('--no-open');
+const reuseApp = hasArg('--reuse-app');
 const route = readArg('--route') ?? DEFAULT_ROUTE;
 const requestedOutputDir =
   readArg('--output-dir') ?? 'benchmarks/progressive-showcase/current';
@@ -113,6 +114,65 @@ async function waitForDescription(description, timeoutMs = 20000) {
   );
 }
 
+async function waitForToggle(timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const xml = dumpUi();
+      const open = boundsForDescription(xml, 'Open tonight panel');
+      if (open) return { state: 'closed', bounds: open };
+
+      const close = boundsForDescription(xml, 'Close tonight panel');
+      if (close) return { state: 'open', bounds: close };
+    } catch (error) {
+      lastError = error;
+    }
+
+    await sleep(250);
+  }
+
+  const suffix = lastError ? ` Last adb error: ${lastError.message}` : '';
+  throw new Error(`Timed out waiting for showcase toggle.${suffix}`);
+}
+
+function launchShowcase() {
+  adb([
+    'shell',
+    'am',
+    'start',
+    '-W',
+    '-a',
+    'android.intent.action.VIEW',
+    '-d',
+    route,
+    '-p',
+    PACKAGE,
+  ]);
+}
+
+async function ensureClosedShowcase() {
+  let toggle;
+
+  try {
+    toggle = await waitForToggle();
+  } catch {
+    console.log('[showcase-benchmark] route not ready; relaunching once...');
+    launchShowcase();
+    toggle = await waitForToggle();
+  }
+
+  if (toggle.state === 'open') {
+    const tap = center(toggle.bounds);
+    adb(['shell', 'input', 'tap', String(tap.x), String(tap.y)]);
+    await waitForDescription('Open tonight panel', 8000);
+    await sleep(650);
+  }
+
+  return waitForDescription('Open tonight panel', 8000);
+}
+
 function capture(name) {
   const path = resolve(outputDir, `${name}.png`);
   const png = adb(['exec-out', 'screencap', '-p'], {
@@ -143,23 +203,20 @@ function center(bounds) {
 mkdirSync(outputDir, { recursive: true });
 
 console.log(`[showcase-benchmark] device: ${serial}`);
-console.log('[showcase-benchmark] launching showcase...');
+console.log(
+  `[showcase-benchmark] launching showcase${reuseApp ? ' (reuse app)' : ''}...`
+);
 
-adb(['shell', 'am', 'force-stop', PACKAGE]);
-adb([
-  'shell',
-  'am',
-  'start',
-  '-W',
-  '-a',
-  'android.intent.action.VIEW',
-  '-d',
-  route,
-  '-p',
-  PACKAGE,
-]);
+if (!reuseApp) {
+  adb(['shell', 'am', 'force-stop', PACKAGE]);
+}
 
-const openButton = await waitForDescription('Open tonight panel');
+launchShowcase();
+
+// Deep-linking the same screen repeatedly can preserve the previous React state
+// while only updating route params. Always normalize the screen to CLOSED before
+// taking the first screenshot instead of assuming a fresh mount.
+const openButton = await ensureClosedShowcase();
 
 // Expo Image decoding can lag route interactivity by more than a frame on a
 // cold launch. Wait long enough for the hero/stills to be materially present,

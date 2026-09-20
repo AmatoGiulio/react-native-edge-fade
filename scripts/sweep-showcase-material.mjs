@@ -83,6 +83,7 @@ for (const [index, profile] of profiles.entries()) {
     '--settle-ms', settleMs,
     '--no-open',
   ];
+  if (index > 0) args.push('--reuse-app');
   if (serial) args.push('--serial', serial);
   run(process.execPath, args);
 }
