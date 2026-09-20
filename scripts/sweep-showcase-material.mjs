@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,6 +28,8 @@ const serial = readArg('--serial') ?? process.env.ADB_SERIAL;
 const settleMs = readArg('--settle-ms') ?? '2200';
 const full = hasArg('--full');
 const autoOpen = !hasArg('--no-open');
+const referenceClosed = readArg('--reference-closed');
+const referenceOpen = readArg('--reference-open');
 
 const quickProfiles = [
   { id: 'blur-only', material: 0.0, progression: 0.96 },
@@ -51,6 +53,15 @@ for (const material of [0, 0.12, 0.24, 0.36, 0.48, 0.64, 0.8, 0.96]) {
 
 const profiles = full ? fullProfiles : quickProfiles;
 const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
+if (referenceClosed || referenceOpen) {
+  if (!referenceClosed || !referenceOpen) {
+    throw new Error('Pass both --reference-closed and --reference-open.');
+  }
+  mkdirSync(referenceRoot, { recursive: true });
+  copyFileSync(resolve(referenceClosed), resolve(referenceRoot, 'closed.png'));
+  copyFileSync(resolve(referenceOpen), resolve(referenceRoot, 'open.png'));
+}
+
 const hasReference =
   existsSync(resolve(referenceRoot, 'closed.png')) &&
   existsSync(resolve(referenceRoot, 'open.png'));
