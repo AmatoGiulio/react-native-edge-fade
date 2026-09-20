@@ -40,11 +40,12 @@ const DEFAULT_MATERIAL_TONE = 'smoke';
 // Stage 6 winner: 0.90 compresses the white shoulder close to the reference
 // without crushing the retained coloured low-frequency structure.
 const DEFAULT_MATERIAL_EXPOSURE = 0.90;
-// Keep the compact closed footer dense enough to extinguish the dark card,
-// but allow the expanded/open state to use a different density. The reference
-// keeps noticeably more local colour/structure once the sheet is fully open.
+// Keep the compact closed footer dense enough to extinguish the dark card.
+// Stage 9 open-surface sweep: s84 best matches the reference balance — it
+// removes the low-frequency dark-card mass without flattening the local colour
+// and translucency into the gray slab visible at s90–s95.
 const DEFAULT_CLOSED_MATERIAL_SURFACE = 0.95;
-const DEFAULT_OPEN_MATERIAL_SURFACE = 0.95;
+const DEFAULT_OPEN_MATERIAL_SURFACE = 0.84;
 // Stage 8 full-frame winner:
 // - closed: g100 preserves the compact translucent footer without a gray slab
 // - open: g44 puts the material takeover at the same vertical band as the ref
