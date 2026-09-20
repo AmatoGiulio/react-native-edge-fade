@@ -9,6 +9,12 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import {
+  Host as ComposeHost,
+  SegmentedButton,
+  SingleChoiceSegmentedButtonRow,
+  Text as ComposeText,
+} from '@expo/ui/jetpack-compose';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -271,47 +277,23 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
-  const segmentedTrackStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['rgba(226,223,218,0.58)', 'rgba(10,10,9,0.68)']
-    ),
-    borderColor: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['rgba(255,255,255,0.52)', 'rgba(255,255,255,0.14)']
-    ),
-  }));
-
-  const segmentedThumbStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: interpolate(themeProgress.value, [0, 1], [65, 0]),
-      },
-    ],
-    backgroundColor: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#fbfaf8', '#34322f']
-    ),
-  }));
-
-  const darkLabelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#7d7973', '#ffffff']
-    ),
-  }));
-
-  const lightLabelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#232220', 'rgba(255,255,255,0.62)']
-    ),
-  }));
+  const materialSegmentColors = darkMode
+    ? {
+        activeContainerColor: '#37332f',
+        activeContentColor: '#f6f3ee',
+        activeBorderColor: '#6d665f',
+        inactiveContainerColor: '#171614',
+        inactiveContentColor: '#aaa39a',
+        inactiveBorderColor: '#4f4a44',
+      }
+    : {
+        activeContainerColor: '#faf8f4',
+        activeContentColor: '#1d1b18',
+        activeBorderColor: '#d7d1c8',
+        inactiveContainerColor: '#dedad3',
+        inactiveContentColor: '#777168',
+        inactiveBorderColor: '#c9c2b8',
+      };
 
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
@@ -522,38 +504,34 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
 
         <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
-          <Animated.View style={[s.segmented, segmentedTrackStyle]}>
-            <Animated.View
-              pointerEvents="none"
-              style={[s.segmentedThumb, segmentedThumbStyle]}
-            />
+          <ComposeHost
+            matchContents
+            colorScheme={darkMode ? 'dark' : 'light'}
+            seedColor="#8b8176"
+            style={s.materialThemeHost}
+          >
+            <SingleChoiceSegmentedButtonRow>
+              <SegmentedButton
+                selected={darkMode}
+                onClick={() => setTheme(true)}
+                colors={materialSegmentColors}
+              >
+                <SegmentedButton.Label>
+                  <ComposeText style={s.materialThemeLabel}>Dark</ComposeText>
+                </SegmentedButton.Label>
+              </SegmentedButton>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Use dark appearance"
-              accessibilityState={{ selected: darkMode }}
-              onPress={() => setTheme(true)}
-              hitSlop={8}
-              style={s.segmentedChoice}
-            >
-              <Animated.Text style={[s.segmentedLabel, darkLabelStyle]}>
-                Dark
-              </Animated.Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Use light appearance"
-              accessibilityState={{ selected: !darkMode }}
-              onPress={() => setTheme(false)}
-              hitSlop={8}
-              style={s.segmentedChoice}
-            >
-              <Animated.Text style={[s.segmentedLabel, lightLabelStyle]}>
-                Light
-              </Animated.Text>
-            </Pressable>
-          </Animated.View>
+              <SegmentedButton
+                selected={!darkMode}
+                onClick={() => setTheme(false)}
+                colors={materialSegmentColors}
+              >
+                <SegmentedButton.Label>
+                  <ComposeText style={s.materialThemeLabel}>Light</ComposeText>
+                </SegmentedButton.Label>
+              </SegmentedButton>
+            </SingleChoiceSegmentedButtonRow>
+          </ComposeHost>
         </Animated.View>
       </Animated.View>
     </View>
@@ -729,37 +707,10 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  segmented: {
-    width: 136,
-    height: 36,
-    padding: 3,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
+  materialThemeHost: {
+    alignSelf: 'flex-start',
   },
-  segmentedThumb: {
-    position: 'absolute',
-    left: 3,
-    top: 3,
-    width: 65,
-    height: 30,
-    borderRadius: 15,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-  },
-  segmentedChoice: {
-    flex: 1,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  segmentedLabel: {
+  materialThemeLabel: {
     fontSize: 11,
     lineHeight: 13,
     fontWeight: '600',
