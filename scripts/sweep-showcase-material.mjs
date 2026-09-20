@@ -50,36 +50,38 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 5: Stage 4 proved exposure was the wrong axis: even e78 changed only
-// the deepest materialized pixels while the large white mid-field stayed almost
-// untouched. The reference instead has a broad smoke-colored material sheet.
-// Sweep that sheet's density independently while keeping blur geometry fixed.
-const quickProfiles = [0.35, 0.50, 0.65, 0.80, 0.95].map((surface) => ({
-  id: 's' + String(Math.round(surface * 100)).padStart(2, '0'),
+// Stage 6: Stage 5 identified surface=0.95 as the strongest match for broad
+// material extinction. The remaining mismatch is the white/highlight shoulder:
+// our p95 is still near 249 while the reference sits around 227. Exposure now
+// follows the broad surfaceField, so re-sweep it with surface locked at 0.95.
+const makeExposureProfile = (exposure) => ({
+  id: 'e' + String(Math.round(exposure * 100)).padStart(2, '0'),
   material: 0.16,
   progression: 1.0,
   scale: 0.78,
   tone: 'smoke',
-  exposure: 1.0,
-  surface,
-}));
+  exposure,
+  surface: 0.95,
+});
 
-const fullProfiles = [];
-for (const material of [0.12, 0.16, 0.20]) {
-  for (const surface of [0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]) {
-    const m = String(Math.round(material * 100)).padStart(2, '0');
-    const s = String(Math.round(surface * 100)).padStart(2, '0');
-    fullProfiles.push({
-      id: 'm' + m + '-s' + s,
-      material,
-      progression: 1.0,
-      scale: 0.78,
-      tone: 'smoke',
-      exposure: 1.0,
-      surface,
-    });
-  }
-}
+const quickProfiles = [0.82, 0.86, 0.90, 0.94, 0.98].map(
+  makeExposureProfile
+);
+
+const fullProfiles = [
+  0.78,
+  0.80,
+  0.82,
+  0.84,
+  0.86,
+  0.88,
+  0.90,
+  0.92,
+  0.94,
+  0.96,
+  0.98,
+  1.0,
+].map(makeExposureProfile);
 
 const profiles = full ? fullProfiles : quickProfiles;
 const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
@@ -112,7 +114,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=1 · stage5 surface-density sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · surface=0.95 · stage6 exposure sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -221,7 +223,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 5: radius 150px · progression 1.0 · scale 0.78 · material 0.16 · smoke · exposure 1. Sweep only broad material-surface density.</p>',
+  '<p class="lead">Stage 6: radius 150px · progression 1.0 · scale 0.78 · material 0.16 · smoke · surface 0.95. Sweep only broad-field exposure to compress the white shoulder.</p>',
   referenceSection,
   cards,
   '</body></html>',

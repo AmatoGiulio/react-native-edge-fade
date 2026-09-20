@@ -38,7 +38,9 @@ const MATERIAL_TONES: Record<string, string> = {
 };
 const DEFAULT_MATERIAL_TONE = 'smoke';
 const DEFAULT_MATERIAL_EXPOSURE = 1.0;
-const DEFAULT_MATERIAL_SURFACE = 0.0;
+// Stage 5 winner: the broad smoke sheet needs to be almost fully established
+// to suppress the rectangular low-frequency image masses seen in the old demo.
+const DEFAULT_MATERIAL_SURFACE = 0.95;
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.78;
