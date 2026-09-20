@@ -212,18 +212,44 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    // Full-view geometry is needed only by the demo material pass. It lets the
+    // optical shoulder bow upward like the reference instead of reading as a
+    // flat horizontal edge.
+    uniform float2 origin;
+    uniform float2 viewSize;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0001 || materialStrength <= 0.0001) return blurred;
 
-      // Reference-oriented optical field. The first shoulder remains open and
-      // breathable; density then arrives quickly through the body, as in the
-      // reference, without introducing any extra blur stage.
+      // Reference-oriented optical field. The source movie does not have a
+      // straight horizontal material front: over the media it reads as one
+      // broad elliptical / domed shoulder. Keep the Gaussian itself continuous
+      // and shape only this single optical field in 2D.
       float progression = clamp(materialSurfaceProgression, 0.45, 0.90);
-      float field = smoothstep(0.08, progression, intensity);
-      field = pow(field, 1.25);
+      float edgeField = smoothstep(0.08, progression, intensity);
+      edgeField = pow(edgeField, 1.25);
+
+      float2 fullCoord = coord + origin;
+      float2 safeView = max(viewSize, float2(1.0));
+      float2 uv = fullCoord / safeView;
+
+      // Wide ellipse, deliberately larger than either card. Near the upper
+      // shoulder it concentrates material in the centre and leaves the sides
+      // more open; deeper in the panel it converges back to a full-width sheet.
+      // This reproduces the rounded "oval over the image" visible in the ref.
+      float2 ovalCenter = float2(0.54, 0.60);
+      float2 ovalRadius = float2(0.62, 0.27);
+      float2 ovalCoord = (uv - ovalCenter) / ovalRadius;
+      float ellipse = dot(ovalCoord, ovalCoord);
+      float oval = 1.0 - smoothstep(0.70, 1.18, ellipse);
+
+      float deepBlend = smoothstep(0.42, 0.90, intensity);
+      float shoulder = mix(0.34 + 0.66 * oval, 1.0, deepBlend);
+      float ovalLift =
+        oval * (1.0 - deepBlend) * smoothstep(0.04, 0.50, intensity) * 0.22;
+      float field = clamp(edgeField * shoulder + ovalLift, 0.0, 1.0);
       float material = clamp(materialStrength, 0.0, 1.0) * field;
 
       float alpha = max(float(blurred.a), 0.0001);
