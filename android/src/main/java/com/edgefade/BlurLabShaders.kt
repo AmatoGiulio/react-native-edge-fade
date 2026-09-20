@@ -225,16 +225,26 @@ internal object BlurLabShaders {
       float light = smoothstep(0.40, 0.72, anchor);
       float surface = clamp(materialSurface, 0.0, 1.0);
 
-      // Compress luminance independently from colour. Pearl has a narrow tonal
-      // range; smoke transmits substantially more of the source illumination.
-      // The toe lifts dark stains without turning the whole dark sheet grey.
-      float slope = mix(0.72, 0.30, light) * mix(1.0, 0.85, surface);
+      // A neutral scattering body absorbs contrast before transmitting colour.
+      // In particular smoke must not inherit the source's near-black troughs
+      // and broad saturated blue plateaus as an unmodified coloured fog.
       float exposed = clamp(luma * materialExposure, 0.0, 1.0);
-      float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
+      float contrast = mix(0.55, 0.45, light);
+      float neutralWeight = 0.65 * surface;
+      float bodyLuma = anchor + (exposed - 0.5) * contrast * (1.0 - neutralWeight);
+
+      // Backdrop-driven surface reflection: no constant lift, spatial spotlight
+      // or extra sample/blur. Dark source energy contributes no reflection.
+      float reflection = smoothstep(0.08, 0.85, exposed);
+      bodyLuma += mix(0.02, 0.04, surface) * surface * reflection;
       float outputLuma = mix(luma, bodyLuma, density);
+
+      // Keep the source hue, but let it read as a stain inside a neutral body.
+      // A small residual transmission survives even for saturated source hues.
       float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
-      float transmission = exp(-density * mix(0.65, 1.0, light));
-      transmission /= 1.0 + density * 2.0 * magnitude;
+      float bodyTransmission = mix(0.28, 0.18, surface);
+      bodyTransmission = 0.025 + bodyTransmission / (1.0 + 2.0 * magnitude);
+      float transmission = mix(1.0, bodyTransmission, density);
       float3 result = float3(outputLuma) + chroma * transmission;
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }
