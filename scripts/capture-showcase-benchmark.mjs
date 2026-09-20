@@ -44,6 +44,30 @@ const requestedOutputDir =
   readArg('--output-dir') ?? 'benchmarks/progressive-showcase/current';
 const outputDir = resolve(repoRoot, requestedOutputDir);
 
+// Normalize the benchmark viewport to the same framing used by the visual
+// reference crop. The raw device screenshots are still preserved; these
+// values only define the deterministic comparison crop.
+const focusEnabled = !hasArg('--no-focus');
+const focusWidth = Number(readArg('--focus-width') ?? 530);
+const focusHeight = Number(readArg('--focus-height') ?? 565);
+const focusTopRatio = Number(readArg('--focus-top') ?? 0.34);
+
+if (
+  !Number.isFinite(focusWidth) ||
+  !Number.isFinite(focusHeight) ||
+  focusWidth <= 0 ||
+  focusHeight <= 0
+) {
+  throw new Error('Focus width/height must be positive numbers.');
+}
+if (
+  !Number.isFinite(focusTopRatio) ||
+  focusTopRatio < 0 ||
+  focusTopRatio > 1
+) {
+  throw new Error('--focus-top must be a normalized value between 0 and 1.');
+}
+
 function connectedDevices() {
   const stdout = run('adb', ['devices']);
   return stdout
@@ -175,6 +199,25 @@ async function ensureClosedShowcase() {
   return waitForDescription('Open tonight panel', 8000);
 }
 
+function pngSize(png) {
+  const signature = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+  if (
+    !Buffer.isBuffer(png) ||
+    png.length < 24 ||
+    !png.subarray(0, 8).equals(signature) ||
+    png.subarray(12, 16).toString('ascii') !== 'IHDR'
+  ) {
+    throw new Error('Expected a valid PNG with an IHDR chunk.');
+  }
+
+  return {
+    width: png.readUInt32BE(16),
+    height: png.readUInt32BE(20),
+  };
+}
+
 function capture(name) {
   const filename = filePrefix ? `${filePrefix}-${name}.png` : `${name}.png`;
   const path = resolve(outputDir, filename);
@@ -182,18 +225,68 @@ function capture(name) {
     encoding: null,
   });
 
-  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  if (!Buffer.isBuffer(png) || png.length < signature.length || !png.subarray(0, 8).equals(signature)) {
-    throw new Error(
-      `adb screencap did not return a valid PNG buffer for "${name}".`
-    );
-  }
-
+  const size = pngSize(png);
   writeFileSync(path, png);
   console.log(
-    `[showcase-benchmark] ${name} PNG: ${Math.round(png.length / 1024)} KiB`
+    `[showcase-benchmark] ${name} PNG: ${size.width}x${size.height} · ${Math.round(png.length / 1024)} KiB`
   );
-  return path;
+  return { path, filename, size };
+}
+
+function focusCropFor(size) {
+  const aspect = focusWidth / focusHeight;
+  let cropWidth = size.width;
+  let cropHeight = cropWidth / aspect;
+
+  // Usually the crop spans the full device width. Keep this generic for
+  // unusually short/wide screenshots by fitting the requested aspect inside.
+  if (cropHeight > size.height) {
+    cropHeight = size.height;
+    cropWidth = cropHeight * aspect;
+  }
+
+  const left = (size.width - cropWidth) / 2;
+  const maxTop = Math.max(0, size.height - cropHeight);
+  const top = Math.min(size.height * focusTopRatio, maxTop);
+
+  return {
+    left,
+    top,
+    width: cropWidth,
+    height: cropHeight,
+  };
+}
+
+function formatNumber(value) {
+  return Number(value.toFixed(3));
+}
+
+function writeFocusArtifact(captureResult) {
+  if (!focusEnabled) return null;
+
+  const crop = focusCropFor(captureResult.size);
+  const filename = captureResult.filename.replace(/\.png$/i, '-focus.svg');
+  const path = resolve(outputDir, filename);
+  const viewBox = [
+    formatNumber(crop.left),
+    formatNumber(crop.top),
+    formatNumber(crop.width),
+    formatNumber(crop.height),
+  ].join(' ');
+
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${focusWidth}" height="${focusHeight}" viewBox="${viewBox}">`,
+    `  <image href="./${captureResult.filename}" x="0" y="0" width="${captureResult.size.width}" height="${captureResult.size.height}" />`,
+    '</svg>',
+    '',
+  ].join('\n');
+
+  writeFileSync(path, svg);
+  console.log(
+    `[showcase-benchmark] focus: ${filename} · crop ${viewBox} -> ${focusWidth}x${focusHeight}`
+  );
+
+  return { path, filename, crop };
 }
 
 function center(bounds) {
@@ -226,8 +319,9 @@ const openButton = await ensureClosedShowcase();
  // otherwise the benchmark is worthless.
 await sleep(settleMs);
 
-const closedPath = capture('closed');
-console.log(`[showcase-benchmark] closed: ${closedPath}`);
+const closedCapture = capture('closed');
+const closedFocus = writeFocusArtifact(closedCapture);
+console.log(`[showcase-benchmark] closed: ${closedCapture.path}`);
 
 const tap = center(openButton);
 adb(['shell', 'input', 'tap', String(tap.x), String(tap.y)]);
@@ -236,8 +330,9 @@ await waitForDescription('Close tonight panel');
 // OPEN_MS is 500ms; wait past the animation endpoint before the benchmark.
 await sleep(750);
 
-const openPath = capture('open');
-console.log(`[showcase-benchmark] open:   ${openPath}`);
+const openCapture = capture('open');
+const openFocus = writeFocusArtifact(openCapture);
+console.log(`[showcase-benchmark] open:   ${openCapture.path}`);
 
 const metadata = {
   capturedAt: new Date().toISOString(),
@@ -248,9 +343,22 @@ const metadata = {
   android: adb(['shell', 'getprop', 'ro.build.version.release']).trim(),
   wmSize: adb(['shell', 'wm', 'size']).trim(),
   files: {
-    closed: filePrefix ? `${filePrefix}-closed.png` : 'closed.png',
-    open: filePrefix ? `${filePrefix}-open.png` : 'open.png',
+    closed: closedCapture.filename,
+    open: openCapture.filename,
+    closedFocus: closedFocus?.filename ?? null,
+    openFocus: openFocus?.filename ?? null,
   },
+  focus: focusEnabled
+    ? {
+        normalizedSize: {
+          width: focusWidth,
+          height: focusHeight,
+        },
+        topRatio: focusTopRatio,
+        closedCrop: closedFocus?.crop ?? null,
+        openCrop: openFocus?.crop ?? null,
+      }
+    : null,
 };
 
 const metaFilename = filePrefix ? `${filePrefix}-meta.json` : 'meta.json';
@@ -263,6 +371,12 @@ const previewPath = resolve(
   outputDir,
   filePrefix ? `${filePrefix}-index.html` : 'index.html'
 );
+const previewClosed = metadata.files.closedFocus ?? metadata.files.closed;
+const previewOpen = metadata.files.openFocus ?? metadata.files.open;
+const focusLabel = metadata.focus
+  ? `${metadata.focus.normalizedSize.width}×${metadata.focus.normalizedSize.height} normalized crop · top ${metadata.focus.topRatio}`
+  : 'full screenshot';
+
 const previewHtml = `<!doctype html>
 <html>
 <head>
@@ -279,7 +393,12 @@ const previewHtml = `<!doctype html>
     background: #111;
     color: #eee;
   }
-  h1 { margin: 0 0 18px; font-size: 18px; font-weight: 600; }
+  h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+  .lead {
+    margin: 0 0 18px;
+    color: #999;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   .grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -297,11 +416,26 @@ const previewHtml = `<!doctype html>
   img {
     display: block;
     width: 100%;
-    max-height: calc(100vh - 100px);
     object-fit: contain;
     background: #222;
     border: 1px solid #333;
   }
+  .focused img {
+    aspect-ratio: ${focusWidth} / ${focusHeight};
+    max-height: calc(100vh - 145px);
+  }
+  details {
+    margin-top: 20px;
+    border-top: 1px solid #2b2b2b;
+    padding-top: 14px;
+  }
+  summary {
+    cursor: pointer;
+    color: #999;
+    font-size: 12px;
+  }
+  details .grid { margin-top: 14px; }
+  details img { max-height: 75vh; }
   .meta {
     margin-top: 16px;
     font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -310,17 +444,31 @@ const previewHtml = `<!doctype html>
 </style>
 </head>
 <body>
-  <h1>Progressive showcase — current benchmark</h1>
-  <div class="grid">
+  <h1>Progressive showcase — normalized focus</h1>
+  <p class="lead">${focusLabel}. Raw captures are preserved below.</p>
+  <div class="grid focused">
     <figure>
-      <figcaption>Closed</figcaption>
-      <img src="./${metadata.files.closed}?t=${Date.now()}" alt="Closed benchmark" />
+      <figcaption>Closed · focus</figcaption>
+      <img src="./${previewClosed}?t=${Date.now()}" alt="Closed focused benchmark" />
     </figure>
     <figure>
-      <figcaption>Open</figcaption>
-      <img src="./${metadata.files.open}?t=${Date.now()}" alt="Open benchmark" />
+      <figcaption>Open · focus</figcaption>
+      <img src="./${previewOpen}?t=${Date.now()}" alt="Open focused benchmark" />
     </figure>
   </div>
+  <details>
+    <summary>Full device screenshots</summary>
+    <div class="grid">
+      <figure>
+        <figcaption>Closed · full</figcaption>
+        <img src="./${metadata.files.closed}?t=${Date.now()}" alt="Closed full benchmark" />
+      </figure>
+      <figure>
+        <figcaption>Open · full</figcaption>
+        <img src="./${metadata.files.open}?t=${Date.now()}" alt="Open full benchmark" />
+      </figure>
+    </div>
+  </details>
   <div class="meta">
     ${metadata.device} · Android ${metadata.android} · ${metadata.wmSize}
   </div>
