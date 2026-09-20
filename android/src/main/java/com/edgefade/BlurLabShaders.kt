@@ -224,18 +224,25 @@ internal object BlurLabShaders {
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Reference-like extinction: first reduce chroma, then compress contrast,
-      // then let the blurred content dissolve into the surrounding material.
+      // Pearly/milky material: preserve the underlying hue, but remove hard
+      // low-frequency contrast and lift the darkest masses into a translucent
+      // veil. This is intentionally different from a flat white tint.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.82, material);
+      float saturation = mix(1.0, 0.90, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.52, material);
+      float contrast = mix(1.0, 0.61, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      float tintAmount = 0.70 * material;
+      // A softer tint keeps orange/blue/pink information perceptible under the
+      // frost instead of painting the field grey.
+      float tintAmount = 0.48 * material;
       rgb = mix(rgb, materialColor, tintAmount);
-      rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
+
+      // Pearl lift is strongest in the mid/high luminance range and remains
+      // deliberately small so the material reads as depth, not opacity.
+      float pearl = (0.012 + 0.024 * smoothstep(0.28, 0.86, luma)) * material;
+      rgb = clamp(rgb + pearl, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }
