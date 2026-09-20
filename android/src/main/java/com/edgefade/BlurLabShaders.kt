@@ -218,20 +218,12 @@ internal object BlurLabShaders {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0001 || materialStrength <= 0.0001) return blurred;
 
-      // Deterministic pipeline probe for the showcase only.
-      // materialStrength == 1.0 is intentionally reserved while we validate the
-      // post-Gaussian material stage. If this pass is actually chained into the
-      // rendered frame, bench=1 must turn every active material pixel magenta.
-      // bench=0 remains the pure progressive Gaussian baseline.
-      if (materialStrength >= 0.9995) {
-        return half4(1.0, 0.0, 1.0, float(blurred.a));
-      }
-
-      // Keep the inner/top edge airy. Blur is already present here, but the
-      // substrate arrives later and relaxes into full density toward the edge.
-      float progression = clamp(materialSurfaceProgression, 0.15, 1.0);
-      float field = smoothstep(0.055, progression, intensity);
-      field = pow(field, 1.32);
+      // Reference-oriented optical field. The inner/top edge stays genuinely
+      // airy: Gaussian diffusion is already present there, while the substrate
+      // density arrives much later and grows continuously toward the edge.
+      float progression = clamp(materialSurfaceProgression, 0.25, 1.0);
+      float field = smoothstep(0.025, progression, intensity);
+      field = pow(field, 1.62);
       float material = clamp(materialStrength, 0.0, 1.0) * field;
 
       float alpha = max(float(blurred.a), 0.0001);
@@ -241,48 +233,40 @@ internal object BlurLabShaders {
       float3 chroma = rgb - float3(luma);
       float materialLuma =
         dot(materialColor, float3(0.2126, 0.7152, 0.0722))
-        * clamp(materialExposure, 0.5, 1.2);
+        * clamp(materialExposure, 0.75, 1.10);
 
-      // Pearl substrate: remove the low-frequency luminance rectangle much more
-      // strongly than the colour. This is the core of the reference feel: the
-      // image stops reading as a card, while its orange/blue/pink colour cloud
-      // remains visible underneath the material.
-      float darkLift = 1.0 - smoothstep(0.18, 0.68, luma);
-      float deep = smoothstep(0.30, 1.0, intensity);
+      // Dense pearl substrate: collapse low-frequency luminance much more than
+      // chroma. This removes the visual identity of the underlying rectangular
+      // card while keeping the real orange / blue / pink cloud travelling below
+      // the surface, which is the defining quality of the reference.
+      float darkContent = 1.0 - smoothstep(0.14, 0.64, luma);
+      float deep = smoothstep(0.34, 0.98, intensity);
       float surface = clamp(materialSurface, 0.0, 1.0) * material * deep;
-      float lumaMix = clamp(
-        material * (0.64 + 0.16 * darkLift) + surface * 0.18,
-        0.0,
-        0.94
-      );
+
+      float density = material * mix(0.78, 0.92, darkContent);
+      float lumaMix = clamp(density + surface * 0.16, 0.0, 0.95);
       float pearlLuma = mix(luma, materialLuma, lumaMix);
 
-      // Preserve chroma transmission deliberately. The previous material became
-      // chalky because tint and whole-RGB contrast compression killed the colour
-      // trail. Here colour is only gently damped as density rises.
-      float chromaGain = mix(1.0, 0.80, material);
-      chromaGain *= mix(1.0, 0.93, surface);
+      // Colour transmission stays deliberately high. The material is dense in
+      // value, not chalky in hue: colour should read as a soft circular stain
+      // under the substrate instead of being replaced by a neutral veil.
+      float chromaGain = mix(1.0, 0.76, material);
+      chromaGain *= mix(1.0, 0.92, surface);
       rgb = float3(pearlLuma) + chroma * chromaGain;
 
-      // A dense translucent sheet still needs a slight body colour, but this is
-      // intentionally small: materialColor defines the substrate, not a veil.
-      float tintAmount = 0.075 * surface;
-      rgb = mix(rgb, materialColor, tintAmount);
+      // A small body reflection gives the sheet its satin / pearlescent weight.
+      // It follows local source luminance rather than creating a synthetic band,
+      // so the finish remains continuous and single-pass.
+      float localHighlight = smoothstep(0.48, 0.90, luma);
+      float pearlReflection =
+        surface * (0.018 + 0.030 * localHighlight + 0.018 * darkContent);
+      rgb = mix(rgb, materialColor, pearlReflection);
 
-      // Broad, low-amplitude pearlescent sheen. It follows the continuous radius
-      // field rather than forming a discrete band, so the finish reads satin /
-      // metallic without introducing another blur layer.
-      float sheenIn = smoothstep(0.16, 0.52, intensity);
-      float sheenOut = 1.0 - smoothstep(0.66, 1.0, intensity);
-      float sheen = sheenIn * sheenOut * material;
-      float sheenAmount = (0.014 + 0.020 * darkLift) * sheen;
-      rgb = mix(rgb, float3(1.0), sheenAmount);
-
-      // Soft shoulder near full density: prevents the outer edge from becoming
-      // flat white/grey and keeps the colour cloud alive all the way through.
-      float shoulder = smoothstep(0.72, 1.0, intensity) * material;
-      float3 transmitted = float3(materialLuma) + chroma * 0.72;
-      rgb = mix(rgb, transmitted, 0.10 * shoulder);
+      // Keep the outer shoulder translucent rather than letting it collapse to a
+      // flat neutral fill. The final edge retains a muted trace of the source hue.
+      float shoulder = smoothstep(0.76, 1.0, intensity) * material;
+      float3 shoulderColour = float3(materialLuma) + chroma * 0.68;
+      rgb = mix(rgb, shoulderColour, 0.08 * shoulder);
 
       rgb = clamp(rgb, 0.0, 1.0);
       return half4(rgb * float(blurred.a), float(blurred.a));
