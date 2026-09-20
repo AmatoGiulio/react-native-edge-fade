@@ -35,7 +35,9 @@ const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
 const LIGHT_MATERIAL_COLOR = '#c8c8cb';
-const DARK_MATERIAL_COLOR = '#141516';
+// The reference dark material is not black: its dense body sits around a
+// neutral/silver mid-grey and lets source colour survive as a subdued stain.
+const DARK_MATERIAL_COLOR = '#7b7c82';
 const DEFAULT_CLOSED_DEPTH = 112;
 // 04-open-s90 remains the optical baseline selected against reference.mp4.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
