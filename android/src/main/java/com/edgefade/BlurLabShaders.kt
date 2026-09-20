@@ -224,28 +224,36 @@ internal object BlurLabShaders {
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Pearly/milky material: preserve the underlying hue, but remove hard
-      // low-frequency contrast and lift the darkest masses into a translucent
-      // veil. This is intentionally different from a flat white tint.
+      // Reference-like pearl material. Treat the blurred image as chroma
+      // floating inside a milky substrate, rather than painting a white layer
+      // over it. This keeps the source colours present but muted and opaline.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.84, material);
-      rgb = mix(float3(luma), rgb, saturation);
+      float3 chroma = rgb - float3(luma);
+      float materialLuma = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
 
-      // The reference's "milk" is mostly contrast extinction, not a white
-      // overlay. Pull large dark masses toward the midrange while keeping their
-      // chroma readable through the frost.
-      float contrast = mix(1.0, 0.50, material);
+      // First collapse large-scale luminance toward the warm material surface.
+      // Dark areas lift more strongly, which removes the obvious rectangular
+      // card mass visible in the previous run.
+      float darkLift = 1.0 - smoothstep(0.20, 0.72, luma);
+      float lumaMix = (0.46 + 0.18 * darkLift) * material;
+      float pearlLuma = mix(luma, materialLuma, lumaMix);
+
+      // Keep roughly two thirds of the chroma at full material so orange/blue/
+      // pink remain perceptible under the frost, as in reference.mp4.
+      float chromaGain = mix(1.0, 0.62, material);
+      rgb = float3(pearlLuma) + chroma * chromaGain;
+
+      // Compress what contrast remains without flattening the image entirely.
+      float contrast = mix(1.0, 0.58, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      // Warm translucent substrate. Strong enough to make the material pearly,
-      // but still below the point where image colour disappears.
-      float tintAmount = 0.57 * material;
+      // Final translucent substrate: enough to read as milk/pearl, not enough
+      // to erase local colour identity.
+      float tintAmount = 0.34 * material;
       rgb = mix(rgb, materialColor, tintAmount);
 
-      // Soft pearlescent lift: more present on dark/mid pixels, which prevents
-      // the lower photo from reading as a hard orange rectangle.
-      float darkLift = 1.0 - smoothstep(0.18, 0.72, luma);
-      float pearl = (0.024 + 0.045 * darkLift) * material;
+      // Very small opaline lift concentrated on dark/mid pixels.
+      float pearl = (0.018 + 0.038 * darkLift) * material;
       rgb = clamp(rgb + pearl, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
