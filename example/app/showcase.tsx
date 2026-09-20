@@ -271,6 +271,19 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
+  const segmentedTrackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(226,223,218,0.58)', 'rgba(10,10,9,0.68)']
+    ),
+    borderColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(255,255,255,0.52)', 'rgba(255,255,255,0.14)']
+    ),
+  }));
+
   const segmentedThumbStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -280,7 +293,7 @@ export default function ProgressiveShowcaseRoute() {
     backgroundColor: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#fbfaf8', '#242321']
+      ['#fbfaf8', '#34322f']
     ),
   }));
 
@@ -288,7 +301,7 @@ export default function ProgressiveShowcaseRoute() {
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['rgba(255,255,255,0.56)', '#ffffff']
+      ['#7d7973', '#ffffff']
     ),
   }));
 
@@ -296,7 +309,7 @@ export default function ProgressiveShowcaseRoute() {
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#232220', 'rgba(255,255,255,0.58)']
+      ['#232220', 'rgba(255,255,255,0.62)']
     ),
   }));
 
@@ -509,7 +522,7 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
 
         <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
-          <View style={s.segmented}>
+          <Animated.View style={[s.segmented, segmentedTrackStyle]}>
             <Animated.View
               pointerEvents="none"
               style={[s.segmentedThumb, segmentedThumbStyle]}
@@ -540,7 +553,7 @@ export default function ProgressiveShowcaseRoute() {
                 Light
               </Animated.Text>
             </Pressable>
-          </View>
+          </Animated.View>
         </Animated.View>
       </Animated.View>
     </View>
@@ -721,9 +734,7 @@ const s = StyleSheet.create({
     height: 36,
     padding: 3,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.34)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.34)',
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
