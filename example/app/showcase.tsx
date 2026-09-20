@@ -40,14 +40,16 @@ const DEFAULT_MATERIAL_TONE = 'smoke';
 // Stage 6 winner: 0.90 compresses the white shoulder close to the reference
 // without crushing the retained coloured low-frequency structure.
 const DEFAULT_MATERIAL_EXPOSURE = 0.90;
-// Stage 5 winner: the broad smoke sheet needs to be almost fully established
-// to suppress the rectangular low-frequency image masses seen in the old demo.
-const DEFAULT_MATERIAL_SURFACE = 0.95;
-// Stage 7 endpoint split:
+// Keep the compact closed footer dense enough to extinguish the dark card,
+// but allow the expanded/open state to use a different density. The reference
+// keeps noticeably more local colour/structure once the sheet is fully open.
+const DEFAULT_CLOSED_MATERIAL_SURFACE = 0.95;
+const DEFAULT_OPEN_MATERIAL_SURFACE = 0.95;
+// Stage 8 full-frame winner:
 // - closed: g100 preserves the compact translucent footer without a gray slab
-// - open: ~g30 matches the reference's much earlier material takeover
+// - open: g44 puts the material takeover at the same vertical band as the ref
 const DEFAULT_CLOSED_MATERIAL_SURFACE_PROGRESSION = 1.0;
-const DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION = 0.30;
+const DEFAULT_OPEN_MATERIAL_SURFACE_PROGRESSION = 0.44;
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.78;
@@ -193,9 +195,9 @@ export default function ProgressiveShowcaseRoute() {
     0.5,
     1.2
   );
-  const materialSurface = clampNumber(
+  const openMaterialSurface = clampNumber(
     surfaceRaw,
-    DEFAULT_MATERIAL_SURFACE,
+    DEFAULT_OPEN_MATERIAL_SURFACE,
     0,
     1
   );
@@ -220,6 +222,13 @@ export default function ProgressiveShowcaseRoute() {
   // almost the entire panel, matching the long continuous falloff in the ref.
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
+  );
+  const materialSurface = useDerivedValue(() =>
+    interpolate(
+      progress.value,
+      [0, 1],
+      [DEFAULT_CLOSED_MATERIAL_SURFACE, openMaterialSurface]
+    )
   );
   const materialSurfaceProgression = useDerivedValue(() =>
     interpolate(

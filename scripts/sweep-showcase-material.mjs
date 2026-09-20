@@ -50,42 +50,38 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 8: the Stage 7 captures make the endpoint mismatch explicit.
-// Closed wants g100 (compact blur stays translucent); open wants a much earlier
-// material takeover around g25-g35. Keep closed fixed at 1.0 in the app and
-// sweep only the OPEN geometry endpoint carried by the ninth bench value.
-const makeOpenGeometryProfile = (openSurfaceProgression) => ({
-  id: 'open-g' + String(Math.round(openSurfaceProgression * 100)).padStart(2, '0'),
+// Stage 9: Stage 8 full-frame captures put the geometry winner at g44.
+// The remaining mismatch is material density: at surface=0.95 the open sheet
+// is too flat/gray compared with the reference, which keeps more local colour.
+// Keep CLOSED surface fixed at 0.95 in the app, keep OPEN geometry at g44,
+// and sweep only the OPEN surface density.
+const makeOpenSurfaceProfile = (openSurface) => ({
+  id: 'open-s' + String(Math.round(openSurface * 100)).padStart(2, '0'),
   material: 0.16,
   progression: 1.0,
   scale: 0.78,
   tone: 'smoke',
   exposure: 0.90,
-  surface: 0.95,
-  surfaceProgression: openSurfaceProgression,
+  surface: openSurface,
+  surfaceProgression: 0.44,
 });
 
-const quickProfiles = [0.22, 0.26, 0.30, 0.34, 0.38, 0.44].map(
-  makeOpenGeometryProfile
+const quickProfiles = [0.72, 0.78, 0.84, 0.90, 0.95].map(
+  makeOpenSurfaceProfile
 );
 
 const fullProfiles = [
-  0.18,
-  0.20,
-  0.22,
-  0.24,
-  0.26,
-  0.28,
-  0.30,
-  0.32,
-  0.34,
-  0.36,
-  0.38,
-  0.40,
-  0.44,
-  0.48,
-  0.52,
-].map(makeOpenGeometryProfile);
+  0.64,
+  0.68,
+  0.72,
+  0.76,
+  0.80,
+  0.84,
+  0.88,
+  0.92,
+  0.95,
+  0.98,
+].map(makeOpenSurfaceProfile);
 
 const profiles = full ? fullProfiles : quickProfiles;
 const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
@@ -118,7 +114,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=0.90 · surface=0.95 · closed-g100 · stage8 open-geometry sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · material=0.16 · smoke · exposure=0.90 · closed-s95 · open-g44 · stage9 open-surface sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -162,6 +158,9 @@ for (const [index, profile] of profiles.entries()) {
       profile.exposure +
       ' surface=' +
       profile.surface +
+      ' openSurface=' +
+      profile.surface +
+      ' closedSurface=0.95' +
       ' openSurfaceProgression=' +
       profile.surfaceProgression +
       ' closedSurfaceProgression=1.0'
@@ -198,8 +197,8 @@ const cards = profiles.map((profile, index) => {
       profile.tone +
       ' · exposure ' +
       profile.exposure +
-      ' · surface ' +
-      profile.surface +
+      ' · closed s95 · open s' +
+      Math.round(profile.surface * 100) +
       ' · closed g100 · open g' +
       Math.round(profile.surfaceProgression * 100) +
       '</span></header>',
@@ -235,7 +234,7 @@ const html = [
   'img{display:block;width:100%;height:auto;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 8: closed material geometry is fixed at g100. Sweep only the open endpoint (g18-g52). Comparison now uses the complete device frame, including the status bar and the physical bottom/navigation area; no benchmark crop is applied.</p>',
+  '<p class="lead">Stage 9: full-device comparison locked open geometry at g44. Closed stays at surface s95 / g100. Sweep only OPEN surface density to recover the reference\'s local colour and translucency without bringing back the rectangular dark-card mass.</p>',
   referenceSection,
   cards,
   '</body></html>',
