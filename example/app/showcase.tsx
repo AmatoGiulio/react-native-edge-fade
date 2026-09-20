@@ -170,20 +170,19 @@ export default function ProgressiveShowcaseRoute() {
 
   const secondAccountTop = pairTop + pairHeight + width * 0.045;
   const lowerTop = secondAccountTop + accountHeight + width * 0.018;
-  const lowerHeight = Math.max(height - lowerTop + width * 0.12, width * 0.72);
+  const lowerHeight = Math.min(
+    Math.max(height - lowerTop + width * 0.055, mediaWidth * 0.72),
+    mediaWidth * 0.94
+  );
 
+  // Reference: the chrome stays spatially pinned. Only the material field
+  // changes depth; labels cross-fade in place and never ride the blur.
   const closedNavStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.2, 0.48], [1, 0.75, 0]),
-    transform: [
-      { translateY: interpolate(progress.value, [0, 1], [0, 7]) },
-    ],
+    opacity: interpolate(progress.value, [0, 0.24, 0.5], [1, 1, 0]),
   }));
 
   const openMenuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.3, 0.62, 1], [0, 0, 0.82, 1]),
-    transform: [
-      { translateY: interpolate(progress.value, [0, 1], [16, 0]) },
-    ],
+    opacity: interpolate(progress.value, [0, 0.46, 0.74, 1], [0, 0, 0.8, 1]),
   }));
 
   const togglePanel = () => {
@@ -300,7 +299,7 @@ export default function ProgressiveShowcaseRoute() {
             ]}
           >
             <AccountRow
-              avatar={ITEMS[27]!}
+              avatar={ITEMS[20]!}
               name="roma.afterdark"
               subtitle="A visual diary from Rome"
               date="May 12"
@@ -308,7 +307,7 @@ export default function ProgressiveShowcaseRoute() {
           </View>
 
           <Image
-            source={ITEMS[27]!.source}
+            source={ITEMS[20]!.source}
             style={[
               s.lowerPost,
               {
