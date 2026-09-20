@@ -50,6 +50,10 @@ for (const material of [0, 0.12, 0.24, 0.36, 0.48, 0.64, 0.8, 0.96]) {
 }
 
 const profiles = full ? fullProfiles : quickProfiles;
+const referenceRoot = resolve(repoRoot, 'benchmarks', 'progressive-showcase', 'reference');
+const hasReference =
+  existsSync(resolve(referenceRoot, 'closed.png')) &&
+  existsSync(resolve(referenceRoot, 'open.png'));
 mkdirSync(outputRoot, { recursive: true });
 
 console.log('[showcase-sweep] ' + profiles.length + ' profiles · radius=150px · closedDepth=112 · expandedScale=0.70');
@@ -84,19 +88,32 @@ const cards = profiles.map((profile) => {
   ].join('\n');
 }).join('\n');
 
+const referenceSection = hasReference
+  ? [
+      '<section class="profile reference">',
+      '<header><strong>REFERENCE</strong><span>fixed visual target</span></header>',
+      '<div class="pair">',
+      '<figure><figcaption>closed ref</figcaption><img src="../../reference/closed.png?t=' + Date.now() + '"></figure>',
+      '<figure><figcaption>open ref</figcaption><img src="../../reference/open.png?t=' + Date.now() + '"></figure>',
+      '</div>',
+      '</section>',
+    ].join('\n')
+  : '<p class="missing-ref">Add benchmarks/progressive-showcase/reference/closed.png and open.png to pin the reference above the sweep.</p>';
+
 const html = [
   '<!doctype html>',
   '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
   '<title>Progressive Showcase Sweep</title>',
   '<style>',
   ':root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:22px;background:#0d0d0d;color:#eee;font-family:-apple-system,BlinkMacSystemFont,sans-serif}',
-  'h1{margin:0 0 6px;font-size:20px}.lead{margin:0 0 22px;color:#999;font-size:12px}.profile{border-top:1px solid #2c2c2c;padding:18px 0 28px}',
+  'h1{margin:0 0 6px;font-size:20px}.lead{margin:0 0 22px;color:#999;font-size:12px}.missing-ref{padding:12px;border:1px dashed #444;color:#aaa;font-size:12px}.profile{border-top:1px solid #2c2c2c;padding:18px 0 28px}.reference{background:#151515;padding-left:12px;padding-right:12px}',
   'header{display:flex;gap:14px;align-items:baseline;margin-bottom:10px}header strong{font-size:14px}header span{color:#999;font:11px ui-monospace,SFMono-Regular,Menlo,monospace}',
   '.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}figure{margin:0}figcaption{margin-bottom:6px;color:#888;font-size:10px;text-transform:uppercase;letter-spacing:.09em}',
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
   '<p class="lead">Radius locked at 150px. Compare wash/color retention and vertical continuity.</p>',
+  referenceSection,
   cards,
   '</body></html>',
 ].join('\n');
