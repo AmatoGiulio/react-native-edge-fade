@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   PixelRatio,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -29,7 +28,7 @@ const DEFAULT_BLUR_RADIUS_PX = 150;
 const DEFAULT_MATERIAL_STRENGTH = 0.36;
 const MATERIAL_COLOR = '#e3e0dc';
 const DEFAULT_CLOSED_DEPTH = 112;
-// 04-open-s90 is the visual baseline selected against reference.mp4.
+// 04-open-s90 remains the optical baseline selected against reference.mp4.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
@@ -87,11 +86,13 @@ function AccountRow({
             <View style={s.badgeDot} />
           </View>
         </View>
+
         <View>
           <Text style={s.accountName}>{name}</Text>
           <Text style={s.accountSubtitle}>{subtitle}</Text>
         </View>
       </View>
+
       <Text style={s.accountDate}>{date}</Text>
     </View>
   );
@@ -147,25 +148,41 @@ export default function ProgressiveShowcaseRoute() {
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
 
-  // Geometry mirrors the reference scene: a cropped previous card, an author
-  // row + two-up gallery, then another author row + a large post underneath.
-  // Keeping the same composition makes blur comparisons meaningful.
-  const contentWidth = width - 44;
-  const previousHeight = Math.min(height * 0.25, 460);
-  const pairHeight = Math.min(height * 0.265, 500);
-  const lowerHeight = Math.min(height * 0.36, 670);
+  // Reference scene geometry is tied to the viewport width, not to a scrolling
+  // document. The native blur is the only thing changing during the transition.
+  const sceneLeft = width * 0.075;
+  const sceneWidth = width * 0.85;
+  const mediaInset = width * 0.085;
+  const mediaLeft = sceneLeft + mediaInset;
+  const mediaWidth = sceneWidth - mediaInset;
+
+  const previousTop = insets.top - width * 0.13;
+  const previousHeight = width * 0.245;
+
+  const firstAccountTop = insets.top + width * 0.13;
+  const accountHeight = Math.max(52, width * 0.132);
+
+  const pairTop = firstAccountTop + accountHeight + width * 0.018;
+  const pairHeight = width * 0.44;
+  const pairGap = Math.max(9, width * 0.022);
+  const primaryWidth = (mediaWidth - pairGap) * 0.61;
+  const secondaryWidth = mediaWidth - pairGap - primaryWidth;
+
+  const secondAccountTop = pairTop + pairHeight + width * 0.045;
+  const lowerTop = secondAccountTop + accountHeight + width * 0.018;
+  const lowerHeight = Math.max(height - lowerTop + width * 0.12, width * 0.72);
 
   const closedNavStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.24, 0.48], [1, 0.72, 0]),
+    opacity: interpolate(progress.value, [0, 0.2, 0.48], [1, 0.75, 0]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [0, 8]) },
+      { translateY: interpolate(progress.value, [0, 1], [0, 7]) },
     ],
   }));
 
   const openMenuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.28, 0.62, 1], [0, 0, 0.78, 1]),
+    opacity: interpolate(progress.value, [0, 0.3, 0.62, 1], [0, 0, 0.82, 1]),
     transform: [
-      { translateY: interpolate(progress.value, [0, 1], [18, 0]) },
+      { translateY: interpolate(progress.value, [0, 1], [16, 0]) },
     ],
   }));
 
@@ -178,7 +195,6 @@ export default function ProgressiveShowcaseRoute() {
       duration,
       easing: EASE,
     });
-
     bottomDepth.value = withTiming(next ? expandedDepth : closedDepth, {
       duration,
       easing: EASE,
@@ -203,81 +219,119 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialColor={MATERIAL_COLOR}
         style={StyleSheet.absoluteFill}
       >
-        <ScrollView
-          style={StyleSheet.absoluteFill}
-          contentContainerStyle={[
-            s.feed,
-            {
-              paddingTop: insets.top + 6,
-              paddingBottom: insets.bottom + 42,
-            },
-          ]}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
-        >
-          <View style={[s.feedInner, { width: contentWidth }]}>
-            <View
-              style={[
-                s.previousCardWindow,
-                { height: previousHeight * 0.46 },
-              ]}
-            >
-              <Image
-                source={ITEMS[16]!.source}
-                style={[
-                  s.previousCard,
-                  {
-                    width: contentWidth * 0.8,
-                    height: previousHeight,
-                    top: -previousHeight * 0.54,
-                  },
-                ]}
-                contentFit="cover"
-              />
-            </View>
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Image
+            source={ITEMS[16]!.source}
+            style={[
+              s.previousCard,
+              {
+                left: mediaLeft,
+                top: previousTop,
+                width: mediaWidth * 0.92,
+                height: previousHeight,
+              },
+            ]}
+            contentFit="cover"
+          />
 
+          <View
+            style={[
+              s.accountSlot,
+              {
+                left: sceneLeft,
+                top: firstAccountTop,
+                width: sceneWidth,
+                height: accountHeight,
+              },
+            ]}
+          >
             <AccountRow
               avatar={ITEMS[25]!}
               name="roma.daily"
               subtitle="by Studio 19"
               date="Today"
             />
+          </View>
 
-            <View style={[s.photoPair, { height: pairHeight }]}>
-              <Image
-                source={ITEMS[23]!.source}
-                style={s.photoPairPrimary}
-                contentFit="cover"
-              />
-              <Image
-                source={ITEMS[25]!.source}
-                style={s.photoPairSecondary}
-                contentFit="cover"
-              />
-            </View>
+          <View
+            style={[
+              s.photoPair,
+              {
+                left: mediaLeft,
+                top: pairTop,
+                width: mediaWidth,
+                height: pairHeight,
+              },
+            ]}
+          >
+            <Image
+              source={ITEMS[23]!.source}
+              style={[
+                s.photo,
+                {
+                  width: primaryWidth,
+                  height: pairHeight,
+                },
+              ]}
+              contentFit="cover"
+            />
+            <Image
+              source={ITEMS[25]!.source}
+              style={[
+                s.photo,
+                {
+                  width: secondaryWidth,
+                  height: pairHeight,
+                },
+              ]}
+              contentFit="cover"
+            />
+          </View>
 
+          <View
+            style={[
+              s.accountSlot,
+              {
+                left: sceneLeft,
+                top: secondAccountTop,
+                width: sceneWidth,
+                height: accountHeight,
+              },
+            ]}
+          >
             <AccountRow
               avatar={ITEMS[27]!}
               name="roma.afterdark"
               subtitle="A visual diary from Rome"
               date="May 12"
             />
-
-            <Image
-              source={ITEMS[27]!.source}
-              style={[s.lowerPost, { height: lowerHeight }]}
-              contentFit="cover"
-            />
           </View>
-        </ScrollView>
+
+          <Image
+            source={ITEMS[27]!.source}
+            style={[
+              s.lowerPost,
+              {
+                left: mediaLeft,
+                top: lowerTop,
+                width: mediaWidth,
+                height: lowerHeight,
+              },
+            ]}
+            contentFit="cover"
+          />
+        </View>
       </ProgressiveFade>
 
       <Animated.View
         pointerEvents={open ? 'none' : 'auto'}
         style={[
           s.closedNav,
-          { bottom: insets.bottom + 18 },
+          {
+            left: sceneLeft,
+            right: sceneLeft,
+            bottom: insets.bottom + 18,
+          },
           closedNavStyle,
         ]}
       >
@@ -303,7 +357,11 @@ export default function ProgressiveShowcaseRoute() {
         pointerEvents={open ? 'auto' : 'none'}
         style={[
           s.openMenu,
-          { bottom: insets.bottom + 17 },
+          {
+            left: sceneLeft,
+            right: sceneLeft,
+            bottom: insets.bottom + 18,
+          },
           openMenuStyle,
         ]}
       >
@@ -344,26 +402,20 @@ const s = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: '#efeeec',
-  },
-  feed: {
-    alignItems: 'center',
-  },
-  feedInner: {
-    alignSelf: 'center',
-  },
-  previousCardWindow: {
     overflow: 'hidden',
-    alignItems: 'center',
-    marginBottom: 14,
   },
+
   previousCard: {
     position: 'absolute',
-    borderRadius: 9,
-    backgroundColor: '#dddcd9',
+    borderRadius: 8,
+    backgroundColor: '#d8d5d0',
+  },
+  accountSlot: {
+    position: 'absolute',
   },
   accountRow: {
-    minHeight: 56,
-    paddingHorizontal: 4,
+    flex: 1,
+    paddingHorizontal: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -422,35 +474,24 @@ const s = StyleSheet.create({
     fontSize: 10,
     lineHeight: 12,
   },
+
   photoPair: {
-    marginTop: 7,
-    marginBottom: 20,
+    position: 'absolute',
     flexDirection: 'row',
-    gap: 11,
+    gap: 10,
   },
-  photoPairPrimary: {
-    flex: 1.45,
-    height: '100%',
-    borderRadius: 8,
-    backgroundColor: '#d7d3ce',
-  },
-  photoPairSecondary: {
-    flex: 0.78,
-    height: '100%',
+  photo: {
     borderRadius: 8,
     backgroundColor: '#d7d3ce',
   },
   lowerPost: {
-    width: '100%',
-    marginTop: 8,
+    position: 'absolute',
     borderRadius: 8,
     backgroundColor: '#d7d3ce',
   },
 
   closedNav: {
     position: 'absolute',
-    left: 34,
-    right: 34,
     zIndex: 30,
     height: 54,
     flexDirection: 'row',
@@ -488,8 +529,6 @@ const s = StyleSheet.create({
 
   openMenu: {
     position: 'absolute',
-    left: 34,
-    right: 34,
     zIndex: 30,
   },
   menuAvatar: {
