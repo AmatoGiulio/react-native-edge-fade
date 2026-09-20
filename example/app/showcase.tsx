@@ -9,12 +9,6 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import {
-  Host as ComposeHost,
-  SegmentedButton,
-  SingleChoiceSegmentedButtonRow,
-  Text as ComposeText,
-} from '@expo/ui/jetpack-compose';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -34,7 +28,7 @@ const ProgressiveFade = AnimatedEdgeFadeView as any;
 const ITEMS = STILLS_ITEMS;
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
-const DEFAULT_MATERIAL_STRENGTH = 0.36;
+const DEFAULT_MATERIAL_STRENGTH = 0.50;
 const LIGHT_MATERIAL_COLOR = '#e7e2dc';
 const DARK_MATERIAL_COLOR = '#1a1917';
 const DEFAULT_CLOSED_DEPTH = 112;
@@ -284,25 +278,61 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
-  const materialSegmentColors = darkMode
-    ? {
-        // Reference: selected Dark is nearly black, with a smoky graphite track.
-        activeContainerColor: '#090807',
-        activeContentColor: '#f8f5f0',
-        activeBorderColor: '#625d56',
-        inactiveContainerColor: '#45413d',
-        inactiveContentColor: '#d9d4cc',
-        inactiveBorderColor: '#625d56',
-      }
-    : {
-        // Reference: a warm pearl track, not a white control floating on top.
-        activeContainerColor: '#f7f4ef',
-        activeContentColor: '#171513',
-        activeBorderColor: '#d0c8bd',
-        inactiveContainerColor: '#cec8bf',
-        inactiveContentColor: '#6d675f',
-        inactiveBorderColor: '#bdb5aa',
-      };
+  const segmentWidth = Math.min(182, width * 0.24);
+  const segmentHeight = 38;
+  const segmentHalf = segmentWidth / 2;
+
+  const segmentTrackStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(205,199,190,0.56)', 'rgba(67,63,59,0.78)']
+    ),
+    borderColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.16)']
+    ),
+  }));
+
+  const segmentPillStyle = useAnimatedStyle(() => ({
+    width: segmentHalf,
+    transform: [
+      {
+        translateX: interpolate(
+          themeProgress.value,
+          [0, 1],
+          [segmentHalf, 0]
+        ),
+      },
+    ],
+    backgroundColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(250,248,244,0.96)', 'rgba(5,5,4,0.96)']
+    ),
+    borderColor: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.08)']
+    ),
+  }));
+
+  const darkSegmentTextStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['rgba(91,86,79,0.88)', '#f6f3ee']
+    ),
+  }));
+
+  const lightSegmentTextStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(
+      themeProgress.value,
+      [0, 1],
+      ['#171513', 'rgba(206,201,194,0.72)']
+    ),
+  }));
 
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
@@ -527,34 +557,55 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
 
         <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
-          <ComposeHost
-            matchContents
-            colorScheme={darkMode ? 'dark' : 'light'}
-            seedColor={darkMode ? '#514b45' : '#9a8f82'}
-            style={s.materialThemeHost}
+          <Animated.View
+            style={[
+              s.themeSegment,
+              {
+                width: segmentWidth,
+                height: segmentHeight,
+                borderRadius: segmentHeight / 2,
+              },
+              segmentTrackStyle,
+            ]}
           >
-            <SingleChoiceSegmentedButtonRow>
-              <SegmentedButton
-                selected={darkMode}
-                onClick={() => setTheme(true)}
-                colors={materialSegmentColors}
-              >
-                <SegmentedButton.Label>
-                  <ComposeText style={s.materialThemeLabel}>Dark</ComposeText>
-                </SegmentedButton.Label>
-              </SegmentedButton>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                s.themeSegmentPill,
+                {
+                  height: segmentHeight - 4,
+                  borderRadius: (segmentHeight - 4) / 2,
+                },
+                segmentPillStyle,
+              ]}
+            />
 
-              <SegmentedButton
-                selected={!darkMode}
-                onClick={() => setTheme(false)}
-                colors={materialSegmentColors}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: darkMode }}
+              onPress={() => setTheme(true)}
+              style={s.themeSegmentHit}
+            >
+              <Animated.Text
+                style={[s.themeSegmentLabel, darkSegmentTextStyle]}
               >
-                <SegmentedButton.Label>
-                  <ComposeText style={s.materialThemeLabel}>Light</ComposeText>
-                </SegmentedButton.Label>
-              </SegmentedButton>
-            </SingleChoiceSegmentedButtonRow>
-          </ComposeHost>
+                Dark
+              </Animated.Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: !darkMode }}
+              onPress={() => setTheme(false)}
+              style={s.themeSegmentHit}
+            >
+              <Animated.Text
+                style={[s.themeSegmentLabel, lightSegmentTextStyle]}
+              >
+                Light
+              </Animated.Text>
+            </Pressable>
+          </Animated.View>
         </Animated.View>
       </Animated.View>
     </View>
@@ -737,12 +788,34 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  materialThemeHost: {
-    alignSelf: 'flex-start',
+  themeSegment: {
+    position: 'relative',
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 2,
   },
-  materialThemeLabel: {
+  themeSegmentPill: {
+    position: 'absolute',
+    left: 2,
+    top: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  themeSegmentHit: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  themeSegmentLabel: {
     fontSize: 11,
     lineHeight: 13,
     fontWeight: '600',
+    letterSpacing: -0.08,
   },
 });
