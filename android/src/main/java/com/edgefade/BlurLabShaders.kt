@@ -218,7 +218,7 @@ internal object BlurLabShaders {
       // Blur starts immediately; grading deliberately starts later. This avoids
       // the cheap "white gradient over content" look at the transition edge.
       float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.18, 0.84, intensity);
+        * smoothstep(0.12, 0.82, intensity);
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
@@ -228,20 +228,24 @@ internal object BlurLabShaders {
       // low-frequency contrast and lift the darkest masses into a translucent
       // veil. This is intentionally different from a flat white tint.
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
-      float saturation = mix(1.0, 0.90, material);
+      float saturation = mix(1.0, 0.84, material);
       rgb = mix(float3(luma), rgb, saturation);
 
-      float contrast = mix(1.0, 0.61, material);
+      // The reference's "milk" is mostly contrast extinction, not a white
+      // overlay. Pull large dark masses toward the midrange while keeping their
+      // chroma readable through the frost.
+      float contrast = mix(1.0, 0.50, material);
       rgb = (rgb - 0.5) * contrast + 0.5;
 
-      // A softer tint keeps orange/blue/pink information perceptible under the
-      // frost instead of painting the field grey.
-      float tintAmount = 0.48 * material;
+      // Warm translucent substrate. Strong enough to make the material pearly,
+      // but still below the point where image colour disappears.
+      float tintAmount = 0.57 * material;
       rgb = mix(rgb, materialColor, tintAmount);
 
-      // Pearl lift is strongest in the mid/high luminance range and remains
-      // deliberately small so the material reads as depth, not opacity.
-      float pearl = (0.012 + 0.024 * smoothstep(0.28, 0.86, luma)) * material;
+      // Soft pearlescent lift: more present on dark/mid pixels, which prevents
+      // the lower photo from reading as a hard orange rectangle.
+      float darkLift = 1.0 - smoothstep(0.18, 0.72, luma);
+      float pearl = (0.024 + 0.045 * darkLift) * material;
       rgb = clamp(rgb + pearl, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
