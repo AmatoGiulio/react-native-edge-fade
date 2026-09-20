@@ -210,6 +210,7 @@ internal object BlurLabShaders {
     uniform shader mask;
     uniform float materialStrength;
     uniform float3 materialColor;
+    uniform float materialExposure;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
@@ -217,8 +218,8 @@ internal object BlurLabShaders {
 
       // Blur starts immediately; grading deliberately starts later. This avoids
       // the cheap "white gradient over content" look at the transition edge.
-      float material = clamp(materialStrength, 0.0, 1.0)
-        * smoothstep(0.18, 0.84, intensity);
+      float field = smoothstep(0.18, 0.84, intensity);
+      float material = clamp(materialStrength, 0.0, 1.0) * field;
       if (material <= 0.0001) return blurred;
 
       float alpha = max(float(blurred.a), 0.0001);
@@ -236,6 +237,12 @@ internal object BlurLabShaders {
       float tintAmount = 0.70 * material;
       rgb = mix(rgb, materialColor, tintAmount);
       rgb = clamp(rgb + 0.006 * material, 0.0, 1.0);
+
+      // Reference material is materially darker than the page background.
+      // Keep that density independent from grading strength so we can darken
+      // bright empty regions without increasing desaturation/contrast wash.
+      float exposure = mix(1.0, clamp(materialExposure, 0.5, 1.2), field);
+      rgb = clamp(rgb * exposure, 0.0, 1.0);
 
       return half4(rgb * float(blurred.a), float(blurred.a));
     }

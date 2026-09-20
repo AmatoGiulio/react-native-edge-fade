@@ -34,6 +34,11 @@ interface NativeProps extends ViewProps {
   progressiveMaterialStrength?: CodegenTypes.Float;
   /** Internal showcase material tint paired with progressiveMaterialStrength. */
   progressiveMaterialColor?: ColorValue;
+  /**
+   * Internal showcase exposure multiplier for the fully materialized region.
+   * 1 keeps luminance unchanged. Public progressive blur never sets this.
+   */
+  progressiveMaterialExposure?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

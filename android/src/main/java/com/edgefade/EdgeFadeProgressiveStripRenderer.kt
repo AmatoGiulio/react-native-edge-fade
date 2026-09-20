@@ -39,6 +39,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val backend: String,
     val materialStrength: Float,
     val materialColor: Int,
+    val materialExposure: Float,
   )
 
   private data class CurveSamples(
@@ -97,6 +98,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialStrength =
         BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
+      materialExposure =
+        BlurLabGeometry.finite(host.progressiveMaterialExposure, 1f).coerceIn(0.5f, 1.2f),
     )
 
     if (key == next) return true
@@ -265,6 +268,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           Color.green(key.materialColor) / 255f,
           Color.blue(key.materialColor) / 255f,
         )
+        strip.material.setFloatUniform("materialExposure", key.materialExposure)
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
           blurEffect,
