@@ -50,37 +50,35 @@ const autoOpen = !hasArg('--no-open');
 const referenceClosed = readArg('--reference-closed');
 const referenceOpen = readArg('--reference-open');
 
-// Stage 2: the first sweep ruled out the old 0.96 wash and showed the useful
-// range around material 0.24 with a full-length progression. Sweep onset/depth
-// next, without changing the measured 150px radius.
+// Stage 3: Stage 2 converged on the deepest field (scale=0.78) and the lowest
+// material strength (0.16). The remaining mismatch against the reference is
+// luminance: our material stays too white. Sweep material tone independently
+// from strength while keeping radius=150, progression=1.0 and scale=0.78.
 const quickProfiles = [];
 for (const material of [0.16, 0.24, 0.32]) {
-  for (const scale of [0.62, 0.70, 0.78]) {
+  for (const tone of ['light', 'warm', 'smoke']) {
     const m = String(Math.round(material * 100)).padStart(2, '0');
-    const s = String(Math.round(scale * 100));
     quickProfiles.push({
-      id: 'm' + m + '-s' + s,
+      id: 'm' + m + '-' + tone,
       material,
       progression: 1.0,
-      scale,
+      scale: 0.78,
+      tone,
     });
   }
 }
 
 const fullProfiles = [];
-for (const material of [0.08, 0.16, 0.24, 0.32, 0.40]) {
-  for (const progression of [0.94, 1.0]) {
-    for (const scale of [0.62, 0.70, 0.78]) {
-      const m = String(Math.round(material * 100)).padStart(2, '0');
-      const p = String(Math.round(progression * 100));
-      const s = String(Math.round(scale * 100));
-      fullProfiles.push({
-        id: 'm' + m + '-p' + p + '-s' + s,
-        material,
-        progression,
-        scale,
-      });
-    }
+for (const material of [0.12, 0.16, 0.24, 0.32, 0.40]) {
+  for (const tone of ['light', 'warm', 'smoke']) {
+    const m = String(Math.round(material * 100)).padStart(2, '0');
+    fullProfiles.push({
+      id: 'm' + m + '-' + tone,
+      material,
+      progression: 1.0,
+      scale: 0.78,
+      tone,
+    });
   }
 }
 
@@ -115,7 +113,7 @@ console.log('[showcase-sweep] run: ' + outputRoot);
 console.log(
   '[showcase-sweep] ' +
     profiles.length +
-    ' profiles · radius=150px · closedDepth=112 · stage2 material/field-depth sweep'
+    ' profiles · radius=150px · progression=1.0 · scale=0.78 · stage3 material-tone sweep'
 );
 
 for (const [index, profile] of profiles.entries()) {
@@ -125,7 +123,9 @@ for (const [index, profile] of profiles.entries()) {
     ',' +
     profile.progression +
     ',150,112,' +
-    profile.scale;
+    profile.scale +
+    ',' +
+    profile.tone;
   const relativeOutput =
     'benchmarks/progressive-showcase/sweep/runs/' +
     outputRoot.split('/').pop();
@@ -144,7 +144,9 @@ for (const [index, profile] of profiles.entries()) {
       ' progression=' +
       profile.progression +
       ' scale=' +
-      profile.scale
+      profile.scale +
+      ' tone=' +
+      profile.tone
   );
 
   const args = [
@@ -173,6 +175,8 @@ const cards = profiles.map((profile, index) => {
       profile.progression +
       ' · scale ' +
       profile.scale +
+      ' · tone ' +
+      profile.tone +
       '</span></header>',
     '<div class="pair">',
     '<figure><figcaption>closed</figcaption><img src="./' + prefix + '-closed.png?t=' + Date.now() + '"></figure>',
@@ -206,7 +210,7 @@ const html = [
   'img{display:block;width:100%;max-height:82vh;object-fit:contain;background:#171717;border:1px solid #292929}',
   '</style></head><body>',
   '<h1>Progressive material sweep</h1>',
-  '<p class="lead">Stage 2: radius 150px, progression near full-length. Compare material wash and vertical field depth.</p>',
+  '<p class="lead">Stage 3: radius 150px · progression 1.0 · scale 0.78. Compare material luminance/tone without changing blur geometry.</p>',
   referenceSection,
   cards,
   '</body></html>',

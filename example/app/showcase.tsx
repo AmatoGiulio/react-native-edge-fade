@@ -30,11 +30,16 @@ const ITEMS = STILLS_ITEMS;
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const DEFAULT_MATERIAL_STRENGTH = 0.24;
-const MATERIAL_COLOR = '#e3e0dc';
+const DEFAULT_MATERIAL_STRENGTH = 0.16;
+const MATERIAL_TONES: Record<string, string> = {
+  light: '#e3e0dc',
+  warm: '#cec8c3',
+  smoke: '#bbb6b2',
+};
+const DEFAULT_MATERIAL_TONE = 'light';
 const DEFAULT_CLOSED_DEPTH = 112;
 const DEFAULT_OPEN_PROGRESSION = 1.0;
-const DEFAULT_EXPANDED_SCALE = 0.7;
+const DEFAULT_EXPANDED_SCALE = 0.78;
 
 function clampNumber(
   value: string | undefined,
@@ -127,7 +132,7 @@ export default function ProgressiveShowcaseRoute() {
   const params = useLocalSearchParams<{ bench?: string | string[] }>();
 
   const benchParam = Array.isArray(params.bench) ? params.bench[0] : params.bench;
-  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] =
+  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw, toneRaw] =
     (benchParam ?? '').split(',');
 
   const materialStrength = clampNumber(
@@ -160,6 +165,8 @@ export default function ProgressiveShowcaseRoute() {
     0.45,
     0.9
   );
+  const materialTone =
+    MATERIAL_TONES[toneRaw ?? ''] ?? MATERIAL_TONES[DEFAULT_MATERIAL_TONE];
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
   const [open, setOpen] = useState(false);
@@ -225,7 +232,7 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend="agsl"
         progressiveMaterialStrength={materialStrength}
-        progressiveMaterialColor={MATERIAL_COLOR}
+        progressiveMaterialColor={materialTone}
         style={StyleSheet.absoluteFill}
       >
         <ScrollView
