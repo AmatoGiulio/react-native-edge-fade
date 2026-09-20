@@ -197,13 +197,8 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
-  // Optional demo-only material pass. The public renderer leaves this disabled
-  // (strength = 0), preserving its pure progressive-Gaussian contract.
-  //
-  // This is intentionally ONE post-Gaussian material pass. There is no second
-  // blur, no blur stack and no multi-level approximation. The reference feel is
-  // produced by optical-density shaping: luminance is progressively absorbed by
-  // the substrate while blurred chroma is allowed to travel through it.
+  // Demo-only optical response after ONE continuously varying Gaussian.
+  // No screen-space shape: the apparent contour must come from source colour.
   val materialComposite = """
     uniform shader content;
     uniform shader mask;
@@ -212,94 +207,36 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
-    // Full-view geometry is needed only by the demo material pass. It lets the
-    // optical shoulder bow upward like the reference instead of reading as a
-    // flat horizontal edge.
-    uniform float2 origin;
-    uniform float2 viewSize;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-      if (intensity <= 0.0001 || materialStrength <= 0.0001) return blurred;
+      if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
-      // Reference-oriented optical field. The source movie does not have a
-      // straight horizontal material front: over the media it reads as one
-      // broad elliptical / domed shoulder. Keep the Gaussian itself continuous
-      // and shape only this single optical field in 2D.
-      float progression = clamp(materialSurfaceProgression, 0.45, 0.90);
-      float edgeField = smoothstep(0.08, progression, intensity);
-      edgeField = pow(edgeField, 1.25);
-
-      float2 fullCoord = coord + origin;
-      float2 safeView = max(viewSize, float2(1.0));
-      float2 uv = fullCoord / safeView;
-
-      // Wide ellipse, deliberately larger than either card. Near the upper
-      // shoulder it concentrates material in the centre and leaves the sides
-      // more open; deeper in the panel it converges back to a full-width sheet.
-      // This reproduces the rounded "oval over the image" visible in the ref.
-      float2 ovalCenter = float2(0.54, 0.60);
-      float2 ovalRadius = float2(0.62, 0.27);
-      float2 ovalCoord = (uv - ovalCenter) / ovalRadius;
-      float ellipse = dot(ovalCoord, ovalCoord);
-      float oval = 1.0 - smoothstep(0.70, 1.18, ellipse);
-
-      float deepBlend = smoothstep(0.42, 0.90, intensity);
-      float shoulder = mix(0.34 + 0.66 * oval, 1.0, deepBlend);
-      float ovalLift =
-        oval * (1.0 - deepBlend) * smoothstep(0.04, 0.50, intensity) * 0.22;
-      float field = clamp(edgeField * shoulder + ovalLift, 0.0, 1.0);
-      float material = clamp(materialStrength, 0.0, 1.0) * field;
-
+      // Scattering builds before fine detail disappears: density is not the
+      // blur radius squared. The demo cubic radius gives a soft entrance.
+      float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
+      float density = materialStrength * (1.0 - exp(-3.0 * depth));
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
-
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
       float3 chroma = rgb - float3(luma);
-      float materialLuma =
-        dot(materialColor, float3(0.2126, 0.7152, 0.0722))
-        * clamp(materialExposure, 0.75, 1.10);
+      float anchor = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
+      float light = smoothstep(0.40, 0.72, anchor);
+      float surface = clamp(materialSurface, 0.0, 1.0);
 
-      // A dense pearlescent substrate mainly converges luminance. Strong source
-      // colours must stop reading as rectangular cards, while weak colour
-      // differences are still allowed to survive underneath the sheet.
-      float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-      float deep = smoothstep(0.18, 0.78, intensity);
-      float surface = clamp(materialSurface, 0.0, 1.0) * material * deep;
-
-      float density = material * mix(0.90, 0.985, darkContent);
-      float lumaMix = clamp(density + surface * 0.12, 0.0, 0.985);
-      float pearlLuma = mix(luma, materialLuma, lumaMix);
-
-      // Perceptual chroma compression is the key difference from a plain tint:
-      // saturated blue/orange blocks are absorbed strongly, but subtle hues
-      // remain as soft, low-contrast stains beneath the material.
-      float chromaMagnitude =
-        max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
-      float chromaCompression =
-        1.0 / (1.0 + 6.5 * material * chromaMagnitude);
-      float chromaGain = mix(1.0, 0.16, material) * chromaCompression;
-      chromaGain *= mix(1.0, 0.82, surface);
-      rgb = float3(pearlLuma) + chroma * chromaGain;
-
-      // Broad satin reflection. It follows the same continuous optical field,
-      // giving the sheet a dense metallic/pearl body without a second blur,
-      // highlight layer, or hard band.
-      float localHighlight = smoothstep(0.44, 0.88, luma);
-      float pearlReflection =
-        surface * (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
-      rgb = mix(rgb, materialColor, pearlReflection);
-
-      // In the deep body the reference becomes almost silver-grey, with only a
-      // trace of source hue left. This final convergence removes the obvious
-      // image rectangle while preserving a faint coloured trail.
-      float body = smoothstep(0.45, 1.0, intensity) * material;
-      float3 bodyColour = float3(materialLuma) + chroma * 0.08;
-      rgb = mix(rgb, bodyColour, 0.38 * body);
-
-      rgb = clamp(rgb, 0.0, 1.0);
-      return half4(rgb * float(blurred.a), float(blurred.a));
+      // Compress luminance independently from colour. Pearl has a narrow tonal
+      // range; smoke transmits substantially more of the source illumination.
+      // The toe lifts dark stains without turning the whole dark sheet grey.
+      float slope = mix(0.72, 0.30, light) * mix(1.0, 0.85, surface);
+      float exposed = clamp(luma * materialExposure, 0.0, 1.0);
+      float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
+      float outputLuma = mix(luma, bodyLuma, density);
+      float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
+      float transmission = exp(-density * mix(0.65, 1.0, light));
+      transmission /= 1.0 + density * 2.0 * magnitude;
+      float3 result = float3(outputLuma) + chroma * transmission;
+      return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }
   """.trimIndent()
 

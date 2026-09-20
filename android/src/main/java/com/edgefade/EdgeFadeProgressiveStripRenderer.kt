@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
+import kotlin.math.ceil
 
 /**
  * Exact API 33+ progressive renderer used by the public EdgeFadeView.
@@ -52,6 +53,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   )
 
   private class Strip(var band: BlurLabGeometry.Band) {
+    var scale = 1f
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
@@ -168,6 +170,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         tracePhase("EdgeFade.progressive.recordStrip.${edgeName(strip.band.edge)}") {
           val rc = strip.node.beginRecording()
           try {
+            rc.scale(strip.scale, strip.scale)
             rc.translate(-src.left.toFloat(), -src.top.toFloat())
             rc.drawRenderNode(content)
           } finally {
@@ -189,6 +192,7 @@ internal class EdgeFadeProgressiveStripRenderer(
               clipOut(canvas, strips[previous].band.visible)
             }
             canvas.translate(src.left.toFloat(), src.top.toFloat())
+            canvas.scale(1f / strip.scale, 1f / strip.scale)
             canvas.drawRenderNode(strip.node)
           } finally {
             canvas.restoreToCount(save)
@@ -222,7 +226,18 @@ internal class EdgeFadeProgressiveStripRenderer(
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
       (previous.remove(band.edge) ?: Strip(band)).also { strip ->
-        strip.band = band
+        // Broader diffusion at half resolution is restricted to the material
+        // experiment. The public strength=0 geometry and Gaussian stay exact.
+        strip.scale = if (next.materialStrength > 0f) 0.5f else 1f
+        val pad = ceil(next.radius / strip.scale).toInt() + 1
+        val v = band.visible
+        strip.band = if (strip.scale == 1f) band else band.copy(
+          source = BlurLabGeometry.Rect(
+            (v.left - pad).coerceAtLeast(0), (v.top - pad).coerceAtLeast(0),
+            (v.right + pad).coerceAtMost(next.width),
+            (v.bottom + pad).coerceAtMost(next.height),
+          ),
+        )
         configureStrip(strip, next, curves)
       }
     }
@@ -235,13 +250,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     curves: CurveSamples,
   ) {
     val source = strip.band.source
-    strip.node.setPosition(0, 0, source.width, source.height)
+    val scale = strip.scale
+    val rasterWidth = ceil(source.width * scale).toInt()
+    val rasterHeight = ceil(source.height * scale).toInt()
+    strip.node.setPosition(0, 0, rasterWidth, rasterHeight)
 
-    strip.mask.setFloatUniform("origin", source.left.toFloat(), source.top.toFloat())
-    strip.mask.setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())
+    strip.mask.setFloatUniform("origin", source.left * scale, source.top * scale)
+    strip.mask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
     strip.mask.setFloatUniform(
       "edges",
-      floatArrayOf(key.top, key.bottom, key.left, key.right),
+      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
     )
     strip.mask.setFloatUniform("progression", key.progression)
     strip.mask.setFloatUniform("curveTop", curves.top)
@@ -251,12 +269,12 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     val blurEffect =
       if (key.backend == "androidx") {
-        AndroidxBlurAdapter.create(source.width, source.height, key.radius, strip.mask)
+        AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
           shader.setInputShader("mask", strip.mask)
           shader.setFloatUniform("blurRadius", key.radius)
-          shader.setFloatUniform("extent", source.width.toFloat(), source.height.toFloat())
+          shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
         }
 
         RenderEffect.createChainEffect(
@@ -268,16 +286,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
-        strip.material.setFloatUniform(
-          "origin",
-          source.left.toFloat(),
-          source.top.toFloat(),
-        )
-        strip.material.setFloatUniform(
-          "viewSize",
-          key.width.toFloat(),
-          key.height.toFloat(),
-        )
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",

@@ -34,12 +34,11 @@ const DEFAULT_MATERIAL_STRENGTH = 0.96;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
-const LIGHT_MATERIAL_COLOR = '#c8c8cb';
-// The reference dark material is not black: its dense body sits around a
-// neutral/silver mid-grey and lets source colour survive as a subdued stain.
-const DARK_MATERIAL_COLOR = '#7b7c82';
-const DEFAULT_CLOSED_DEPTH = 112;
-// 04-open-s90 remains the optical baseline selected against reference.mp4.
+const LIGHT_MATERIAL_COLOR = '#bfc0c4';
+// Smoke retains source illumination instead of converging to a silver overlay.
+const DARK_MATERIAL_COLOR = '#595a60';
+const DEFAULT_CLOSED_DEPTH = 210;
+// One moving field; the deep region settles before the upper shoulder.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
@@ -52,20 +51,11 @@ const EASE = Easing.bezier(0.16, 1, 0.3, 1);
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
+  // Cubic radius: preserve detail through the spacious upper shoulder,
+  // then diffuse broadly in the body. Material density grows independently.
   values: [
-    1.0,
-    0.9883,
-    0.9595,
-    0.9163,
-    0.8599,
-    0.7912,
-    0.7107,
-    0.6188,
-    0.5159,
-    0.4023,
-    0.2783,
-    0.1442,
-    0.0,
+    1, 0.9994, 0.9954, 0.9844, 0.963, 0.9277, 0.875, 0.8015, 0.7037, 0.5781,
+    0.4213, 0.2297, 0,
   ],
 };
 
@@ -75,6 +65,7 @@ function clampNumber(
   min: number,
   max: number
 ) {
+  if (value == null || value.trim() === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
@@ -152,9 +143,12 @@ export default function ProgressiveShowcaseRoute() {
   const { height, width } = useWindowDimensions();
   const params = useLocalSearchParams<{ bench?: string | string[] }>();
 
-  const benchParam = Array.isArray(params.bench) ? params.bench[0] : params.bench;
-  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] =
-    (benchParam ?? '').split(',');
+  const benchParam = Array.isArray(params.bench)
+    ? params.bench[0]
+    : params.bench;
+  const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] = (
+    benchParam ?? ''
+  ).split(',');
 
   const materialStrength = clampNumber(
     materialRaw,
@@ -168,18 +162,8 @@ export default function ProgressiveShowcaseRoute() {
     0.2,
     1
   );
-  const blurRadiusPx = clampNumber(
-    radiusRaw,
-    DEFAULT_BLUR_RADIUS_PX,
-    1,
-    150
-  );
-  const closedDepth = clampNumber(
-    depthRaw,
-    DEFAULT_CLOSED_DEPTH,
-    48,
-    240
-  );
+  const blurRadiusPx = clampNumber(radiusRaw, DEFAULT_BLUR_RADIUS_PX, 1, 150);
+  const closedDepth = clampNumber(depthRaw, DEFAULT_CLOSED_DEPTH, 48, 240);
   const expandedScale = clampNumber(
     scaleRaw,
     DEFAULT_EXPANDED_SCALE,
@@ -311,11 +295,7 @@ export default function ProgressiveShowcaseRoute() {
     width: segmentHalf,
     transform: [
       {
-        translateX: interpolate(
-          themeProgress.value,
-          [0, 1],
-          [segmentHalf, 0]
-        ),
+        translateX: interpolate(themeProgress.value, [0, 1], [segmentHalf, 0]),
       },
     ],
     backgroundColor: interpolateColor(
@@ -370,7 +350,10 @@ export default function ProgressiveShowcaseRoute() {
     <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, surfaceStyle]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, surfaceStyle]}
+      />
 
       <ProgressiveFade
         mode="blur"
@@ -393,7 +376,10 @@ export default function ProgressiveShowcaseRoute() {
         }
         style={StyleSheet.absoluteFill}
       >
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, surfaceStyle]}
+        >
           <Image
             source={previousItem.source}
             style={[
@@ -496,7 +482,7 @@ export default function ProgressiveShowcaseRoute() {
             ]}
             contentFit="cover"
           />
-        </View>
+        </Animated.View>
       </ProgressiveFade>
 
       <Animated.View
@@ -818,7 +804,7 @@ const s = StyleSheet.create({
     position: 'absolute',
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.1,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
