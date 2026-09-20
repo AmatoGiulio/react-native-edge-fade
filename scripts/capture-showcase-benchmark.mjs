@@ -4,16 +4,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PACKAGE = 'com.edgefadeexample';
-const ROUTE = 'edgefade://showcase';
+const DEFAULT_ROUTE = 'edgefade://showcase';
 const UI_DUMP = '/sdcard/edgefade-showcase.xml';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outputDir = resolve(
-  repoRoot,
-  'benchmarks',
-  'progressive-showcase',
-  'current'
-);
 
 function readArg(name) {
   const index = process.argv.indexOf(name);
@@ -42,6 +36,10 @@ function run(command, args, options = {}) {
 const requestedSerial = readArg('--serial') ?? process.env.ADB_SERIAL;
 const settleMs = Number(readArg('--settle-ms') ?? 2200);
 const autoOpen = !hasArg('--no-open');
+const route = readArg('--route') ?? DEFAULT_ROUTE;
+const requestedOutputDir =
+  readArg('--output-dir') ?? 'benchmarks/progressive-showcase/current';
+const outputDir = resolve(repoRoot, requestedOutputDir);
 
 function connectedDevices() {
   const stdout = run('adb', ['devices']);
@@ -156,7 +154,7 @@ adb([
   '-a',
   'android.intent.action.VIEW',
   '-d',
-  ROUTE,
+  route,
   '-p',
   PACKAGE,
 ]);
@@ -185,7 +183,7 @@ const metadata = {
   capturedAt: new Date().toISOString(),
   serial,
   package: PACKAGE,
-  route: ROUTE,
+  route,
   device: adb(['shell', 'getprop', 'ro.product.model']).trim(),
   android: adb(['shell', 'getprop', 'ro.build.version.release']).trim(),
   wmSize: adb(['shell', 'wm', 'size']).trim(),
