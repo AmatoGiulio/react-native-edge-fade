@@ -30,10 +30,10 @@ const ITEMS = STILLS_ITEMS;
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Demo-only material extinction measured by eye against reference.mp4.
 // Blur remains pure everywhere else because the native default is strength=0.
-const DEFAULT_MATERIAL_STRENGTH = 0.96;
+const DEFAULT_MATERIAL_STRENGTH = 0.24;
 const MATERIAL_COLOR = '#e3e0dc';
 const DEFAULT_CLOSED_DEPTH = 112;
-const DEFAULT_OPEN_PROGRESSION = 0.88;
+const DEFAULT_OPEN_PROGRESSION = 1.0;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
 function clampNumber(
@@ -79,14 +79,14 @@ const TOP_STORIES = [
     type: 'SCENE REPORT',
     date: 'September 19, 2026',
     title: 'Rome After Midnight: A New Electronic Underground',
-    image: ITEMS[23],
+    image: ITEMS[8],
   },
   {
     id: 'story-2',
     type: 'FEATURES',
     date: 'September 18, 2026',
     title: 'Inside Ostiense’s New Listening Rooms',
-    image: ITEMS[16],
+    image: ITEMS[26],
   },
 ];
 
@@ -96,28 +96,28 @@ const LATEST = [
     type: 'MIX',
     title: 'Nocturne 04 — Roman Electronics',
     body: 'A slow-burn selection moving from ambient pressure to warehouse rhythm.',
-    image: ITEMS[25],
+    image: ITEMS[27],
   },
   {
     id: 'latest-2',
     type: 'DESIGN',
     title: 'Light Studies From San Lorenzo',
     body: 'Independent studios exploring projection, typography and low-light spaces.',
-    image: ITEMS[27],
+    image: ITEMS[28],
   },
   {
     id: 'latest-3',
     type: 'LIVE',
     title: 'A Warehouse Set in Ostiense',
     body: 'Extended sets, live visuals and a room designed around a single system.',
-    image: ITEMS[8],
+    image: ITEMS[16],
   },
   {
     id: 'latest-4',
     type: 'SCENE',
     title: 'Small Rooms, Long Nights',
     body: 'Four intimate spaces keeping Rome’s after-hours culture deliberately small.',
-    image: ITEMS[31],
+    image: ITEMS[8],
   },
 ];
 
