@@ -60,9 +60,26 @@ internal class EdgeFadeProgressiveStripRenderer(
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
+    // CLOSED-only shoulder bridge. The body above stays exactly the original
+    // 0.5x pure-cbrt implementation; this node exists only for the first
+    // physical pixels where switching directly from 1x sharp -> 0.5x material
+    // exposes a visible raster boundary.
+    var entranceVisible: BlurLabGeometry.Rect? = null
+    var entranceSource: BlurLabGeometry.Rect? = null
+    val entranceNode = RenderNode("EdgeFade.Progressive.entrance")
+    val entranceMask = RuntimeShader(BlurLabShaders.maskPerEdge)
+    val entranceHorizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
+    val entranceVertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    val entranceMaterial by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
+    val entranceFade by lazy { RuntimeShader(BlurLabShaders.materialEntranceFade) }
+
     fun release() {
       node.setRenderEffect(null)
       node.discardDisplayList()
+      entranceNode.setRenderEffect(null)
+      entranceNode.discardDisplayList()
+      entranceVisible = null
+      entranceSource = null
     }
   }
 
@@ -198,6 +215,39 @@ internal class EdgeFadeProgressiveStripRenderer(
             canvas.restoreToCount(save)
           }
         }
+
+        val entranceVisible = strip.entranceVisible
+        val entranceSource = strip.entranceSource
+        if (entranceVisible != null && entranceSource != null) {
+          tracePhase("EdgeFade.progressive.recordEntrance.${edgeName(strip.band.edge)}") {
+            val rc = strip.entranceNode.beginRecording()
+            try {
+              rc.translate(-entranceSource.left.toFloat(), -entranceSource.top.toFloat())
+              rc.drawRenderNode(content)
+            } finally {
+              strip.entranceNode.endRecording()
+            }
+          }
+
+          tracePhase("EdgeFade.progressive.drawEntrance.${edgeName(strip.band.edge)}") {
+            val save = canvas.save()
+            try {
+              canvas.clipRect(
+                entranceVisible.left.toFloat(),
+                entranceVisible.top.toFloat(),
+                entranceVisible.right.toFloat(),
+                entranceVisible.bottom.toFloat(),
+              )
+              for (previous in 0 until index) {
+                clipOut(canvas, strips[previous].band.visible)
+              }
+              canvas.translate(entranceSource.left.toFloat(), entranceSource.top.toFloat())
+              canvas.drawRenderNode(strip.entranceNode)
+            } finally {
+              canvas.restoreToCount(save)
+            }
+          }
+        }
       }
 
       return true
@@ -239,6 +289,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           ),
         )
         configureStrip(strip, next, curves)
+        configureEntrance(strip, next, curves)
       }
     }
     previous.values.forEach { it.release() }
@@ -312,6 +363,157 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     strip.node.setRenderEffect(finalEffect)
+  }
+
+  private fun configureEntrance(
+    strip: Strip,
+    key: Key,
+    curves: CurveSamples,
+  ) {
+    if (key.materialStrength <= 0f || strip.scale >= 1f) {
+      strip.entranceVisible = null
+      strip.entranceSource = null
+      strip.entranceNode.setRenderEffect(null)
+      strip.entranceNode.discardDisplayList()
+      return
+    }
+
+    // OPEN uses progression ~= 0.9. At exactly that value entranceMix is zero,
+    // so the OPEN frame remains pixel-identical to the pure-cbrt baseline.
+    // During the transition the bridge fades in continuously and reaches 1.0
+    // only in CLOSED (progression = 1.0).
+    val entranceMix =
+      ((key.progression - 0.94f) / (0.995f - 0.94f)).coerceIn(0f, 1f)
+        .let { t -> t * t * (3f - 2f * t) }
+
+    if (entranceMix <= 0f) {
+      strip.entranceVisible = null
+      strip.entranceSource = null
+      strip.entranceNode.setRenderEffect(null)
+      strip.entranceNode.discardDisplayList()
+      return
+    }
+
+    val visible = strip.band.visible
+    val entranceDepth = 64
+    val entranceVisible =
+      when (strip.band.edge) {
+        0 -> BlurLabGeometry.Rect(
+          visible.left,
+          (visible.bottom - entranceDepth).coerceAtLeast(visible.top),
+          visible.right,
+          visible.bottom,
+        )
+        1 -> BlurLabGeometry.Rect(
+          visible.left,
+          visible.top,
+          visible.right,
+          (visible.top + entranceDepth).coerceAtMost(visible.bottom),
+        )
+        2 -> BlurLabGeometry.Rect(
+          (visible.right - entranceDepth).coerceAtLeast(visible.left),
+          visible.top,
+          visible.right,
+          visible.bottom,
+        )
+        else -> BlurLabGeometry.Rect(
+          visible.left,
+          visible.top,
+          (visible.left + entranceDepth).coerceAtMost(visible.right),
+          visible.bottom,
+        )
+      }
+
+    // The entrance is full resolution, but it must have the same physical blur
+    // radius as the 0.5x body. Doubling the radius compensates for the body's
+    // 2x upscale. The overlay ends while the required support is still below
+    // the existing 150-tap shader ceiling.
+    val entranceBlurRadius = key.radius / strip.scale
+    val pad = 151
+    val entranceSource = BlurLabGeometry.Rect(
+      (entranceVisible.left - pad).coerceAtLeast(0),
+      (entranceVisible.top - pad).coerceAtLeast(0),
+      (entranceVisible.right + pad).coerceAtMost(key.width),
+      (entranceVisible.bottom + pad).coerceAtMost(key.height),
+    )
+
+    strip.entranceVisible = entranceVisible
+    strip.entranceSource = entranceSource
+
+    val rasterWidth = entranceSource.width
+    val rasterHeight = entranceSource.height
+    strip.entranceNode.setPosition(0, 0, rasterWidth, rasterHeight)
+
+    strip.entranceMask.setFloatUniform(
+      "origin",
+      entranceSource.left.toFloat(),
+      entranceSource.top.toFloat(),
+    )
+    strip.entranceMask.setFloatUniform("viewSize", key.width.toFloat(), key.height.toFloat())
+    strip.entranceMask.setFloatUniform(
+      "edges",
+      floatArrayOf(key.top, key.bottom, key.left, key.right),
+    )
+    strip.entranceMask.setFloatUniform("progression", key.progression)
+    strip.entranceMask.setFloatUniform("curveTop", curves.top)
+    strip.entranceMask.setFloatUniform("curveBottom", curves.bottom)
+    strip.entranceMask.setFloatUniform("curveLeft", curves.left)
+    strip.entranceMask.setFloatUniform("curveRight", curves.right)
+
+    for (shader in arrayOf(strip.entranceHorizontal, strip.entranceVertical)) {
+      shader.setInputShader("mask", strip.entranceMask)
+      shader.setFloatUniform("blurRadius", entranceBlurRadius)
+      shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+      shader.setFloatUniform("continuousSupport", 1f)
+    }
+
+    val blurEffect =
+      RenderEffect.createChainEffect(
+        RenderEffect.createRuntimeShaderEffect(strip.entranceVertical, "content"),
+        RenderEffect.createRuntimeShaderEffect(strip.entranceHorizontal, "content"),
+      )
+
+    strip.entranceMaterial.setInputShader("mask", strip.entranceMask)
+    strip.entranceMaterial.setFloatUniform("materialStrength", key.materialStrength)
+    strip.entranceMaterial.setFloatUniform(
+      "materialColor",
+      Color.red(key.materialColor) / 255f,
+      Color.green(key.materialColor) / 255f,
+      Color.blue(key.materialColor) / 255f,
+    )
+    strip.entranceMaterial.setFloatUniform("materialExposure", key.materialExposure)
+    strip.entranceMaterial.setFloatUniform("materialSurface", key.materialSurface)
+    strip.entranceMaterial.setFloatUniform(
+      "materialSurfaceProgression",
+      key.materialSurfaceProgression,
+    )
+
+    val materialEffect =
+      RenderEffect.createChainEffect(
+        RenderEffect.createRuntimeShaderEffect(strip.entranceMaterial, "content"),
+        blurEffect,
+      )
+
+    val boundary =
+      when (strip.band.edge) {
+        0 -> entranceVisible.bottom - entranceSource.top
+        1 -> entranceVisible.top - entranceSource.top
+        2 -> entranceVisible.right - entranceSource.left
+        else -> entranceVisible.left - entranceSource.left
+      }.toFloat()
+
+    strip.entranceFade.setFloatUniform("entranceEdge", strip.band.edge.toFloat())
+    strip.entranceFade.setFloatUniform("entranceBoundary", boundary)
+    strip.entranceFade.setFloatUniform("fadeStartPx", 28f)
+    strip.entranceFade.setFloatUniform("fadeEndPx", 64f)
+    strip.entranceFade.setFloatUniform("entranceMix", entranceMix)
+
+    strip.entranceNode.setRenderEffect(
+      RenderEffect.createChainEffect(
+        RenderEffect.createRuntimeShaderEffect(strip.entranceFade, "content"),
+        materialEffect,
+      ),
+    )
   }
 
   private fun curveSamples(curve: String): FloatArray =
