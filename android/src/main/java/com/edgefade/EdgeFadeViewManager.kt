@@ -109,6 +109,8 @@ class EdgeFadeViewManager :
     view.progressiveBackend = when (value) {
       "exact" -> "exact"
       "agsl" -> "agsl"
+      "agsl-debug-capture" -> "agsl-debug-capture"
+      "agsl-debug-gaussian" -> "agsl-debug-gaussian"
       "androidx" -> "androidx"
       "scaled" -> "scaled"
       else -> "auto"
