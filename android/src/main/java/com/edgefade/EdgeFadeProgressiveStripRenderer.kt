@@ -225,10 +225,13 @@ internal class EdgeFadeProgressiveStripRenderer(
       )
     val radiusCurves =
       CurveSamples(
-        top = cbrtSamples(curves.top),
-        bottom = cbrtSamples(curves.bottom),
-        left = cbrtSamples(curves.left),
-        right = cbrtSamples(curves.right),
+        // Important: prewarp the ORIGINAL curve stops before resampling.
+        // Prewarping the already-resampled 32-entry LUT still preserves the
+        // steep first linear segment that creates the CLOSED seam.
+        top = cbrtCurveSamples(next.curveTop),
+        bottom = cbrtCurveSamples(next.curveBottom),
+        left = cbrtCurveSamples(next.curveLeft),
+        right = cbrtCurveSamples(next.curveRight),
       )
 
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
@@ -344,10 +347,33 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.node.setRenderEffect(finalEffect)
   }
 
-  private fun cbrtSamples(samples: FloatArray): FloatArray =
-    FloatArray(samples.size) { index ->
-      Math.cbrt(samples[index].toDouble()).toFloat().coerceIn(0f, 1f)
+  private fun cbrtCurveSamples(curve: String): FloatArray {
+    val alphas = EdgeFadeCurves.alphas(curve)
+    if (alphas.isEmpty()) return FloatArray(EdgeFadeCurves.LUT_SIZE)
+
+    // Transform presence at the source stops first:
+    // radiusPresence = cbrt(1 - alpha).
+    // For the showcase cubic curve this recovers an almost linear radius field
+    // all the way to t=0 instead of amplifying the first interpolated LUT cell.
+    val warped = DoubleArray(alphas.size) { index ->
+      Math.cbrt((1.0 - alphas[index]).coerceIn(0.0, 1.0))
     }
+
+    if (warped.size == 1) {
+      return FloatArray(EdgeFadeCurves.LUT_SIZE) { warped[0].toFloat() }
+    }
+
+    val srcMax = warped.size - 1
+    return FloatArray(EdgeFadeCurves.LUT_SIZE) { index ->
+      val t = index.toFloat() / (EdgeFadeCurves.LUT_SIZE - 1).toFloat()
+      val srcPos = t * srcMax
+      val lo = srcPos.toInt().coerceIn(0, srcMax - 1)
+      val frac = srcPos - lo.toFloat()
+      (warped[lo] * (1.0 - frac) + warped[lo + 1] * frac)
+        .toFloat()
+        .coerceIn(0f, 1f)
+    }
+  }
 
   private fun curveSamples(curve: String): FloatArray =
     FloatArray(EdgeFadeCurves.LUT_SIZE) { index ->
