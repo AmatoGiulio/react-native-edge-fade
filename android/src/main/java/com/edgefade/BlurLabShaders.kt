@@ -48,7 +48,12 @@ internal object BlurLabShaders {
       }
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-        float radius = blurRadius * intensity;
+        // Recreate the discarded Astra experiment exactly: keep the public
+        // Gaussian path unchanged, but use the cubic-root radius field whenever
+        // the internal material path enables continuousSupport.
+        float radiusIntensity =
+          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+        float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
 
