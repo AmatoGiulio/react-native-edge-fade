@@ -174,14 +174,58 @@ async function panelState() {
 }
 
 async function ensureClosed() {
-  const toggle = await panelState();
+  let toggle = await panelState();
   if (toggle.state === 'closed') return toggle.bounds;
 
-  const tap = center(toggle.bounds);
-  adb(['shell', 'input', 'tap', String(tap.x), String(tap.y)]);
-  await waitForDescription('Open perfection menu');
-  await sleep(400);
-  return waitForDescription('Open perfection menu');
+  // "Close perfection menu" is a full-screen backdrop. Tapping its geometric
+  // center is unreliable because the open-menu content can sit on top of that
+  // coordinate and intercept the touch. Use safe points in the upper backdrop
+  // instead, then retry once if Android still reports the panel as open.
+  const safePoints = [
+    {
+      x: Math.round((toggle.bounds.left + toggle.bounds.right) / 2),
+      y: Math.round(
+        toggle.bounds.top +
+          (toggle.bounds.bottom - toggle.bounds.top) * 0.22
+      ),
+    },
+    {
+      x: Math.round(
+        toggle.bounds.left +
+          (toggle.bounds.right - toggle.bounds.left) * 0.35
+      ),
+      y: Math.round(
+        toggle.bounds.top +
+          (toggle.bounds.bottom - toggle.bounds.top) * 0.30
+      ),
+    },
+  ];
+
+  for (const point of safePoints) {
+    adb([
+      'shell',
+      'input',
+      'tap',
+      String(point.x),
+      String(point.y),
+    ]);
+
+    try {
+      const openBounds = await waitForDescription('Open perfection menu', 3000);
+      await sleep(400);
+      return openBounds;
+    } catch {
+      toggle = await panelState();
+      if (toggle.state === 'closed') {
+        await sleep(400);
+        return toggle.bounds;
+      }
+    }
+  }
+
+  throw new Error(
+    'Could not close perfection menu after tapping safe backdrop points.'
+  );
 }
 
 async function ensureOpen() {
