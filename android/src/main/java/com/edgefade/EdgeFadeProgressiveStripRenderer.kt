@@ -255,6 +255,18 @@ internal class EdgeFadeProgressiveStripRenderer(
     val rasterHeight = ceil(source.height * scale).toInt()
     strip.node.setPosition(0, 0, rasterWidth, rasterHeight)
 
+    val visible = strip.band.visible
+    val materialShoulderBoundary =
+      when (strip.band.edge) {
+        0 -> (visible.bottom - source.top) * scale
+        1 -> (visible.top - source.top) * scale
+        2 -> (visible.right - source.left) * scale
+        else -> (visible.left - source.left) * scale
+      }
+    // Reference CLOSED has a long, airy entrance rather than a six-pixel seam
+    // patch. Keep this width in physical screen pixels; material renders at 0.5x.
+    val materialShoulderPx = 96f * scale
+
     strip.mask.setFloatUniform("origin", source.left * scale, source.top * scale)
     strip.mask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
     strip.mask.setFloatUniform(
@@ -279,6 +291,9 @@ internal class EdgeFadeProgressiveStripRenderer(
             "continuousSupport",
             if (key.materialStrength > 0f) 1f else 0f,
           )
+          shader.setFloatUniform("materialShoulderEdge", strip.band.edge.toFloat())
+          shader.setFloatUniform("materialShoulderBoundary", materialShoulderBoundary)
+          shader.setFloatUniform("materialShoulderPx", materialShoulderPx)
         }
 
         RenderEffect.createChainEffect(
@@ -290,6 +305,9 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
+        strip.material.setFloatUniform("materialShoulderEdge", strip.band.edge.toFloat())
+        strip.material.setFloatUniform("materialShoulderBoundary", materialShoulderBoundary)
+        strip.material.setFloatUniform("materialShoulderPx", materialShoulderPx)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
