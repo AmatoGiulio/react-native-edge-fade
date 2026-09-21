@@ -39,7 +39,23 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
+      // The showcase uses progression=1 when CLOSED and ~0.9 when OPEN.
+      // Keep OPEN pixel-identical to the pure-cbrt baseline; only CLOSED
+      // regularizes the first coarse LUT segment where cbrt otherwise has
+      // an infinite slope at zero.
+      uniform float materialProgression;
       const float maxRadius = 150.0;
+
+      float regularizedCbrt(float intensity) {
+        const float firstStop = 0.0006;
+        float pure = pow(max(intensity, 0.0), 1.0 / 3.0);
+        if (intensity <= 0.0 || intensity >= firstStop) return pure;
+
+        float x = clamp(intensity / firstStop, 0.0, 1.0);
+        float handoff = smoothstep(0.70, 1.0, x);
+        float low = pow(firstStop, 1.0 / 3.0) * x;
+        return mix(low, pure, handoff);
+      }
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
@@ -51,8 +67,13 @@ internal object BlurLabShaders {
         // Recreate the discarded Astra experiment exactly: keep the public
         // Gaussian path unchanged, but use the cubic-root radius field whenever
         // the internal material path enables continuousSupport.
-        float radiusIntensity =
-          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+        float radiusIntensity = intensity;
+        if (continuousSupport > 0.5) {
+          float pureCbrt = pow(intensity, 1.0 / 3.0);
+          float closedMix = smoothstep(0.94, 0.995, materialProgression);
+          radiusIntensity =
+            mix(pureCbrt, regularizedCbrt(intensity), closedMix);
+        }
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
@@ -243,10 +264,27 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialProgression;
+
+    float regularizedCbrt(float intensity) {
+      const float firstStop = 0.0006;
+      float pure = pow(max(intensity, 0.0), 1.0 / 3.0);
+      if (intensity <= 0.0 || intensity >= firstStop) return pure;
+
+      float x = clamp(intensity / firstStop, 0.0, 1.0);
+      float handoff = smoothstep(0.70, 1.0, x);
+      float low = pow(firstStop, 1.0 / 3.0) * x;
+      return mix(low, pure, handoff);
+    }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float rawIntensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float closedMix = smoothstep(0.94, 0.995, materialProgression);
+      float regularizedRadius = regularizedCbrt(rawIntensity);
+      float regularizedIntensity =
+        regularizedRadius * regularizedRadius * regularizedRadius;
+      float intensity = mix(rawIntensity, regularizedIntensity, closedMix);
       if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
       // Scattering builds before fine detail disappears: density is not the
