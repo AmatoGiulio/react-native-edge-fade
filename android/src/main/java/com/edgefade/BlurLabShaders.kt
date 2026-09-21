@@ -39,9 +39,6 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
-      // Material radius masks may already contain cbrt-transformed samples.
-      // Public strength=0 keeps the legacy path untouched.
-      uniform float radiusMaskPrewarped;
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -54,13 +51,8 @@ internal object BlurLabShaders {
         // Recreate the discarded Astra experiment exactly: keep the public
         // Gaussian path unchanged, but use the cubic-root radius field whenever
         // the internal material path enables continuousSupport.
-        float radiusIntensity = intensity;
-        if (continuousSupport > 0.5) {
-          radiusIntensity =
-            radiusMaskPrewarped > 0.5
-              ? intensity
-              : pow(intensity, 1.0 / 3.0);
-        }
+        float radiusIntensity =
+          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
