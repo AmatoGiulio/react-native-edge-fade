@@ -255,6 +255,21 @@ internal class EdgeFadeProgressiveStripRenderer(
     val rasterHeight = ceil(source.height * scale).toInt()
     strip.node.setPosition(0, 0, rasterWidth, rasterHeight)
 
+    val visible = strip.band.visible
+    val entranceBoundary =
+      when (strip.band.edge) {
+        0 -> (visible.bottom - source.top) * scale
+        1 -> (visible.top - source.top) * scale
+        2 -> (visible.right - source.left) * scale
+        else -> (visible.left - source.left) * scale
+      }
+    // 24 screen pixels, converted to this strip's raster scale.
+    val entrancePx = 24f * scale
+    // Showcase CLOSED uses progression=1, OPEN ~=0.9. Activate the toe only
+    // near the final CLOSED state so OPEN remains baseline-exact.
+    val entranceT = ((key.progression - 0.94f) / 0.055f).coerceIn(0f, 1f)
+    val entranceMix = entranceT * entranceT * (3f - 2f * entranceT)
+
     strip.mask.setFloatUniform("origin", source.left * scale, source.top * scale)
     strip.mask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
     strip.mask.setFloatUniform(
@@ -279,6 +294,10 @@ internal class EdgeFadeProgressiveStripRenderer(
             "continuousSupport",
             if (key.materialStrength > 0f) 1f else 0f,
           )
+          shader.setFloatUniform("entranceEdge", strip.band.edge.toFloat())
+          shader.setFloatUniform("entranceBoundary", entranceBoundary)
+          shader.setFloatUniform("entrancePx", entrancePx)
+          shader.setFloatUniform("entranceMix", entranceMix)
         }
 
         RenderEffect.createChainEffect(
@@ -290,6 +309,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
+        strip.material.setFloatUniform("entranceEdge", strip.band.edge.toFloat())
+        strip.material.setFloatUniform("entranceBoundary", entranceBoundary)
+        strip.material.setFloatUniform("entrancePx", entrancePx)
+        strip.material.setFloatUniform("entranceMix", entranceMix)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
