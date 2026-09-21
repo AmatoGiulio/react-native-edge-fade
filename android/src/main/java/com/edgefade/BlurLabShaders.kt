@@ -65,10 +65,10 @@ internal object BlurLabShaders {
             materialPosition(p.x, materialEdges.z),
             materialPosition(materialViewSize.x - p.x, materialEdges.w)));
           // Showcase photos end near t=0.45; 0.48 also protects the vertical
-          // kernel footprint. Ramp broadly through the body, reaching 0.82.
+          // kernel footprint. Ramp broadly through the body, reaching 0.72.
           // Keep the original arithmetic throughout the untouched shoulder.
           if (t > 0.48) {
-            float u = clamp((t - 0.48) / (0.82 - 0.48), 0.0, 1.0);
+            float u = clamp((t - 0.48) / (0.72 - 0.48), 0.0, 1.0);
             float w = u * u * u * (u * (6.0 * u - 15.0) + 10.0);
             radiusIntensity = intensity + w * (pow(intensity, 1.0 / 3.0) - intensity);
           }
