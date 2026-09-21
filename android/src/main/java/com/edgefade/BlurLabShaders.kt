@@ -39,7 +39,29 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
+      // CLOSED-only physical toe. OPEN sets entranceMix=0 and is therefore
+      // pixel-identical to the pure-cbrt baseline. In CLOSED the first 24
+      // physical pixels ease the mask from zero, then hand back exactly to cbrt.
+      uniform float entranceEdge;
+      uniform float entranceBoundary;
+      uniform float entrancePx;
+      uniform float entranceMix;
       const float maxRadius = 150.0;
+
+      float entranceWeight(float2 coord) {
+        float d = 0.0;
+        if (entranceEdge < 0.5) {
+          d = entranceBoundary - coord.y; // top
+        } else if (entranceEdge < 1.5) {
+          d = coord.y - entranceBoundary; // bottom
+        } else if (entranceEdge < 2.5) {
+          d = entranceBoundary - coord.x; // left
+        } else {
+          d = coord.x - entranceBoundary; // right
+        }
+        float t = clamp(d / max(entrancePx, 0.0001), 0.0, 1.0);
+        return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      }
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
@@ -48,11 +70,17 @@ internal object BlurLabShaders {
       }
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-        // Recreate the discarded Astra experiment exactly: keep the public
-        // Gaussian path unchanged, but use the cubic-root radius field whenever
-        // the internal material path enables continuousSupport.
+        // Recreate the discarded Astra experiment exactly everywhere except
+        // the CLOSED entrance. Multiplying the mask before cbrt removes the
+        // infinite-slope break at the strip boundary while becoming exactly
+        // the original field after 24 physical pixels.
+        float effectiveIntensity = intensity;
+        if (continuousSupport > 0.5) {
+          float entrance = mix(1.0, entranceWeight(coord), clamp(entranceMix, 0.0, 1.0));
+          effectiveIntensity *= entrance;
+        }
         float radiusIntensity =
-          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+          continuousSupport > 0.5 ? pow(effectiveIntensity, 1.0 / 3.0) : intensity;
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
@@ -243,10 +271,35 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float entranceEdge;
+    uniform float entranceBoundary;
+    uniform float entrancePx;
+    uniform float entranceMix;
+
+    float entranceWeight(float2 coord) {
+      float d = 0.0;
+      if (entranceEdge < 0.5) {
+        d = entranceBoundary - coord.y;
+      } else if (entranceEdge < 1.5) {
+        d = coord.y - entranceBoundary;
+      } else if (entranceEdge < 2.5) {
+        d = entranceBoundary - coord.x;
+      } else {
+        d = coord.x - entranceBoundary;
+      }
+      float t = clamp(d / max(entrancePx, 0.0001), 0.0, 1.0);
+      return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float rawIntensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float entrance = mix(
+        1.0,
+        entranceWeight(coord),
+        clamp(entranceMix, 0.0, 1.0)
+      );
+      float intensity = rawIntensity * entrance;
       if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
       // Scattering builds before fine detail disappears: density is not the
