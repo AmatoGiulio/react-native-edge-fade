@@ -39,6 +39,14 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
+      uniform float2 materialOrigin;
+      uniform float2 materialViewSize;
+      uniform float4 materialEdges;
+      uniform float materialProgression;
+      float materialPosition(float distance, float depth) {
+        if (depth <= 0.0 || distance >= depth) return 0.0;
+        return clamp((1.0 - distance / depth) / materialProgression, 0.0, 1.0);
+      }
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -48,7 +56,24 @@ internal object BlurLabShaders {
       }
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-        float radius = blurRadius * intensity;
+        float radiusIntensity = intensity;
+        if (continuousSupport > 0.5) {
+          float2 p = coord + materialOrigin;
+          float t = max(max(
+            materialPosition(p.y, materialEdges.x),
+            materialPosition(materialViewSize.y - p.y, materialEdges.y)), max(
+            materialPosition(p.x, materialEdges.z),
+            materialPosition(materialViewSize.x - p.x, materialEdges.w)));
+          // Showcase photos end near t=0.45; 0.48 also protects the vertical
+          // kernel footprint. Ramp broadly through the body, reaching 0.82.
+          // Keep the original arithmetic throughout the untouched shoulder.
+          if (t > 0.48) {
+            float u = clamp((t - 0.48) / (0.82 - 0.48), 0.0, 1.0);
+            float w = u * u * u * (u * (6.0 * u - 15.0) + 10.0);
+            radiusIntensity = intensity + w * (pow(intensity, 1.0 / 3.0) - intensity);
+          }
+        }
+        float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
 

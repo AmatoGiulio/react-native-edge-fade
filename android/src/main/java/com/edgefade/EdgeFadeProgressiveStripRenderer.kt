@@ -273,6 +273,14 @@ internal class EdgeFadeProgressiveStripRenderer(
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
           shader.setInputShader("mask", strip.mask)
+          if (key.materialStrength > 0f) {
+            shader.setFloatUniform("materialOrigin", source.left * scale, source.top * scale)
+            shader.setFloatUniform("materialViewSize", key.width * scale, key.height * scale)
+            shader.setFloatUniform("materialEdges", floatArrayOf(
+              key.top * scale, key.bottom * scale, key.left * scale, key.right * scale,
+            ))
+            shader.setFloatUniform("materialProgression", key.progression)
+          }
           shader.setFloatUniform("blurRadius", key.radius)
           shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
           shader.setFloatUniform(
