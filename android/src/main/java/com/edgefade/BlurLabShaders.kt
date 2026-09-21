@@ -261,6 +261,41 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
+  // Alpha-only handoff for the CLOSED full-resolution entrance bridge.
+  // 0-24 physical px stay fully 1x; 24-48 px fade back to the untouched
+  // half-resolution pure-cbrt body underneath.
+  val materialEntranceHandoff = """
+    uniform shader content;
+    uniform float entranceEdge;
+    uniform float entranceBoundary;
+    uniform float fadeStartPx;
+    uniform float fadeEndPx;
+
+    half4 main(float2 coord) {
+      half4 value = content.eval(coord);
+
+      float d = 0.0;
+      if (entranceEdge < 0.5) {
+        d = entranceBoundary - coord.y;
+      } else if (entranceEdge < 1.5) {
+        d = coord.y - entranceBoundary;
+      } else if (entranceEdge < 2.5) {
+        d = entranceBoundary - coord.x;
+      } else {
+        d = coord.x - entranceBoundary;
+      }
+
+      float t = clamp(
+        (d - fadeStartPx) / max(fadeEndPx - fadeStartPx, 0.0001),
+        0.0,
+        1.0
+      );
+      float smoother = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      return value * half4(1.0 - smoother);
+    }
+  """.trimIndent()
+
+
   // Demo-only optical response after ONE continuously varying Gaussian.
   // No screen-space shape: the apparent contour must come from source colour.
   val materialComposite = """
