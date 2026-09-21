@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react';
 import {
   Image as NativeImage,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
