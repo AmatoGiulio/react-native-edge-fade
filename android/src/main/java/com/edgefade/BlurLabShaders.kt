@@ -243,6 +243,12 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    // Seam feather is geometric, in raster pixels. It does not alter the cbrt
+    // radius field: outside the first few physical pixels the experiment is
+    // pixel-identical to the pure-cbrt branch.
+    uniform float materialFeatherEdge;
+    uniform float materialFeatherBoundary;
+    uniform float materialFeatherPx;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
@@ -272,7 +278,26 @@ internal object BlurLabShaders {
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
       float3 result = float3(outputLuma) + chroma * transmission;
-      return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
+
+      // Blend only across the physical strip seam. The body keeps the exact
+      // pure-cbrt result; this feather is independent from mask intensity.
+      float seamDistance = 0.0;
+      if (materialFeatherEdge < 0.5) {
+        seamDistance = materialFeatherBoundary - coord.y; // top
+      } else if (materialFeatherEdge < 1.5) {
+        seamDistance = coord.y - materialFeatherBoundary; // bottom
+      } else if (materialFeatherEdge < 2.5) {
+        seamDistance = materialFeatherBoundary - coord.x; // left
+      } else {
+        seamDistance = coord.x - materialFeatherBoundary; // right
+      }
+      float featherT =
+        clamp(seamDistance / max(materialFeatherPx, 0.0001), 0.0, 1.0);
+      float feather =
+        featherT * featherT * featherT
+        * (featherT * (featherT * 6.0 - 15.0) + 10.0);
+      float outAlpha = float(blurred.a) * feather;
+      return half4(clamp(result, 0.0, 1.0) * outAlpha, outAlpha);
     }
   """.trimIndent()
 
