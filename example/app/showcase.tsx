@@ -181,9 +181,10 @@ export default function ProgressiveShowcaseRoute() {
   const bottomDepth = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [closedDepth, expandedDepth])
   );
-  const blurProgression = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [1, openProgression])
-  );
+  // Keep the optical progression invariant between CLOSED and OPEN.
+  // The panel transition now changes only the physical bottom depth, so the
+  // same normalized material field is used in both states.
+  const blurProgression = useDerivedValue(() => openProgression);
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
   // document. The native blur is the only thing changing during the transition.
