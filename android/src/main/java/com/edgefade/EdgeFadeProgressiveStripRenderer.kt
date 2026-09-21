@@ -156,7 +156,12 @@ internal class EdgeFadeProgressiveStripRenderer(
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
         try {
-          for (strip in strips) clipOut(canvas, strip.band.visible)
+          // Public strength=0 keeps the historical hard strip replacement.
+          // Material mode keeps the sharp source underneath so the first 6
+          // physical pixels can cross-fade without changing the cbrt body.
+          if ((key?.materialStrength ?: 0f) <= 0f) {
+            for (strip in strips) clipOut(canvas, strip.band.visible)
+          }
           canvas.drawRenderNode(content)
         } finally {
           canvas.restoreToCount(sharpSave)
@@ -290,6 +295,20 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
+
+        val visible = strip.band.visible
+        val featherBoundary =
+          when (strip.band.edge) {
+            0 -> (visible.bottom - source.top) * scale
+            1 -> (visible.top - source.top) * scale
+            2 -> (visible.right - source.left) * scale
+            else -> (visible.left - source.left) * scale
+          }
+        strip.material.setFloatUniform("materialFeatherEdge", strip.band.edge.toFloat())
+        strip.material.setFloatUniform("materialFeatherBoundary", featherBoundary)
+        // Exactly 6 physical pixels regardless of the material downsample.
+        strip.material.setFloatUniform("materialFeatherPx", 6f * scale)
+
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
