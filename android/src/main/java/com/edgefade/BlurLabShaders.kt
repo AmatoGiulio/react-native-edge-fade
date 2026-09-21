@@ -51,12 +51,12 @@ internal object BlurLabShaders {
         // Preserve the pure cbrt experiment everywhere except the infinitesimal
         // entrance. cbrt has an infinite derivative at zero, so even a tiny mask
         // value produces a large visible radius and exposes the strip boundary.
-        // Regularize only i < 0.03 with a cubic Hermite toe that matches both
-        // cbrt value and first derivative at the join. Beyond 0.03 this is
+        // Regularize only i < 0.003 with a cubic Hermite toe that matches both
+        // cbrt value and first derivative at the join. Beyond 0.003 this is
         // exactly the original experiment again.
         float radiusIntensity = intensity;
         if (continuousSupport > 0.5) {
-          const float toe = 0.03;
+          const float toe = 0.003;
           if (intensity < toe) {
             float x = clamp(intensity / toe, 0.0, 1.0);
             float h = (8.0 * x * x - 5.0 * x * x * x) / 3.0;
