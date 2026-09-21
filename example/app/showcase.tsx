@@ -37,7 +37,9 @@ const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
 const LIGHT_MATERIAL_COLOR = '#bfc0c4';
 // Smoke retains source illumination instead of converging to a silver overlay.
 const DARK_MATERIAL_COLOR = '#595a60';
-const DEFAULT_CLOSED_DEPTH = 210;
+// Keep the pure-cbrt optical law untouched. CLOSED only needs a deeper
+// physical field so the same radius ramp is not compressed into too few pixels.
+const DEFAULT_CLOSED_DEPTH = 320;
 // One moving field; the deep region settles before the upper shoulder.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
@@ -163,7 +165,7 @@ export default function ProgressiveShowcaseRoute() {
     1
   );
   const blurRadiusPx = clampNumber(radiusRaw, DEFAULT_BLUR_RADIUS_PX, 1, 150);
-  const closedDepth = clampNumber(depthRaw, DEFAULT_CLOSED_DEPTH, 48, 240);
+  const closedDepth = clampNumber(depthRaw, DEFAULT_CLOSED_DEPTH, 48, 360);
   const expandedScale = clampNumber(
     scaleRaw,
     DEFAULT_EXPANDED_SCALE,
