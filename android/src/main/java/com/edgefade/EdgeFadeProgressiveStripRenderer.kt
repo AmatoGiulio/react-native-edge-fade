@@ -56,6 +56,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     var scale = 1f
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
+    val radiusMask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
@@ -222,6 +223,13 @@ internal class EdgeFadeProgressiveStripRenderer(
         left = curveSamples(next.curveLeft),
         right = curveSamples(next.curveRight),
       )
+    val radiusCurves =
+      CurveSamples(
+        top = cbrtSamples(curves.top),
+        bottom = cbrtSamples(curves.bottom),
+        left = cbrtSamples(curves.left),
+        right = cbrtSamples(curves.right),
+      )
 
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
@@ -229,21 +237,16 @@ internal class EdgeFadeProgressiveStripRenderer(
         // Broader diffusion at half resolution is restricted to the material
         // experiment. The public strength=0 geometry and Gaussian stay exact.
         strip.scale = if (next.materialStrength > 0f) 0.5f else 1f
-
-        // Material must be filtered from a source that is already complete
-        // before the destination strip is clipped. Using the whole host as the
-        // half-resolution source removes any transparent sampling at the
-        // visible boundary; the canvas clip below is applied only after the
-        // RenderEffect chain has produced the filtered result.
-        strip.band =
-          if (strip.scale == 1f) {
-            band
-          } else {
-            band.copy(
-              source = BlurLabGeometry.Rect(0, 0, next.width, next.height),
-            )
-          }
-        configureStrip(strip, next, curves)
+        val pad = ceil(next.radius / strip.scale).toInt() + 1
+        val v = band.visible
+        strip.band = if (strip.scale == 1f) band else band.copy(
+          source = BlurLabGeometry.Rect(
+            (v.left - pad).coerceAtLeast(0), (v.top - pad).coerceAtLeast(0),
+            (v.right + pad).coerceAtMost(next.width),
+            (v.bottom + pad).coerceAtMost(next.height),
+          ),
+        )
+        configureStrip(strip, next, curves, radiusCurves)
       }
     }
     previous.values.forEach { it.release() }
@@ -253,6 +256,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip: Strip,
     key: Key,
     curves: CurveSamples,
+    radiusCurves: CurveSamples,
   ) {
     val source = strip.band.source
     val scale = strip.scale
@@ -272,16 +276,37 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveLeft", curves.left)
     strip.mask.setFloatUniform("curveRight", curves.right)
 
+    // Gaussian radius uses cbrt-transformed LUT samples before interpolation.
+    // Material density/color still use the original cubic presence mask above.
+    strip.radiusMask.setFloatUniform("origin", source.left * scale, source.top * scale)
+    strip.radiusMask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
+    strip.radiusMask.setFloatUniform(
+      "edges",
+      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
+    )
+    strip.radiusMask.setFloatUniform("progression", key.progression)
+    strip.radiusMask.setFloatUniform("curveTop", radiusCurves.top)
+    strip.radiusMask.setFloatUniform("curveBottom", radiusCurves.bottom)
+    strip.radiusMask.setFloatUniform("curveLeft", radiusCurves.left)
+    strip.radiusMask.setFloatUniform("curveRight", radiusCurves.right)
+
     val blurEffect =
       if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
-          shader.setInputShader("mask", strip.mask)
+          shader.setInputShader(
+            "mask",
+            if (key.materialStrength > 0f) strip.radiusMask else strip.mask,
+          )
           shader.setFloatUniform("blurRadius", key.radius)
           shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
           shader.setFloatUniform(
             "continuousSupport",
+            if (key.materialStrength > 0f) 1f else 0f,
+          )
+          shader.setFloatUniform(
+            "radiusMaskPrewarped",
             if (key.materialStrength > 0f) 1f else 0f,
           )
         }
@@ -318,6 +343,11 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     strip.node.setRenderEffect(finalEffect)
   }
+
+  private fun cbrtSamples(samples: FloatArray): FloatArray =
+    FloatArray(samples.size) { index ->
+      Math.cbrt(samples[index].toDouble()).toFloat().coerceIn(0f, 1f)
+    }
 
   private fun curveSamples(curve: String): FloatArray =
     FloatArray(EdgeFadeCurves.LUT_SIZE) { index ->
