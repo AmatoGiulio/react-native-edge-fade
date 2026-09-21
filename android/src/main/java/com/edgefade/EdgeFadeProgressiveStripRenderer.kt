@@ -38,6 +38,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val curveLeft: String,
     val curveRight: String,
     val backend: String,
+    val debugStage: String,
     val materialStrength: Float,
     val materialColor: Int,
     val materialExposure: Float,
@@ -56,7 +57,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     var scale = 1f
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
-    val radiusMask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
@@ -78,11 +78,19 @@ internal class EdgeFadeProgressiveStripRenderer(
     val height = host.height
     if (width <= 0 || height <= 0) return false
 
-    val exactBackend = when (host.progressiveBackend) {
-      "agsl" -> "agsl"
-      "androidx" -> "androidx"
-      else -> if (AndroidxBlurAdapter.available) "androidx" else "agsl"
-    }
+    val requestedBackend = host.progressiveBackend
+    val debugStage =
+      when (requestedBackend) {
+        "agsl-debug-capture" -> "capture"
+        "agsl-debug-gaussian" -> "gaussian"
+        else -> "material"
+      }
+    val exactBackend =
+      when {
+        requestedBackend.startsWith("agsl") -> "agsl"
+        requestedBackend == "androidx" -> "androidx"
+        else -> if (AndroidxBlurAdapter.available) "androidx" else "agsl"
+      }
     if (exactBackend == "androidx" && !AndroidxBlurAdapter.available) return false
 
     val next = Key(
@@ -100,6 +108,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
       backend = exactBackend,
+      debugStage = debugStage,
       materialStrength =
         BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
@@ -223,16 +232,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         left = curveSamples(next.curveLeft),
         right = curveSamples(next.curveRight),
       )
-    val radiusCurves =
-      CurveSamples(
-        // Important: prewarp the ORIGINAL curve stops before resampling.
-        // Prewarping the already-resampled 32-entry LUT still preserves the
-        // steep first linear segment that creates the CLOSED seam.
-        top = cbrtCurveSamples(next.curveTop),
-        bottom = cbrtCurveSamples(next.curveBottom),
-        left = cbrtCurveSamples(next.curveLeft),
-        right = cbrtCurveSamples(next.curveRight),
-      )
 
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
@@ -249,7 +248,7 @@ internal class EdgeFadeProgressiveStripRenderer(
             (v.bottom + pad).coerceAtMost(next.height),
           ),
         )
-        configureStrip(strip, next, curves, radiusCurves)
+        configureStrip(strip, next, curves)
       }
     }
     previous.values.forEach { it.release() }
@@ -259,7 +258,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip: Strip,
     key: Key,
     curves: CurveSamples,
-    radiusCurves: CurveSamples,
   ) {
     val source = strip.band.source
     val scale = strip.scale
@@ -279,37 +277,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveLeft", curves.left)
     strip.mask.setFloatUniform("curveRight", curves.right)
 
-    // Gaussian radius uses cbrt-transformed LUT samples before interpolation.
-    // Material density/color still use the original cubic presence mask above.
-    strip.radiusMask.setFloatUniform("origin", source.left * scale, source.top * scale)
-    strip.radiusMask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
-    strip.radiusMask.setFloatUniform(
-      "edges",
-      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
-    )
-    strip.radiusMask.setFloatUniform("progression", key.progression)
-    strip.radiusMask.setFloatUniform("curveTop", radiusCurves.top)
-    strip.radiusMask.setFloatUniform("curveBottom", radiusCurves.bottom)
-    strip.radiusMask.setFloatUniform("curveLeft", radiusCurves.left)
-    strip.radiusMask.setFloatUniform("curveRight", radiusCurves.right)
-
     val blurEffect =
       if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
-          shader.setInputShader(
-            "mask",
-            if (key.materialStrength > 0f) strip.radiusMask else strip.mask,
-          )
+          shader.setInputShader("mask", strip.mask)
           shader.setFloatUniform("blurRadius", key.radius)
           shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
           shader.setFloatUniform(
             "continuousSupport",
-            if (key.materialStrength > 0f) 1f else 0f,
-          )
-          shader.setFloatUniform(
-            "radiusMaskPrewarped",
             if (key.materialStrength > 0f) 1f else 0f,
           )
         }
@@ -320,7 +297,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
       }
 
-    val finalEffect =
+    val materialEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
@@ -344,35 +321,19 @@ internal class EdgeFadeProgressiveStripRenderer(
         blurEffect
       }
 
+    // One-build diagnostic:
+    // capture  = 0.5x raster only, no Gaussian/material
+    // gaussian = baseline 0.5x + pure-cbrt Gaussian, no material
+    // material = exact pure-cbrt baseline pipeline
+    val finalEffect =
+      when {
+        key.materialStrength <= 0f -> blurEffect
+        key.debugStage == "capture" -> null
+        key.debugStage == "gaussian" -> blurEffect
+        else -> materialEffect
+      }
+
     strip.node.setRenderEffect(finalEffect)
-  }
-
-  private fun cbrtCurveSamples(curve: String): FloatArray {
-    val alphas = EdgeFadeCurves.alphas(curve)
-    if (alphas.isEmpty()) return FloatArray(EdgeFadeCurves.LUT_SIZE)
-
-    // Transform presence at the source stops first:
-    // radiusPresence = cbrt(1 - alpha).
-    // For the showcase cubic curve this recovers an almost linear radius field
-    // all the way to t=0 instead of amplifying the first interpolated LUT cell.
-    val warped = DoubleArray(alphas.size) { index ->
-      Math.cbrt((1.0 - alphas[index]).coerceIn(0.0, 1.0))
-    }
-
-    if (warped.size == 1) {
-      return FloatArray(EdgeFadeCurves.LUT_SIZE) { warped[0].toFloat() }
-    }
-
-    val srcMax = warped.size - 1
-    return FloatArray(EdgeFadeCurves.LUT_SIZE) { index ->
-      val t = index.toFloat() / (EdgeFadeCurves.LUT_SIZE - 1).toFloat()
-      val srcPos = t * srcMax
-      val lo = srcPos.toInt().coerceIn(0, srcMax - 1)
-      val frac = srcPos - lo.toFloat()
-      (warped[lo] * (1.0 - frac) + warped[lo + 1] * frac)
-        .toFloat()
-        .coerceIn(0f, 1f)
-    }
   }
 
   private fun curveSamples(curve: String): FloatArray =
