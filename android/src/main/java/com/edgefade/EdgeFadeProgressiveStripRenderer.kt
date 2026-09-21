@@ -156,7 +156,12 @@ internal class EdgeFadeProgressiveStripRenderer(
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
         try {
-          for (strip in strips) clipOut(canvas, strip.band.visible)
+          // Material mode composites its feathered processed strip over this
+          // sharp source. The public strength=0 path keeps the original clip-out
+          // behavior byte-for-byte.
+          if ((key?.materialStrength ?: 0f) <= 0f) {
+            for (strip in strips) clipOut(canvas, strip.band.visible)
+          }
           canvas.drawRenderNode(content)
         } finally {
           canvas.restoreToCount(sharpSave)
