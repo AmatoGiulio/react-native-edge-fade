@@ -39,7 +39,28 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
+      // Material-only physical entrance. This keeps the cbrt body untouched,
+      // but makes the first pixels of the strip converge to the sharp source
+      // instead of exposing the cbrt singularity as a hard boundary.
+      uniform float materialShoulderEdge;
+      uniform float materialShoulderBoundary;
+      uniform float materialShoulderPx;
       const float maxRadius = 150.0;
+
+      float materialShoulder(float2 coord) {
+        float d = 0.0;
+        if (materialShoulderEdge < 0.5) {
+          d = materialShoulderBoundary - coord.y; // top
+        } else if (materialShoulderEdge < 1.5) {
+          d = coord.y - materialShoulderBoundary; // bottom
+        } else if (materialShoulderEdge < 2.5) {
+          d = materialShoulderBoundary - coord.x; // left
+        } else {
+          d = coord.x - materialShoulderBoundary; // right
+        }
+        float t = clamp(d / max(materialShoulderPx, 0.0001), 0.0, 1.0);
+        return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      }
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
@@ -51,8 +72,12 @@ internal object BlurLabShaders {
         // Recreate the discarded Astra experiment exactly: keep the public
         // Gaussian path unchanged, but use the cubic-root radius field whenever
         // the internal material path enables continuousSupport.
+        float shoulder =
+          continuousSupport > 0.5 ? materialShoulder(coord) : 1.0;
         float radiusIntensity =
-          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+          continuousSupport > 0.5
+            ? pow(intensity, 1.0 / 3.0) * shoulder
+            : intensity;
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
@@ -243,10 +268,30 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialShoulderEdge;
+    uniform float materialShoulderBoundary;
+    uniform float materialShoulderPx;
+
+    float materialShoulder(float2 coord) {
+      float d = 0.0;
+      if (materialShoulderEdge < 0.5) {
+        d = materialShoulderBoundary - coord.y;
+      } else if (materialShoulderEdge < 1.5) {
+        d = coord.y - materialShoulderBoundary;
+      } else if (materialShoulderEdge < 2.5) {
+        d = materialShoulderBoundary - coord.x;
+      } else {
+        d = coord.x - materialShoulderBoundary;
+      }
+      float t = clamp(d / max(materialShoulderPx, 0.0001), 0.0, 1.0);
+      return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
-      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float rawIntensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float shoulder = materialShoulder(coord);
+      float intensity = rawIntensity * shoulder;
       if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
       // Scattering builds before fine detail disappears: density is not the
