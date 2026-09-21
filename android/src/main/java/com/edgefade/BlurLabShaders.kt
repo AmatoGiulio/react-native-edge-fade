@@ -272,7 +272,17 @@ internal object BlurLabShaders {
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
       float3 result = float3(outputLuma) + chroma * transmission;
-      return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
+
+      // The pure cbrt radius is intentionally preserved. Only the visibility
+      // of the processed result is feathered at the very start of the mask so
+      // it can composite over the sharp source without exposing the strip seam.
+      // At intensity >= 0.03 this is exactly the original experiment again.
+      float featherT = clamp(intensity / 0.03, 0.0, 1.0);
+      float feather =
+        featherT * featherT * featherT
+        * (featherT * (featherT * 6.0 - 15.0) + 10.0);
+      float outAlpha = float(blurred.a) * feather;
+      return half4(clamp(result, 0.0, 1.0) * outAlpha, outAlpha);
     }
   """.trimIndent()
 
