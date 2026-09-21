@@ -239,13 +239,37 @@ async function ensureOpen() {
   return waitForDescription('Close perfection menu');
 }
 
+function stageBounds(xml) {
+  for (const stage of STAGES) {
+    const bounds = nodeBounds(
+      xml,
+      (node) =>
+        node.includes(`text="${stage}"`) ||
+        node.includes(`content-desc="${stage}"`)
+    );
+    if (bounds) return { stage, bounds };
+  }
+  return null;
+}
+
 async function debugButtonBounds() {
-  return waitForDescription('Cycle progressive debug stage');
+  return waitFor(
+    (xml) => {
+      const direct = boundsForDescription(xml, 'Cycle progressive debug stage');
+      if (direct) return direct;
+
+      // React Native may expose the visible Text child but not the Pressable's
+      // accessibilityLabel to uiautomator. The FULL/CAP/GAUSS chip itself is
+      // still tappable, so fall back to the visible stage node bounds.
+      return stageBounds(xml)?.bounds ?? null;
+    },
+    'diagnostic stage chip'
+  );
 }
 
 async function currentStage() {
   const xml = dumpUi();
-  return STAGES.find((stage) => hasText(xml, stage)) ?? null;
+  return stageBounds(xml)?.stage ?? null;
 }
 
 async function setStage(target) {
@@ -326,7 +350,11 @@ if (rebuild) {
 adb(['shell', 'am', 'force-stop', PACKAGE]);
 launchShowcase();
 
-await waitForDescription('Cycle progressive debug stage', 20000);
+await waitFor(
+  (xml) => stageBounds(xml)?.bounds ?? null,
+  'visible FULL/CAP/GAUSS diagnostic chip',
+  20000
+);
 await ensureClosed();
 await setStage('FULL');
 await sleep(settleMs);
