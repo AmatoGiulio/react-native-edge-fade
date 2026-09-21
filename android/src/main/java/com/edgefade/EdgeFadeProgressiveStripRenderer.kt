@@ -279,6 +279,7 @@ internal class EdgeFadeProgressiveStripRenderer(
             "continuousSupport",
             if (key.materialStrength > 0f) 1f else 0f,
           )
+          shader.setFloatUniform("materialProgression", key.progression)
         }
 
         RenderEffect.createChainEffect(
@@ -290,6 +291,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val finalEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
+        strip.material.setFloatUniform("materialProgression", key.progression)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
           "materialColor",
