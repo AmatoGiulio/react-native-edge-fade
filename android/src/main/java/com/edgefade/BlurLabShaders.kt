@@ -233,6 +233,44 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
+  // Full-resolution entrance overlay used only while the showcase is CLOSED.
+  // It preserves the pure-cbrt optical law, but avoids beginning the material
+  // directly from the 0.5x raster. The overlay is fully opaque at the sharp
+  // boundary, then hands back to the untouched half-resolution body.
+  val materialEntranceFade = """
+    uniform shader content;
+    uniform float entranceEdge;
+    uniform float entranceBoundary;
+    uniform float fadeStartPx;
+    uniform float fadeEndPx;
+    uniform float entranceMix;
+
+    half4 main(float2 coord) {
+      half4 value = content.eval(coord);
+
+      float d = 0.0;
+      if (entranceEdge < 0.5) {
+        d = entranceBoundary - coord.y; // top: inward is upward
+      } else if (entranceEdge < 1.5) {
+        d = coord.y - entranceBoundary; // bottom: inward is downward
+      } else if (entranceEdge < 2.5) {
+        d = entranceBoundary - coord.x; // left: inward is left
+      } else {
+        d = coord.x - entranceBoundary; // right: inward is right
+      }
+
+      float t = clamp(
+        (d - fadeStartPx) / max(fadeEndPx - fadeStartPx, 0.0001),
+        0.0,
+        1.0
+      );
+      float smoother = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      float alpha = (1.0 - smoother) * clamp(entranceMix, 0.0, 1.0);
+      return value * half4(alpha);
+    }
+  """.trimIndent()
+
+
   // Demo-only optical response after ONE continuously varying Gaussian.
   // No screen-space shape: the apparent contour must come from source colour.
   val materialComposite = """
