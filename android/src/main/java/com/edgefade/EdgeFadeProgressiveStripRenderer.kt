@@ -58,6 +58,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    val materialHorizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
@@ -301,6 +302,7 @@ internal class EdgeFadeProgressiveStripRenderer(
             "continuousSupport",
             if (key.materialStrength > 0f) 1f else 0f,
           )
+          shader.setFloatUniform("fixedRadius", 0f)
         }
 
         RenderEffect.createChainEffect(
@@ -340,12 +342,23 @@ internal class EdgeFadeProgressiveStripRenderer(
         shader.setFloatUniform("materialBoundary", localBoundary)
 
 
-        // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
-        // Avoiding a third RenderEffect keeps the strip edge in the same raster
-        // domain as GAUSS instead of resampling it once more at the clip.
+        val materialHorizontal = strip.materialHorizontal
+        materialHorizontal.setInputShader("mask", strip.mask)
+        materialHorizontal.setFloatUniform("blurRadius", key.radius)
+        materialHorizontal.setFloatUniform(
+          "extent",
+          rasterWidth.toFloat(),
+          rasterHeight.toFloat(),
+        )
+        materialHorizontal.setFloatUniform("continuousSupport", 1f)
+        materialHorizontal.setFloatUniform("fixedRadius", 1f)
+
+        // Fixed high-radius Gaussian in both axes, then the vertical pass adds
+        // the constant material treatment and applies the progressive alpha
+        // mask. GAUSS diagnostics keep the old variable-radius path.
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
-          RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
+          RenderEffect.createRuntimeShaderEffect(materialHorizontal, "content"),
         )
       } else if (key.materialStrength > 0f) {
         // AndroidX remains on its existing material post-pass. The seam work is
