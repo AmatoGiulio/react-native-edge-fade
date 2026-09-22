@@ -358,25 +358,19 @@ internal class EdgeFadeProgressiveStripRenderer(
           MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
         )
 
-        // Material-only air shoulder. Keep OPEN essentially unchanged by
-        // capping tall panels at 64 physical px, while short CLOSED panels use
-        // 25% of their actual depth (with a 40 px floor). The Gaussian itself
-        // is untouched and the material reaches an exact 1.0 plateau after it.
+        // One optical shoulder for blur + material. It scales with the real
+        // panel depth, but caps in physical pixels so tall OPEN panels do not
+        // develop a washed halo. Deep body pixels are exactly baseline after
+        // this span; short panels automatically shrink the shoulder.
         val visibleDepthPx = when (strip.band.edge) {
           0, 1 -> strip.band.visible.height.toFloat()
           2, 3 -> strip.band.visible.width.toFloat()
           else -> 0f
         }
-        val materialAirSpanPx =
-          (visibleDepthPx * 0.25f).coerceIn(40f, 64f)
-        shader.setFloatUniform("materialAirSpan", materialAirSpanPx * scale)
-
-        // Radius-only entrance toe. Scale with panel depth but cap it tightly so
-        // OPEN is effectively unchanged after a short shoulder. CLOSED gets
-        // enough physical distance for cbrt to grow from zero without a cut.
-        val blurEntranceSpanPx =
-          (visibleDepthPx * 0.08f).coerceIn(32f, 48f)
-        shader.setFloatUniform("blurEntranceSpan", blurEntranceSpanPx * scale)
+        val opticalAirSpanPx =
+          (visibleDepthPx * 0.35f).coerceIn(32f, 128f)
+        shader.setFloatUniform("materialAirSpan", opticalAirSpanPx * scale)
+        shader.setFloatUniform("blurEntranceSpan", opticalAirSpanPx * scale)
 
         val materialHorizontal = strip.materialHorizontal
         materialHorizontal.setInputShader("mask", strip.mask)
@@ -389,7 +383,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         materialHorizontal.setFloatUniform("continuousSupport", 1f)
         materialHorizontal.setFloatUniform("entranceEdge", strip.band.edge.toFloat())
         materialHorizontal.setFloatUniform("entranceBoundary", localBoundary)
-        materialHorizontal.setFloatUniform("entranceSpan", blurEntranceSpanPx * scale)
+        materialHorizontal.setFloatUniform("entranceSpan", opticalAirSpanPx * scale)
 
         // Two passes total: horizontal Gaussian with physical toe -> vertical
         // Gaussian + material with the same toe. Beyond the toe this is exactly
