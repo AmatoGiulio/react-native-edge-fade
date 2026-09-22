@@ -59,6 +59,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
     fun release() {
@@ -298,7 +299,36 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     val materialEffect =
-      if (key.materialStrength > 0f) {
+      if (key.materialStrength > 0f && key.backend == "agsl") {
+        val shader = strip.materialVertical
+        shader.setInputShader("mask", strip.mask)
+        shader.setFloatUniform("blurRadius", key.radius)
+        shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+        shader.setFloatUniform("continuousSupport", 1f)
+        shader.setFloatUniform("materialStrength", key.materialStrength)
+        shader.setFloatUniform(
+          "materialColor",
+          Color.red(key.materialColor) / 255f,
+          Color.green(key.materialColor) / 255f,
+          Color.blue(key.materialColor) / 255f,
+        )
+        shader.setFloatUniform("materialExposure", key.materialExposure)
+        shader.setFloatUniform("materialSurface", key.materialSurface)
+        shader.setFloatUniform(
+          "materialSurfaceProgression",
+          key.materialSurfaceProgression,
+        )
+
+        // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
+        // Avoiding a third RenderEffect keeps the strip edge in the same raster
+        // domain as GAUSS instead of resampling it once more at the clip.
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(shader, "content"),
+          RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
+        )
+      } else if (key.materialStrength > 0f) {
+        // AndroidX remains on its existing material post-pass. The seam work is
+        // scoped to the AGSL showcase path under test.
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
@@ -313,28 +343,6 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
         )
-        strip.material.setFloatUniform(
-          "materialOrigin",
-          source.left * scale,
-          source.top * scale,
-        )
-        strip.material.setFloatUniform(
-          "materialViewSize",
-          key.width * scale,
-          key.height * scale,
-        )
-        strip.material.setFloatUniform("materialEdge", strip.band.edge.toFloat())
-        val materialEdgeDepth = when (strip.band.edge) {
-          0 -> key.top
-          1 -> key.bottom
-          2 -> key.left
-          3 -> key.right
-          else -> 0f
-        }
-        strip.material.setFloatUniform("materialEdgeDepth", materialEdgeDepth * scale)
-        // Fixed physical-pixel shoulder: only the material density is feathered.
-        // Blur radius, mask and the rest of the material body remain baseline.
-        strip.material.setFloatUniform("materialEntrance", 32f * scale)
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
           blurEffect,
@@ -346,7 +354,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     // One-build diagnostic:
     // capture  = 0.5x raster only, no Gaussian/material
     // gaussian = baseline 0.5x + pure-cbrt Gaussian, no material
-    // material = exact pure-cbrt baseline pipeline
+    // material = two-pass fused pure-cbrt + material pipeline
     val finalEffect =
       when {
         key.materialStrength <= 0f -> blurEffect
