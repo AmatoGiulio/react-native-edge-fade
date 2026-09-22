@@ -351,11 +351,27 @@ internal object BlurLabShaders {
         // read as a hard panel edge.
         float localHighlight = smoothstep(0.44, 0.88, luma);
         float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-        float shoulderGate = smoothstep(0.20, 0.58, intensity);
-        float pearlReflection =
+
+        // The first transplant was too conservative: a ~5% linear mix toward
+        // the mid-grey materialColor barely changes this already-compressed body
+        // and can even darken bright pixels. Astra's pleasant "alive" quality
+        // needs a reflective lift, not another tint.
+        //
+        // Keep that lift safely inside the material so CLOSED does not recover
+        // the old bright boundary. Light pearl gets the full response; dark
+        // smoke keeps a much weaker one.
+        float shoulderGate = smoothstep(0.28, 0.62, intensity);
+        float sheenStrength =
+          mix(0.38, 1.0, light) *
           density * surface * shoulderGate *
-          (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
-        graded = mix(graded, materialColor, pearlReflection);
+          (0.105 + 0.075 * localHighlight + 0.035 * darkContent);
+        float3 sheenColor =
+          mix(materialColor, float3(1.0), mix(0.15, 0.62, light));
+
+        // Screen-style reflection: only adds light energy, preserving the
+        // existing body/chroma model instead of replacing it with a grey layer.
+        graded =
+          1.0 - (1.0 - graded) * (1.0 - sheenColor * sheenStrength);
 
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
@@ -619,11 +635,18 @@ internal object BlurLabShaders {
       // while shoulderGate keeps the sheen out of the near-zero mask region.
       float localHighlight = smoothstep(0.44, 0.88, luma);
       float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-      float shoulderGate = smoothstep(0.20, 0.58, intensity);
-      float pearlReflection =
+      float shoulderGate = smoothstep(0.28, 0.62, intensity);
+      float sheenStrength =
+        mix(0.38, 1.0, light) *
         density * surface * shoulderGate *
-        (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
-      result = mix(result, materialColor, pearlReflection);
+        (0.105 + 0.075 * localHighlight + 0.035 * darkContent);
+      float3 sheenColor =
+        mix(materialColor, float3(1.0), mix(0.15, 0.62, light));
+
+      // Screen-style reflection mirrors the fused AGSL material response while
+      // leaving BlurRadiusSpec.verticalGradient completely untouched.
+      result =
+        1.0 - (1.0 - result) * (1.0 - sheenColor * sheenStrength);
 
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }

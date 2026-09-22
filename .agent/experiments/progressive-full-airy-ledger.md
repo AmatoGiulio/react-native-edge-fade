@@ -442,8 +442,19 @@ Boundary protection:
 - the same optical response is applied to both the fused AGSL material path and
   the AndroidX-gradient post-material path so visual comparison stays fair.
 
-**Status:** pending CLOSED + FULL light/dark capture. Primary check: more body
-brilliance without the bright horizontal edge returning in CLOSED.
+**Status:** first capture after `71a6d041` showed essentially no visible
+brilliance. Diagnosis: the transplanted response was only a small linear mix
+toward the mid-grey `materialColor`; on the current compressed body that is
+nearly invisible and can darken already-bright pixels.
+
+Second pass changes the reflection to a screen-style light-energy lift while
+keeping the same source-driven highlight idea. Light pearl receives roughly
+10–15% effective reflective lift in the dense body; dark smoke is deliberately
+much weaker. The entrance gate is moved deeper (`0.28 -> 0.62`) so the
+stronger response cannot recreate Astra's CLOSED boundary.
+
+**Status:** pending CLOSED + FULL light/dark capture after the stronger sheen
+pass.
 
 ---
 
