@@ -313,6 +313,28 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
         )
+        strip.material.setFloatUniform(
+          "materialOrigin",
+          source.left * scale,
+          source.top * scale,
+        )
+        strip.material.setFloatUniform(
+          "materialViewSize",
+          key.width * scale,
+          key.height * scale,
+        )
+        strip.material.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        val materialEdgeDepth = when (strip.band.edge) {
+          0 -> key.top
+          1 -> key.bottom
+          2 -> key.left
+          3 -> key.right
+          else -> 0f
+        }
+        strip.material.setFloatUniform("materialEdgeDepth", materialEdgeDepth * scale)
+        // Fixed physical-pixel shoulder: only the material density is feathered.
+        // Blur radius, mask and the rest of the material body remain baseline.
+        strip.material.setFloatUniform("materialEntrance", 32f * scale)
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
           blurEffect,
