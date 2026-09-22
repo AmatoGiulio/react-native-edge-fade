@@ -135,7 +135,6 @@ internal object BlurLabShaders {
     uniform float materialEdge;
     uniform float materialBoundary;
     uniform float materialEntrance;
-    uniform float materialAirSpan;
 
     const float maxRadius = 150.0;
 
@@ -219,22 +218,6 @@ internal object BlurLabShaders {
       if (intensity > 0.0 && materialStrength > 0.0) {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
         float density = materialStrength * (1.0 - exp(-3.0 * depth));
-
-        // Keep the progressive Gaussian fully intact. Only the pearlescent
-        // material contribution breathes in, and it does so in physical space
-        // instead of intensity space. CLOSED compresses the intensity field,
-        // which made the old intensity threshold look like a horizontal cut.
-        // A distance-based quintic shoulder avoids that compression artifact.
-        float insideMaterialForAir = max(materialDistanceInside(coord), 0.0);
-        float materialU = materialAirSpan <= 0.0
-          ? 1.0
-          : clamp(insideMaterialForAir / materialAirSpan, 0.0, 1.0);
-        float materialSmooth =
-          materialU * materialU * (3.0 - 2.0 * materialU);
-        float materialAir =
-          1.0 - (1.0 - materialSmooth) * (1.0 - materialSmooth);
-        density *= materialAir;
-
         float alpha = max(sampled.a, 0.0001);
         float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
         float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
