@@ -217,12 +217,7 @@ internal object BlurLabShaders {
 
       if (intensity > 0.0 && materialStrength > 0.0) {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
-        float insideMaterial = max(materialDistanceInside(coord), 0.0);
-        float entrance = materialEntrance <= 0.0
-          ? 1.0
-          : smoothstep(0.0, materialEntrance, insideMaterial);
-        float density =
-          materialStrength * (1.0 - exp(-3.0 * depth)) * entrance;
+        float density = materialStrength * (1.0 - exp(-3.0 * depth));
         float alpha = max(sampled.a, 0.0001);
         float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
         float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
@@ -242,7 +237,15 @@ internal object BlurLabShaders {
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
-      return half4(sampled);
+      float insideMaterial = max(materialDistanceInside(coord), 0.0);
+      float coverage = materialEntrance <= 0.0
+        ? 1.0
+        : smoothstep(0.0, materialEntrance, insideMaterial);
+
+      // The sharp pass remains underneath this narrow overlap. Fade the entire
+      // premultiplied processed pixel, not only material density, so the hard
+      // strip replacement becomes mathematically continuous at the clip edge.
+      return half4(sampled * coverage);
     }
   """.trimIndent()
 
