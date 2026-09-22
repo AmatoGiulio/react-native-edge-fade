@@ -397,6 +397,16 @@ Isolation:
 **Status:** pending device CLOSED + FULL capture. Do not tune the stop profile
 before the first A/B against the reference.
 
+Gallery comparison surface:
+
+- `androidx-gradient` is now selectable from the Android Gallery blur renderer
+  control next to `auto`, `agsl`, `androidx`, and `scaled`;
+- the UI label is shortened to `gradient`, while the internal backend value
+  remains explicit;
+- the adaptive selector forces it through the exact renderer, so high radii
+  cannot silently switch the comparison to the scaled production backend;
+- `gallery-renderer-test?backend=androidx-gradient` is also supported.
+
 ---
 
 ## Rejected / exhausted families

@@ -49,9 +49,10 @@ assert '@ReactProp(name = "progressiveBackend")' in manager
 assert '"exact" -> "exact"' in manager
 assert '"agsl" -> "agsl"' in manager
 assert '"androidx" -> "androidx"' in manager
+assert '"androidx-gradient" -> "androidx-gradient"' in manager
 assert '"scaled" -> "scaled"' in manager
 assert 'val override = when (host.progressiveBackend)' in adaptive
-assert '"exact", "agsl", "androidx" -> Mode.EXACT' in adaptive
+assert '"exact", "agsl", "androidx", "androidx-gradient" -> Mode.EXACT' in adaptive
 assert '"scaled" -> Mode.SCALED' in adaptive
 assert 'lastOverride = "auto"' in adaptive
 
@@ -110,9 +111,10 @@ for token in ("topDp?: number", "leftDp?: number", "curve?: string"):
     assert token in gallery
 for token in ("fadeLeftDp", "fadeRightDp", "testCurve"):
     assert token in route
-assert "export type DemoBlurRenderer = 'auto' | 'agsl' | 'androidx' | 'scaled';" in fade_context
+assert "'androidx-gradient'" in fade_context
 assert "setBlurRenderer('auto')" in fade_context
-assert "const BLUR_RENDERERS = ['auto', 'agsl', 'androidx', 'scaled'] as const;" in fade_panel
+assert "'androidx-gradient'" in fade_panel
+assert "BLUR_RENDERER_LABELS" in fade_panel
 assert "setBlurRenderer(renderer)" in fade_panel
 assert "progressiveBackend={" in gallery
 assert "blurRenderer" in gallery

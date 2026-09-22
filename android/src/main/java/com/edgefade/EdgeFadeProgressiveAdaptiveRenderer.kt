@@ -14,7 +14,8 @@ import java.lang.ref.WeakReference
  * between [SCALED_EXIT_RADIUS_PX] and [SCALED_ENTER_RADIUS_PX] provides
  * hysteresis, preventing an animated radius from flipping renderers every frame.
  *
- * The demo-only native override can force AGSL, AndroidX, or the scaled renderer
+ * The demo-only native override can force AGSL, AndroidX, the official
+ * multi-stop AndroidX gradient experiment, or the scaled renderer
  * for direct same-scene comparison; it is absent from the public JS prop types.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -45,6 +46,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       "exact" -> "exact"
       "agsl" -> "agsl"
       "androidx" -> "androidx"
+      "androidx-gradient" -> "androidx-gradient"
       "scaled" -> "scaled"
       else -> "auto"
     }
@@ -68,7 +70,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         (host.fadeTop > 0f || host.fadeBottom > 0f)
 
     val nextMode = when (override) {
-      "exact", "agsl", "androidx" -> Mode.EXACT
+      "exact", "agsl", "androidx", "androidx-gradient" -> Mode.EXACT
       "scaled" -> Mode.SCALED
       else -> when (mode) {
         Mode.EXACT ->
@@ -128,6 +130,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
       Mode.EXACT -> when (requested) {
         "agsl" -> "agsl33"
         "androidx" -> "androidx33"
+        "androidx-gradient" -> "androidx-gradient33"
         else -> if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
       }
     }

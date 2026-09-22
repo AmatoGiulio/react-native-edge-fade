@@ -43,7 +43,21 @@ import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
 const MODES_ANDROID = ['mask', 'blur', 'overlay'] as const;
-const BLUR_RENDERERS = ['auto', 'agsl', 'androidx', 'scaled'] as const;
+const BLUR_RENDERERS = [
+  'auto',
+  'agsl',
+  'androidx',
+  'androidx-gradient',
+  'scaled',
+] as const;
+
+const BLUR_RENDERER_LABELS = {
+  auto: 'auto',
+  agsl: 'agsl',
+  androidx: 'androidx',
+  'androidx-gradient': 'gradient',
+  scaled: 'scaled',
+} as const;
 const DEFAULT_TINT = '#000000';
 
 const TINT_PRESETS = [
@@ -619,7 +633,7 @@ export function FadePanel() {
                   { color: selected ? t.text : t.faintText },
                 ]}
               >
-                {renderer}
+                {BLUR_RENDERER_LABELS[renderer]}
               </Text>
             </Pressable>
           );
