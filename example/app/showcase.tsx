@@ -193,9 +193,14 @@ export default function ProgressiveShowcaseRoute() {
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
-  const panelBoundsStyle = useAnimatedStyle(() => ({
-    top: Math.max(6, height - bottomDepth.value),
-  }));
+  const panelBoundsStyle = useAnimatedStyle(() => {
+    const depth = bottomDepth.value;
+    const inset = 6;
+    return {
+      top: Math.max(inset, height - depth),
+      height: Math.max(0, depth - inset),
+    };
+  });
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
   // document. The native blur is the only thing changing during the transition.
@@ -703,7 +708,6 @@ const s = StyleSheet.create({
     position: 'absolute',
     left: 6,
     right: 6,
-    bottom: 6,
     zIndex: 1000,
     elevation: 1000,
     borderWidth: 5,
