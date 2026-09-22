@@ -318,7 +318,7 @@ Therefore **do not continue tuning this family as if it were unexplored**. Keep 
 
 ### 12. Signed overscan Gaussian support before the panel boundary
 
-**Commit:** pending in this commit
+**Commits:** `5d48babe`, `3f2ce2a5`
 
 Hypothesis:
 
@@ -356,8 +356,7 @@ Initial constants at `radius=150`:
 - inside support: ~143 px;
 - maximum bridge Gaussian: ~33 px.
 
-**Status:** pending device CLOSED + FULL capture. Do not tune these constants
-until the first visual result is compared with the reference.
+**Status:** implementation complete; pending device CLOSED + FULL capture. The second commit applies the same signed overscan support to the horizontal Gaussian pass as well as the fused vertical/material pass, so the outer bridge is a true 2D Gaussian rather than a vertical-only smear. Do not tune constants until the first visual result is compared with the reference.
 
 ---
 
