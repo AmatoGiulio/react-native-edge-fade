@@ -338,15 +338,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 0f
         }
         shader.setFloatUniform("materialBoundary", localBoundary)
-        val materialDepth = when (strip.band.edge) {
-          0, 1 -> strip.band.visible.height.toFloat()
-          2, 3 -> strip.band.visible.width.toFloat()
-          else -> 0f
-        }
-        // Normalize the alpha envelope to the whole visible band. Because depth
-        // is expressed in this strip's raster space, the same curve works for
-        // any physical panel height without changing the deep material body.
-        shader.setFloatUniform("materialDepth", materialDepth * scale)
+
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
