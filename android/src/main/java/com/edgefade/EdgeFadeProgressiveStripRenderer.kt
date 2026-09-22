@@ -318,6 +318,19 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
         )
+        shader.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        val localBoundary = when (strip.band.edge) {
+          0 -> (strip.band.visible.bottom - source.top) * scale
+          1 -> (strip.band.visible.top - source.top) * scale
+          2 -> (strip.band.visible.right - source.left) * scale
+          3 -> (strip.band.visible.left - source.left) * scale
+          else -> 0f
+        }
+        shader.setFloatUniform("materialBoundary", localBoundary)
+        // 32 physical px, expressed directly in this strip's raster space.
+        // At the hard clip edge the material pass is now mathematically
+        // identical to GAUSS; after 32 px it is exactly the baseline material.
+        shader.setFloatUniform("materialEntrance", 32f * scale)
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
