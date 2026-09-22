@@ -362,7 +362,7 @@ Initial constants at `radius=150`:
 
 ### 13. Official AndroidX multi-stop radius gradient
 
-**Commit:** pending in this commit
+**Commit:** `18e312dd`
 
 Context check:
 
