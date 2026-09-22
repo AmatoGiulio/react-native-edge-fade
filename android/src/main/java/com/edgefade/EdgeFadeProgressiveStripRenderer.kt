@@ -33,6 +33,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val MATERIAL_EDGE_BLEND_MAX_PX = 64f
     const val MATERIAL_EDGE_BLEND_SHORT_DEPTH_PX = 144f
     const val MATERIAL_EDGE_BLEND_LONG_DEPTH_PX = 320f
+
+    // Global panel mask is deliberately subtle: the processed layer starts at
+    // 90% coverage and reaches the current 100% body smoothly at the far edge.
+    const val MATERIAL_PANEL_ALPHA_MIN = 0.90f
   }
 
   private data class Key(
@@ -179,15 +183,17 @@ internal class EdgeFadeProgressiveStripRenderer(
         val sharpSave = canvas.save()
         try {
           val current = key
-          val materialBlend =
+          val materialMask =
             current != null &&
               current.materialStrength > 0f &&
               current.backend == "agsl" &&
               current.debugStage == "material"
 
-          for (strip in strips) {
-            val overlap = if (materialBlend) materialEdgeBlendPx(strip.band) else 0
-            clipOut(canvas, insetForSharpOverlap(strip.band, overlap))
+          // FULL material now behaves like a true alpha-masked effect layer:
+          // keep the original sharp content underneath the whole panel. Where
+          // processed coverage reaches 1.0, output is identical to replacement.
+          if (!materialMask) {
+            for (strip in strips) clipOut(canvas, strip.band.visible)
           }
           canvas.drawRenderNode(content)
         } finally {
@@ -353,6 +359,13 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialEntrance",
           materialEdgeBlendPx(strip.band).toFloat() * scale,
         )
+        val panelDepth = when (strip.band.edge) {
+          0, 1 -> strip.band.visible.height.toFloat()
+          2, 3 -> strip.band.visible.width.toFloat()
+          else -> 1f
+        }
+        shader.setFloatUniform("materialPanelDepth", panelDepth * scale)
+        shader.setFloatUniform("materialPanelAlphaMin", MATERIAL_PANEL_ALPHA_MIN)
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
