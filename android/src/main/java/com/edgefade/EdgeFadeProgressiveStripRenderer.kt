@@ -354,6 +354,19 @@ internal class EdgeFadeProgressiveStripRenderer(
           MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
         )
 
+        // Material-only air shoulder. Keep OPEN essentially unchanged by
+        // capping tall panels at 64 physical px, while short CLOSED panels use
+        // 25% of their actual depth (with a 40 px floor). The Gaussian itself
+        // is untouched and the material reaches an exact 1.0 plateau after it.
+        val visibleDepthPx = when (strip.band.edge) {
+          0, 1 -> strip.band.visible.height.toFloat()
+          2, 3 -> strip.band.visible.width.toFloat()
+          else -> 0f
+        }
+        val materialAirSpanPx =
+          (visibleDepthPx * 0.25f).coerceIn(40f, 64f)
+        shader.setFloatUniform("materialAirSpan", materialAirSpanPx * scale)
+
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
         // domain as GAUSS instead of resampling it once more at the clip.
