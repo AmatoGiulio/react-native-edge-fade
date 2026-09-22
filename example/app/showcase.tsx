@@ -144,6 +144,7 @@ export default function ProgressiveShowcaseRoute() {
   const params = useLocalSearchParams<{
     bench?: string | string[];
     backend?: string | string[];
+    bounds?: string | string[];
   }>();
 
   const benchParam = Array.isArray(params.bench)
@@ -152,6 +153,10 @@ export default function ProgressiveShowcaseRoute() {
   const backendParam = Array.isArray(params.backend)
     ? params.backend[0]
     : params.backend;
+  const boundsParam = Array.isArray(params.bounds)
+    ? params.bounds[0]
+    : params.bounds;
+  const showPanelBounds = boundsParam === '1';
   const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] = (
     benchParam ?? ''
   ).split(',');
@@ -193,6 +198,9 @@ export default function ProgressiveShowcaseRoute() {
   const blurProgression = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
+  const panelBoundsStyle = useAnimatedStyle(() => ({
+    height: bottomDepth.value,
+  }));
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
   // document. The native blur is the only thing changing during the transition.
@@ -514,6 +522,17 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
       </ProgressiveFade>
 
+      {showPanelBounds && (
+        <Animated.View
+          pointerEvents="none"
+          style={[s.panelBounds, panelBoundsStyle]}
+        >
+          <View style={s.panelBoundsTopLabel}>
+            <Text style={s.panelBoundsTopLabelText}>BLUR PANEL</Text>
+          </View>
+        </Animated.View>
+      )}
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Cycle progressive debug stage"
@@ -686,6 +705,34 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.4,
+  },
+  panelBounds: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 95,
+    borderWidth: 3,
+    borderColor: '#ff00ff',
+    backgroundColor: 'transparent',
+  },
+  panelBoundsTopLabel: {
+    position: 'absolute',
+    left: 8,
+    top: -24,
+    paddingHorizontal: 7,
+    height: 22,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff00ff',
+  },
+  panelBoundsTopLabelText: {
+    color: '#000',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
 
   previousCard: {
