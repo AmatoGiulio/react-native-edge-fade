@@ -144,7 +144,6 @@ export default function ProgressiveShowcaseRoute() {
   const params = useLocalSearchParams<{
     bench?: string | string[];
     backend?: string | string[];
-    bounds?: string | string[];
   }>();
 
   const benchParam = Array.isArray(params.bench)
@@ -153,10 +152,6 @@ export default function ProgressiveShowcaseRoute() {
   const backendParam = Array.isArray(params.backend)
     ? params.backend[0]
     : params.backend;
-  const boundsParam = Array.isArray(params.bounds)
-    ? params.bounds[0]
-    : params.bounds;
-  const showPanelBounds = boundsParam === '1';
   const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] = (
     benchParam ?? ''
   ).split(',');
@@ -199,7 +194,7 @@ export default function ProgressiveShowcaseRoute() {
     interpolate(progress.value, [0, 1], [1, openProgression])
   );
   const panelBoundsStyle = useAnimatedStyle(() => ({
-    height: bottomDepth.value,
+    top: Math.max(6, height - bottomDepth.value),
   }));
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
@@ -522,16 +517,14 @@ export default function ProgressiveShowcaseRoute() {
         </Animated.View>
       </ProgressiveFade>
 
-      {showPanelBounds && (
-        <Animated.View
-          pointerEvents="none"
-          style={[s.panelBounds, panelBoundsStyle]}
-        >
-          <View style={s.panelBoundsTopLabel}>
-            <Text style={s.panelBoundsTopLabelText}>BLUR PANEL</Text>
-          </View>
-        </Animated.View>
-      )}
+      <Animated.View
+        pointerEvents="none"
+        style={[s.panelBounds, panelBoundsStyle]}
+      >
+        <View style={s.panelBoundsTopLabel}>
+          <Text style={s.panelBoundsTopLabelText}>BLUR PANEL BOUNDS</Text>
+        </View>
+      </Animated.View>
 
       <Pressable
         accessibilityRole="button"
@@ -708,13 +701,14 @@ const s = StyleSheet.create({
   },
   panelBounds: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 95,
-    borderWidth: 3,
+    left: 6,
+    right: 6,
+    bottom: 6,
+    zIndex: 1000,
+    elevation: 1000,
+    borderWidth: 5,
     borderColor: '#ff00ff',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255,0,255,0.035)',
   },
   panelBoundsTopLabel: {
     position: 'absolute',
