@@ -34,9 +34,17 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val MATERIAL_EDGE_BLEND_SHORT_DEPTH_PX = 144f
     const val MATERIAL_EDGE_BLEND_LONG_DEPTH_PX = 320f
 
-    // Global panel mask is deliberately subtle: the processed layer starts at
-    // 90% coverage and reaches the current 100% body smoothly at the far edge.
-    const val MATERIAL_PANEL_ALPHA_MIN = 0.90f
+    // Compact keeps the currently accepted compositor. FULL gets a dedicated
+    // long alpha shoulder over the sharp source instead of changing Gaussian or
+    // material optics again.
+    const val MATERIAL_COMPACT_ALPHA_MIN = 0.90f
+    const val MATERIAL_FULL_ALPHA_MIN = 0.10f
+    const val MATERIAL_FULL_AIR_SPAN_FRACTION = 0.82f
+
+    // Select FULL from geometry, not from demo state. Ratios make the transition
+    // stable across device heights and keep opening/closing continuous.
+    const val MATERIAL_FULL_ENTER_RATIO = 0.24f
+    const val MATERIAL_FULL_READY_RATIO = 0.44f
   }
 
   private data class Key(
@@ -365,7 +373,16 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 1f
         }
         shader.setFloatUniform("materialPanelDepth", panelDepth * scale)
-        shader.setFloatUniform("materialPanelAlphaMin", MATERIAL_PANEL_ALPHA_MIN)
+        shader.setFloatUniform("materialPanelAlphaMin", MATERIAL_COMPACT_ALPHA_MIN)
+        shader.setFloatUniform("materialPanelFullAlphaMin", MATERIAL_FULL_ALPHA_MIN)
+        shader.setFloatUniform(
+          "materialPanelAirSpan",
+          panelDepth * MATERIAL_FULL_AIR_SPAN_FRACTION * scale,
+        )
+        shader.setFloatUniform(
+          "materialPanelFullMix",
+          materialFullMix(strip.band, key.width, key.height),
+        )
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
@@ -423,6 +440,35 @@ internal class EdgeFadeProgressiveStripRenderer(
         ),
       ).coerceIn(0f, 1f)
     }
+
+  private fun materialFullMix(
+    band: BlurLabGeometry.Band,
+    viewWidth: Int,
+    viewHeight: Int,
+  ): Float {
+    val depth =
+      when (band.edge) {
+        0, 1 -> band.visible.height.toFloat()
+        2, 3 -> band.visible.width.toFloat()
+        else -> 0f
+      }
+    val axis =
+      when (band.edge) {
+        0, 1 -> viewHeight.toFloat()
+        2, 3 -> viewWidth.toFloat()
+        else -> 1f
+      }.coerceAtLeast(1f)
+
+    val ratio = (depth / axis).coerceIn(0f, 1f)
+    val t =
+      ((ratio - MATERIAL_FULL_ENTER_RATIO) /
+        (MATERIAL_FULL_READY_RATIO - MATERIAL_FULL_ENTER_RATIO))
+        .coerceIn(0f, 1f)
+
+    // Quintic smootherstep keeps both ends derivative-free, so the compositor
+    // cannot pop when the animated panel crosses either regime boundary.
+    return t * t * t * (t * (t * 6f - 15f) + 10f)
+  }
 
   private fun materialEdgeBlendPx(band: BlurLabGeometry.Band): Int {
     val depth =

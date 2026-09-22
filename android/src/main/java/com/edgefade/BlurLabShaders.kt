@@ -137,6 +137,9 @@ internal object BlurLabShaders {
     uniform float materialEntrance;
     uniform float materialPanelDepth;
     uniform float materialPanelAlphaMin;
+    uniform float materialPanelFullAlphaMin;
+    uniform float materialPanelAirSpan;
+    uniform float materialPanelFullMix;
 
     const float maxRadius = 150.0;
 
@@ -247,27 +250,51 @@ internal object BlurLabShaders {
         ? 1.0
         : smoothstep(0.0, materialEntrance, insideMaterial);
 
-      // Global alpha mask: keep the exact same processed pixels, but let their
-      // premultiplied coverage breathe in across the entire panel depth.
-      // The modulation is intentionally conservative (90% -> 100%) so the
-      // accepted material body stays visually almost unchanged.
+      // Compact keeps the accepted near-opaque compositor. FULL is a separate
+      // optical regime: the same processed pixels begin as a faint veil over
+      // the sharp source and acquire opacity over most of the panel depth.
+      // This decouples "how much processed material is visible" from the cbrt
+      // radius field, which is intentionally aggressive near zero.
       float panelT = clamp(
         insideMaterial / max(materialPanelDepth, 1.0),
         0.0,
         1.0
       );
-      float panelEase =
+      float compactEase =
         panelT * panelT * panelT *
         (panelT * (panelT * 6.0 - 15.0) + 10.0);
-      float panelCoverage = mix(
+      float compactCoverage = mix(
         clamp(materialPanelAlphaMin, 0.0, 1.0),
         1.0,
-        panelEase
+        compactEase
       );
 
-      // Sharp content stays underneath the whole material band. This is a real
-      // alpha-mask composite: no blur radius, colour response or material
-      // grading is changed.
+      // FULL shoulder: low-opacity diffusion first, dense material later.
+      // The span is relative to the real panel depth and reaches an exact 1.0
+      // plateau before the far edge, so the lower body remains the baseline.
+      float airT = clamp(
+        insideMaterial / max(materialPanelAirSpan, 1.0),
+        0.0,
+        1.0
+      );
+      float airEase =
+        airT * airT * airT *
+        (airT * (airT * 6.0 - 15.0) + 10.0);
+      float fullCoverage = mix(
+        clamp(materialPanelFullAlphaMin, 0.0, 1.0),
+        1.0,
+        airEase
+      );
+
+      float panelCoverage = mix(
+        compactCoverage,
+        fullCoverage,
+        clamp(materialPanelFullMix, 0.0, 1.0)
+      );
+
+      // Sharp content stays underneath the whole material band. Scaling the
+      // complete premultiplied pixel gives a true source-over alpha mask: blur,
+      // colour response and material grading themselves remain untouched.
       return half4(sampled * edgeCoverage * panelCoverage);
     }
   """.trimIndent()
