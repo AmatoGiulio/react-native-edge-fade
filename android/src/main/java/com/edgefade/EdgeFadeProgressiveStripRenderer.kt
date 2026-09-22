@@ -10,6 +10,7 @@ import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 /**
  * Exact API 33+ progressive renderer used by the public EdgeFadeView.
@@ -24,10 +25,14 @@ internal class EdgeFadeProgressiveStripRenderer(
   host: EdgeFadeView,
 ) {
   private companion object {
-    // Narrow overlap used only by the internal AGSL material path. The sharp
-    // source stays underneath this many physical pixels while the processed
-    // strip ramps from transparent to opaque.
-    const val MATERIAL_EDGE_BLEND_PX = 16
+    // The established 16px overlap is enough on deep/open panels, but short
+    // panels compress the optical transition into a visible horizontal cut.
+    // Widen only the compositing feather on short bands; Gaussian + material
+    // optics remain byte-for-byte the 590e4f0 baseline.
+    const val MATERIAL_EDGE_BLEND_MIN_PX = 16f
+    const val MATERIAL_EDGE_BLEND_MAX_PX = 64f
+    const val MATERIAL_EDGE_BLEND_SHORT_DEPTH_PX = 144f
+    const val MATERIAL_EDGE_BLEND_LONG_DEPTH_PX = 320f
   }
 
   private data class Key(
@@ -174,19 +179,14 @@ internal class EdgeFadeProgressiveStripRenderer(
         val sharpSave = canvas.save()
         try {
           val current = key
-          val overlap =
-            if (
-              current != null &&
-                current.materialStrength > 0f &&
-                current.backend == "agsl" &&
-                current.debugStage == "material"
-            ) {
-              MATERIAL_EDGE_BLEND_PX
-            } else {
-              0
-            }
+          val materialBlend =
+            current != null &&
+              current.materialStrength > 0f &&
+              current.backend == "agsl" &&
+              current.debugStage == "material"
 
           for (strip in strips) {
+            val overlap = if (materialBlend) materialEdgeBlendPx(strip.band) else 0
             clipOut(canvas, insetForSharpOverlap(strip.band, overlap))
           }
           canvas.drawRenderNode(content)
@@ -351,21 +351,12 @@ internal class EdgeFadeProgressiveStripRenderer(
         // Match the sharp-source overlap exactly in raster space.
         shader.setFloatUniform(
           "materialEntrance",
-          MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
+          materialEdgeBlendPx(strip.band).toFloat() * scale,
         )
 
-        // GAUSS is already continuous. Give only the material a long envelope:
-        // on short/CLOSED panels it spans the whole panel (no internal plateau
-        // to read as a horizontal band); on tall/OPEN panels it caps at 240 px
-        // so the established body resumes quickly and no large halo develops.
-        val visibleDepthPx = when (strip.band.edge) {
-          0, 1 -> strip.band.visible.height.toFloat()
-          2, 3 -> strip.band.visible.width.toFloat()
-          else -> 0f
-        }
-        val materialAirSpanPx = visibleDepthPx.coerceAtMost(240f)
-        shader.setFloatUniform("materialAirSpan", materialAirSpanPx * scale)
-
+        // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
+        // Avoiding a third RenderEffect keeps the strip edge in the same raster
+        // domain as GAUSS instead of resampling it once more at the clip.
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
           RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
@@ -419,6 +410,26 @@ internal class EdgeFadeProgressiveStripRenderer(
         ),
       ).coerceIn(0f, 1f)
     }
+
+  private fun materialEdgeBlendPx(band: BlurLabGeometry.Band): Int {
+    val depth =
+      when (band.edge) {
+        0, 1 -> band.visible.height.toFloat()
+        2, 3 -> band.visible.width.toFloat()
+        else -> MATERIAL_EDGE_BLEND_LONG_DEPTH_PX
+      }
+
+    val t =
+      ((MATERIAL_EDGE_BLEND_LONG_DEPTH_PX - depth) /
+        (MATERIAL_EDGE_BLEND_LONG_DEPTH_PX - MATERIAL_EDGE_BLEND_SHORT_DEPTH_PX))
+        .coerceIn(0f, 1f)
+    val eased = t * t * (3f - 2f * t)
+
+    return (
+      MATERIAL_EDGE_BLEND_MIN_PX +
+        (MATERIAL_EDGE_BLEND_MAX_PX - MATERIAL_EDGE_BLEND_MIN_PX) * eased
+      ).roundToInt()
+  }
 
   private fun insetForSharpOverlap(
     band: BlurLabGeometry.Band,
