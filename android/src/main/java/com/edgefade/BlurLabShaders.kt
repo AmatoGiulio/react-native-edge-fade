@@ -68,8 +68,7 @@ internal object BlurLabShaders {
           float entranceU =
             clamp(max(entranceDistance(coord), 0.0) / entranceSpan, 0.0, 1.0);
           float entranceToe =
-            entranceU * entranceU * entranceU *
-            (entranceU * (entranceU * 6.0 - 15.0) + 10.0);
+            entranceU * entranceU * (3.0 - 2.0 * entranceU);
           radiusIntensity *= entranceToe;
         }
 
@@ -188,8 +187,7 @@ internal object BlurLabShaders {
         float entranceU =
           clamp(max(materialDistanceInside(coord), 0.0) / blurEntranceSpan, 0.0, 1.0);
         float entranceToe =
-          entranceU * entranceU * entranceU *
-          (entranceU * (entranceU * 6.0 - 15.0) + 10.0);
+          entranceU * entranceU * (3.0 - 2.0 * entranceU);
         radiusIntensity *= entranceToe;
       }
 
@@ -265,8 +263,7 @@ internal object BlurLabShaders {
           ? 1.0
           : clamp(insideMaterialForAir / materialAirSpan, 0.0, 1.0);
         float materialAir =
-          materialU * materialU * materialU *
-          (materialU * (materialU * 6.0 - 15.0) + 10.0);
+          materialU * materialU * (3.0 - 2.0 * materialU);
         density *= materialAir;
 
         float alpha = max(sampled.a, 0.0001);
