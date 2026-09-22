@@ -473,7 +473,7 @@ compression.
 
 ### 15. Astra body exact transplant, new entrance retained
 
-**Commit:** pending in this commit
+**Commit:** `b599ab88`
 
 Goal:
 
