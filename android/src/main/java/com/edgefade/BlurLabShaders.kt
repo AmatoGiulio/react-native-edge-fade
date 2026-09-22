@@ -342,34 +342,41 @@ internal object BlurLabShaders {
         float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
         float transmission = exp(-density * mix(0.65, 1.0, light));
         transmission /= 1.0 + density * 2.0 * magnitude;
-        float3 graded = float3(outputLuma) + chroma * transmission;
+        // Astra did not read as glass merely because it was brighter. Its dense
+        // body also pulled luminance toward a neutral pearl anchor and compressed
+        // source chroma. Reintroduce only those optical traits, gated well inside
+        // the panel so none of the old geometric/edge field can return.
+        float glassGate = smoothstep(0.30, 0.68, intensity);
+        float glassBody =
+          density * surface * glassGate * mix(0.55, 1.0, light);
+        float materialLuma =
+          anchor * clamp(materialExposure, 0.75, 1.10);
 
-        // Bring back only Astra's satin/pearl response, not its old 2D field.
-        // The previous "brilliance" came from a subtle source-driven reflection
-        // toward materialColor. Gate it away from the entrance so CLOSED does
-        // not regain the bright horizontal shoulder that made the old version
-        // read as a hard panel edge.
+        // Contrast compression around the material anchor: bright regions settle
+        // slightly, dark regions lift slightly. This is the part that makes the
+        // body read like a translucent substrate instead of a brighter fog.
+        float glassLuma =
+          mix(outputLuma, materialLuma, 0.18 * glassBody);
+
+        // Keep source colour as a stain, but remove the purple/magenta dominance
+        // that the current body retains more strongly than the Astra reference.
+        float glassTransmission =
+          transmission *
+          (1.0 - 0.38 * glassBody) /
+          (1.0 + 2.5 * glassBody * magnitude);
+
+        float3 graded = float3(glassLuma) + chroma * glassTransmission;
+
+        // Satin reflection stays source-driven, but is now secondary to the
+        // neutral glass body rather than doing all the work by adding brightness.
         float localHighlight = smoothstep(0.44, 0.88, luma);
         float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-
-        // The first transplant was too conservative: a ~5% linear mix toward
-        // the mid-grey materialColor barely changes this already-compressed body
-        // and can even darken bright pixels. Astra's pleasant "alive" quality
-        // needs a reflective lift, not another tint.
-        //
-        // Keep that lift safely inside the material so CLOSED does not recover
-        // the old bright boundary. Light pearl gets the full response; dark
-        // smoke keeps a much weaker one.
-        float shoulderGate = smoothstep(0.28, 0.62, intensity);
         float sheenStrength =
-          mix(0.38, 1.0, light) *
-          density * surface * shoulderGate *
-          (0.105 + 0.075 * localHighlight + 0.035 * darkContent);
+          glassBody *
+          (0.045 + 0.030 * localHighlight + 0.015 * darkContent);
         float3 sheenColor =
-          mix(materialColor, float3(1.0), mix(0.15, 0.62, light));
+          mix(materialColor, float3(1.0), mix(0.12, 0.42, light));
 
-        // Screen-style reflection: only adds light energy, preserving the
-        // existing body/chroma model instead of replacing it with a grey layer.
         graded =
           1.0 - (1.0 - graded) * (1.0 - sheenColor * sheenStrength);
 
@@ -627,24 +634,30 @@ internal object BlurLabShaders {
       float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
-      float3 result = float3(outputLuma) + chroma * transmission;
+      // Match the fused AGSL optical body while leaving the official AndroidX
+      // radius field completely untouched.
+      float glassGate = smoothstep(0.30, 0.68, intensity);
+      float glassBody =
+        density * surface * glassGate * mix(0.55, 1.0, light);
+      float materialLuma =
+        anchor * clamp(materialExposure, 0.75, 1.10);
+      float glassLuma =
+        mix(outputLuma, materialLuma, 0.18 * glassBody);
+      float glassTransmission =
+        transmission *
+        (1.0 - 0.38 * glassBody) /
+        (1.0 + 2.5 * glassBody * magnitude);
 
-      // Same Astra satin response used by the AGSL material body. Keep the
-      // official AndroidX radius field untouched; this is only a post-blur
-      // optical reflection. density already includes the physical entrance,
-      // while shoulderGate keeps the sheen out of the near-zero mask region.
+      float3 result = float3(glassLuma) + chroma * glassTransmission;
+
       float localHighlight = smoothstep(0.44, 0.88, luma);
       float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-      float shoulderGate = smoothstep(0.28, 0.62, intensity);
       float sheenStrength =
-        mix(0.38, 1.0, light) *
-        density * surface * shoulderGate *
-        (0.105 + 0.075 * localHighlight + 0.035 * darkContent);
+        glassBody *
+        (0.045 + 0.030 * localHighlight + 0.015 * darkContent);
       float3 sheenColor =
-        mix(materialColor, float3(1.0), mix(0.15, 0.62, light));
+        mix(materialColor, float3(1.0), mix(0.12, 0.42, light));
 
-      // Screen-style reflection mirrors the fused AGSL material response while
-      // leaving BlurRadiusSpec.verticalGradient completely untouched.
       result =
         1.0 - (1.0 - result) * (1.0 - sheenColor * sheenStrength);
 

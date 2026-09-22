@@ -447,14 +447,27 @@ brilliance. Diagnosis: the transplanted response was only a small linear mix
 toward the mid-grey `materialColor`; on the current compressed body that is
 nearly invisible and can darken already-bright pixels.
 
-Second pass changes the reflection to a screen-style light-energy lift while
-keeping the same source-driven highlight idea. Light pearl receives roughly
-10–15% effective reflective lift in the dense body; dark smoke is deliberately
-much weaker. The entrance gate is moved deeper (`0.28 -> 0.62`) so the
-stronger response cannot recreate Astra's CLOSED boundary.
+Second pass changed the reflection to a screen-style light-energy lift. The
+next FULL capture was visibly brighter, but still did not read like the Astra
+glass body.
 
-**Status:** pending CLOSED + FULL light/dark capture after the stronger sheen
-pass.
+Pixel check on equivalent blank material regions confirmed why: the new body was
+already *brighter* than Astra but retained more chroma/variance. Example mid-body
+means were approximately current RGB `0.841 / 0.805 / 0.835` versus Astra
+`0.803 / 0.801 / 0.803`. So the missing quality is not more white energy.
+
+Third pass therefore restores two Astra optical traits without restoring any
+geometry:
+
+- mild luminance convergence toward the neutral material anchor;
+- stronger chroma compression so source colour survives as a stain rather than
+  dominating the substrate;
+- satin reflection remains, but at a lower secondary strength;
+- all three are gated by `smoothstep(0.30, 0.68, intensity)`, safely away from
+  the entrance.
+
+**Status:** pending CLOSED + FULL light/dark capture after neutral glass-body
+compression.
 
 ---
 
