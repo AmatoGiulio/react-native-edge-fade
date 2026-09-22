@@ -243,16 +243,44 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float2 materialOrigin;
+    uniform float2 materialViewSize;
+    uniform float materialEdge;
+    uniform float materialEdgeDepth;
+    uniform float materialEntrance;
+
+    float distanceInsideMaterial(float2 coord) {
+      float2 p = coord + materialOrigin;
+      if (materialEdge < 0.5) {
+        return materialEdgeDepth - p.y;
+      }
+      if (materialEdge < 1.5) {
+        return materialEdgeDepth - (materialViewSize.y - p.y);
+      }
+      if (materialEdge < 2.5) {
+        return materialEdgeDepth - p.x;
+      }
+      return materialEdgeDepth - (materialViewSize.x - p.x);
+    }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
-      // Scattering builds before fine detail disappears: density is not the
-      // blur radius squared. The demo cubic radius gives a soft entrance.
+      // Keep the Gaussian field untouched. The diagnostic probe showed that
+      // CAP and GAUSS are continuous at the strip boundary; the visible seam
+      // appears only when material density starts. Build scattering over a
+      // short fixed screen-space entrance, then become exactly the baseline
+      // material response. This keeps the open body/pure-cbrt optics intact.
+      float inside = max(distanceInsideMaterial(coord), 0.0);
+      float entrance = materialEntrance <= 0.0
+        ? 1.0
+        : smoothstep(0.0, materialEntrance, inside);
+
       float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
-      float density = materialStrength * (1.0 - exp(-3.0 * depth));
+      float density =
+        materialStrength * (1.0 - exp(-3.0 * depth)) * entrance;
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
