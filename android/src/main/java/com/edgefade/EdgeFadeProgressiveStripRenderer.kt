@@ -45,6 +45,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     // stable across device heights and keep opening/closing continuous.
     const val MATERIAL_FULL_ENTER_RATIO = 0.24f
     const val MATERIAL_FULL_READY_RATIO = 0.44f
+
+    // FULL-only signed overscan. At radius=150 this is ~108 px outside,
+    // ~143 px inside and a 33 px maximum pure-Gaussian bridge. Scaling from the
+    // requested radius keeps the transition tied to the actual optical kernel.
+    const val MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR = 0.72f
+    const val MATERIAL_AIR_INSIDE_RADIUS_FACTOR = 0.95f
+    const val MATERIAL_AIR_RADIUS_FACTOR = 0.22f
   }
 
   private data class Key(
@@ -78,6 +85,7 @@ internal class EdgeFadeProgressiveStripRenderer(
 
   private class Strip(var band: BlurLabGeometry.Band) {
     var scale = 1f
+    var output = band.visible
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
@@ -225,17 +233,17 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
 
         tracePhase("EdgeFade.progressive.drawStrip.${edgeName(strip.band.edge)}") {
-          val visible = strip.band.visible
+          val output = strip.output
           val save = canvas.save()
           try {
             canvas.clipRect(
-              visible.left.toFloat(),
-              visible.top.toFloat(),
-              visible.right.toFloat(),
-              visible.bottom.toFloat(),
+              output.left.toFloat(),
+              output.top.toFloat(),
+              output.right.toFloat(),
+              output.bottom.toFloat(),
             )
             for (previous in 0 until index) {
-              clipOut(canvas, strips[previous].band.visible)
+              clipOut(canvas, strips[previous].output)
             }
             canvas.translate(src.left.toFloat(), src.top.toFloat())
             canvas.scale(1f / strip.scale, 1f / strip.scale)
@@ -275,13 +283,41 @@ internal class EdgeFadeProgressiveStripRenderer(
         // Broader diffusion at half resolution is restricted to the material
         // experiment. The public strength=0 geometry and Gaussian stay exact.
         strip.scale = if (next.materialStrength > 0f) 0.5f else 1f
+
+        val experimentalMaterial =
+          next.materialStrength > 0f &&
+            next.backend == "agsl" &&
+            next.debugStage == "material"
+        val airOutsidePx =
+          if (experimentalMaterial) {
+            next.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR
+          } else {
+            0f
+          }
+
+        // Critical topology change: output is allowed to exist before the
+        // nominal panel boundary. Previous experiments changed alpha/radius but
+        // still clipped every processed pixel to band.visible, guaranteeing a
+        // geometrically straight onset.
+        strip.output =
+          if (airOutsidePx > 0f) {
+            expandOutward(
+              band,
+              ceil(airOutsidePx).toInt(),
+              next.width,
+              next.height,
+            )
+          } else {
+            band.visible
+          }
+
         val pad = ceil(next.radius / strip.scale).toInt() + 1
-        val v = band.visible
+        val o = strip.output
         strip.band = if (strip.scale == 1f) band else band.copy(
           source = BlurLabGeometry.Rect(
-            (v.left - pad).coerceAtLeast(0), (v.top - pad).coerceAtLeast(0),
-            (v.right + pad).coerceAtMost(next.width),
-            (v.bottom + pad).coerceAtMost(next.height),
+            (o.left - pad).coerceAtLeast(0), (o.top - pad).coerceAtLeast(0),
+            (o.right + pad).coerceAtMost(next.width),
+            (o.bottom + pad).coerceAtMost(next.height),
           ),
         )
         configureStrip(strip, next, curves)
@@ -383,6 +419,18 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialPanelFullMix",
           materialFullMix(strip.band, key.width, key.height),
         )
+        shader.setFloatUniform(
+          "materialAirOutside",
+          key.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR * scale,
+        )
+        shader.setFloatUniform(
+          "materialAirInside",
+          key.radius * MATERIAL_AIR_INSIDE_RADIUS_FACTOR * scale,
+        )
+        shader.setFloatUniform(
+          "materialAirRadius",
+          key.radius * MATERIAL_AIR_RADIUS_FACTOR * scale,
+        )
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
@@ -440,6 +488,44 @@ internal class EdgeFadeProgressiveStripRenderer(
         ),
       ).coerceIn(0f, 1f)
     }
+
+  private fun expandOutward(
+    band: BlurLabGeometry.Band,
+    outside: Int,
+    viewWidth: Int,
+    viewHeight: Int,
+  ): BlurLabGeometry.Rect {
+    val v = band.visible
+    if (outside <= 0) return v
+
+    return when (band.edge) {
+      0 -> BlurLabGeometry.Rect(
+        v.left,
+        v.top,
+        v.right,
+        (v.bottom + outside).coerceAtMost(viewHeight),
+      )
+      1 -> BlurLabGeometry.Rect(
+        v.left,
+        (v.top - outside).coerceAtLeast(0),
+        v.right,
+        v.bottom,
+      )
+      2 -> BlurLabGeometry.Rect(
+        v.left,
+        v.top,
+        (v.right + outside).coerceAtMost(viewWidth),
+        v.bottom,
+      )
+      3 -> BlurLabGeometry.Rect(
+        (v.left - outside).coerceAtLeast(0),
+        v.top,
+        v.right,
+        v.bottom,
+      )
+      else -> v
+    }
+  }
 
   private fun materialFullMix(
     band: BlurLabGeometry.Band,

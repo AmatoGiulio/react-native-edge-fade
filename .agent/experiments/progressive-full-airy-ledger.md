@@ -281,7 +281,7 @@ Result:
 
 ---
 
-### 11. Current HEAD experiment — separate FULL alpha regime
+### 11. Previous probe — separate FULL alpha regime
 
 **Commit:** `446b198a`
 
@@ -313,6 +313,51 @@ The only new parts are parameterization / regime selection:
 - depth-ratio blend between compact and FULL.
 
 Therefore **do not continue tuning this family as if it were unexplored**. Keep the commit as an experiment record unless explicitly reverted, but treat it as a duplicate-family probe.
+
+---
+
+### 12. Signed overscan Gaussian support before the panel boundary
+
+**Commit:** pending in this commit
+
+Hypothesis:
+
+The remaining straightness is not primarily the alpha curve. Every previous
+pipeline still clipped processed output to `band.visible`, so blur was
+mathematically forbidden from existing one pixel before the same straight
+horizontal boundary.
+
+New topology:
+
+`sharp source -> faint pure-Gaussian overscan outside panel -> existing progressive material body`
+
+Changes:
+
+- extend the material strip's **output domain** outward beyond the nominal panel;
+- extend source capture accordingly;
+- create a low-radius Gaussian support field in signed distance space;
+- support begins outside the old boundary and grows into it;
+- material density still uses the original progressive mask, therefore the
+  overscan contains diffusion only — no pearl/smoke grading;
+- FULL alpha reveal also begins in signed space outside the old clip;
+- the original cbrt Gaussian + material body remains dominant deeper inside;
+- CLOSED endpoint remains the compact compositor.
+
+Why this is genuinely different from attempts 1–11:
+
+Those experiments changed overlap, alpha, material density or radius **inside
+the same clipped output domain**. This experiment changes where processed
+pixels are allowed to exist and gives the Gaussian sampling/support field an
+outer shoulder.
+
+Initial constants at `radius=150`:
+
+- outside support: ~108 px;
+- inside support: ~143 px;
+- maximum bridge Gaussian: ~33 px.
+
+**Status:** pending device CLOSED + FULL capture. Do not tune these constants
+until the first visual result is compared with the reference.
 
 ---
 

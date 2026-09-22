@@ -140,6 +140,9 @@ internal object BlurLabShaders {
     uniform float materialPanelFullAlphaMin;
     uniform float materialPanelAirSpan;
     uniform float materialPanelFullMix;
+    uniform float materialAirOutside;
+    uniform float materialAirInside;
+    uniform float materialAirRadius;
 
     const float maxRadius = 150.0;
 
@@ -162,7 +165,26 @@ internal object BlurLabShaders {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       float radiusIntensity =
         continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
-      float radius = blurRadius * radiusIntensity;
+
+      // The old strip could never blur a pixel outside the nominal panel:
+      // intensity is exactly zero there and draw output was clipped to the same
+      // straight boundary. FULL now gets a low-radius support field that starts
+      // *before* that boundary. Material grading still keys off the original
+      // intensity, so the overscan is pure source diffusion, not milky material.
+      float signedMaterial = materialDistanceInside(coord);
+      float fullMix = clamp(materialPanelFullMix, 0.0, 1.0);
+      float airU = clamp(
+        (signedMaterial + materialAirOutside) /
+          max(materialAirOutside + materialAirInside, 1.0),
+        0.0,
+        1.0
+      );
+      float airEase =
+        airU * airU * airU *
+        (airU * (airU * 6.0 - 15.0) + 10.0);
+      float airRadius = materialAirRadius * airEase * fullMix;
+
+      float radius = max(blurRadius * radiusIntensity, airRadius);
       float r = floor(radius);
       float4 sampled = float4(content.eval(coord));
 
@@ -242,13 +264,25 @@ internal object BlurLabShaders {
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
-      float insideMaterial = max(materialDistanceInside(coord), 0.0);
+      float insideMaterial = max(signedMaterial, 0.0);
 
-      // Local seam guard: preserve the proven soft hand-off at the physical
-      // strip boundary.
-      float edgeCoverage = materialEntrance <= 0.0
+      // Compact remains exactly the old in-panel seam guard.
+      float compactEdgeCoverage = materialEntrance <= 0.0
         ? 1.0
         : smoothstep(0.0, materialEntrance, insideMaterial);
+
+      // FULL starts the reveal in signed space, before the nominal panel edge.
+      // At the old clip line the gradient is already in flight, so there is no
+      // single horizontal row where blur suddenly begins to exist.
+      float fullEdgeU = clamp(
+        (signedMaterial + materialAirOutside) /
+          max(materialAirOutside + materialEntrance, 1.0),
+        0.0,
+        1.0
+      );
+      float fullEdgeCoverage =
+        fullEdgeU * fullEdgeU * fullEdgeU *
+        (fullEdgeU * (fullEdgeU * 6.0 - 15.0) + 10.0);
 
       // Compact keeps the accepted near-opaque compositor. FULL is a separate
       // optical regime: the same processed pixels begin as a faint veil over
@@ -286,16 +320,16 @@ internal object BlurLabShaders {
         airEase
       );
 
-      float panelCoverage = mix(
-        compactCoverage,
-        fullCoverage,
-        clamp(materialPanelFullMix, 0.0, 1.0)
-      );
+      // Blend the two *final* composites instead of separately blending edge
+      // and panel factors. This avoids a transient alpha overshoot halfway
+      // through the opening animation.
+      float compactFinal = compactEdgeCoverage * compactCoverage;
+      float fullFinal = fullEdgeCoverage * fullCoverage;
+      float coverage = mix(compactFinal, fullFinal, fullMix);
 
-      // Sharp content stays underneath the whole material band. Scaling the
-      // complete premultiplied pixel gives a true source-over alpha mask: blur,
-      // colour response and material grading themselves remain untouched.
-      return half4(sampled * edgeCoverage * panelCoverage);
+      // Sharp content stays underneath. The deep FULL body is unchanged; only
+      // the support/reveal domain now begins outside the old straight clip.
+      return half4(sampled * coverage);
     }
   """.trimIndent()
 
