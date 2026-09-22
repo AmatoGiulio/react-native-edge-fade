@@ -65,7 +65,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
-    val materialHorizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
@@ -312,9 +311,6 @@ internal class EdgeFadeProgressiveStripRenderer(
             "continuousSupport",
             if (key.materialStrength > 0f) 1f else 0f,
           )
-          shader.setFloatUniform("entranceEdge", 0f)
-          shader.setFloatUniform("entranceBoundary", 0f)
-          shader.setFloatUniform("entranceSpan", 0f)
         }
 
         RenderEffect.createChainEffect(
@@ -358,39 +354,21 @@ internal class EdgeFadeProgressiveStripRenderer(
           MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
         )
 
-        // One optical shoulder for blur + material. It scales with the real
-        // panel depth, but caps in physical pixels so tall OPEN panels do not
-        // develop a washed halo. Deep body pixels are exactly baseline after
-        // this span; short panels automatically shrink the shoulder.
+        // GAUSS is already continuous. Give only the material a long envelope:
+        // on short/CLOSED panels it spans the whole panel (no internal plateau
+        // to read as a horizontal band); on tall/OPEN panels it caps at 240 px
+        // so the established body resumes quickly and no large halo develops.
         val visibleDepthPx = when (strip.band.edge) {
           0, 1 -> strip.band.visible.height.toFloat()
           2, 3 -> strip.band.visible.width.toFloat()
           else -> 0f
         }
-        val opticalAirSpanPx =
-          (visibleDepthPx * 0.35f).coerceIn(32f, 128f)
-        shader.setFloatUniform("materialAirSpan", opticalAirSpanPx * scale)
-        shader.setFloatUniform("blurEntranceSpan", opticalAirSpanPx * scale)
+        val materialAirSpanPx = visibleDepthPx.coerceAtMost(240f)
+        shader.setFloatUniform("materialAirSpan", materialAirSpanPx * scale)
 
-        val materialHorizontal = strip.materialHorizontal
-        materialHorizontal.setInputShader("mask", strip.mask)
-        materialHorizontal.setFloatUniform("blurRadius", key.radius)
-        materialHorizontal.setFloatUniform(
-          "extent",
-          rasterWidth.toFloat(),
-          rasterHeight.toFloat(),
-        )
-        materialHorizontal.setFloatUniform("continuousSupport", 1f)
-        materialHorizontal.setFloatUniform("entranceEdge", strip.band.edge.toFloat())
-        materialHorizontal.setFloatUniform("entranceBoundary", localBoundary)
-        materialHorizontal.setFloatUniform("entranceSpan", opticalAirSpanPx * scale)
-
-        // Two passes total: horizontal Gaussian with physical toe -> vertical
-        // Gaussian + material with the same toe. Beyond the toe this is exactly
-        // the established pure-cbrt material pipeline.
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
-          RenderEffect.createRuntimeShaderEffect(materialHorizontal, "content"),
+          RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
         )
       } else if (key.materialStrength > 0f) {
         // AndroidX remains on its existing material post-pass. The seam work is
