@@ -39,17 +39,7 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
-      uniform float entranceEdge;
-      uniform float entranceBoundary;
-      uniform float entranceSpan;
       const float maxRadius = 150.0;
-
-      float entranceDistance(float2 coord) {
-        if (entranceEdge < 0.5) return entranceBoundary - coord.y;
-        if (entranceEdge < 1.5) return coord.y - entranceBoundary;
-        if (entranceEdge < 2.5) return entranceBoundary - coord.x;
-        return coord.x - entranceBoundary;
-      }
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
@@ -63,15 +53,6 @@ internal object BlurLabShaders {
         // the internal material path enables continuousSupport.
         float radiusIntensity =
           continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
-
-        if (entranceSpan > 0.0) {
-          float entranceU =
-            clamp(max(entranceDistance(coord), 0.0) / entranceSpan, 0.0, 1.0);
-          float entranceToe =
-            entranceU * entranceU * (3.0 - 2.0 * entranceU);
-          radiusIntensity *= entranceToe;
-        }
-
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
@@ -155,7 +136,6 @@ internal object BlurLabShaders {
     uniform float materialBoundary;
     uniform float materialEntrance;
     uniform float materialAirSpan;
-    uniform float blurEntranceSpan;
 
     const float maxRadius = 150.0;
 
@@ -178,19 +158,6 @@ internal object BlurLabShaders {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       float radiusIntensity =
         continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
-
-      // The cbrt field gives the desired body, but near zero it amplifies tiny
-      // mask values into a visible radius immediately. CLOSED exposes that as a
-      // hard horizontal cut. Apply a short physical-space toe only at the
-      // entrance, then become exactly the original cbrt field.
-      if (blurEntranceSpan > 0.0) {
-        float entranceU =
-          clamp(max(materialDistanceInside(coord), 0.0) / blurEntranceSpan, 0.0, 1.0);
-        float entranceToe =
-          entranceU * entranceU * (3.0 - 2.0 * entranceU);
-        radiusIntensity *= entranceToe;
-      }
-
       float radius = blurRadius * radiusIntensity;
       float r = floor(radius);
       float4 sampled = float4(content.eval(coord));
@@ -262,8 +229,10 @@ internal object BlurLabShaders {
         float materialU = materialAirSpan <= 0.0
           ? 1.0
           : clamp(insideMaterialForAir / materialAirSpan, 0.0, 1.0);
-        float materialAir =
+        float materialSmooth =
           materialU * materialU * (3.0 - 2.0 * materialU);
+        float materialAir =
+          1.0 - (1.0 - materialSmooth) * (1.0 - materialSmooth);
         density *= materialAir;
 
         float alpha = max(sampled.a, 0.0001);
