@@ -134,7 +134,6 @@ internal object BlurLabShaders {
     uniform float materialSurfaceProgression;
     uniform float materialEdge;
     uniform float materialBoundary;
-    uniform float materialDepth;
 
     const float maxRadius = 150.0;
 
@@ -237,18 +236,14 @@ internal object BlurLabShaders {
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
-      float insideMaterial = max(materialDistanceInside(coord), 0.0);
-      float t = materialDepth <= 0.0
-        ? 1.0
-        : clamp(insideMaterial / materialDepth, 0.0, 1.0);
-
-      // Full-height premultiplied alpha mask. The mask is normalized to the
-      // actual visible band, so it scales with any panel height. Smootherstep
-      // gives a zero-slope airy start; the accelerated complement reaches
-      // effectively opaque around mid-depth and exactly 1.0 at the deep edge,
-      // preserving the established material body below.
-      float smoothT = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-      float coverage = 1.0 - pow(1.0 - smoothT, 5.0);
+      // Full-area alpha mask driven by the *optical* progressive field rather
+      // than raw panel geometry. This makes it height-invariant and keeps the
+      // air transition coupled to the actual blur ramp. A gamma delays the
+      // entrance, then a steep complement reaches practical opacity early
+      // enough that the established material body below is not washed out.
+      float opticalT = clamp(radiusIntensity, 0.0, 1.0);
+      float airyT = pow(opticalT, 1.5);
+      float coverage = 1.0 - pow(1.0 - airyT, 7.0);
 
       return half4(sampled * coverage);
     }
