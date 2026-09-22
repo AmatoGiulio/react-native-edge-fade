@@ -141,11 +141,17 @@ function AccountRow({
 export default function ProgressiveShowcaseRoute() {
   const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
-  const params = useLocalSearchParams<{ bench?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    bench?: string | string[];
+    backend?: string | string[];
+  }>();
 
   const benchParam = Array.isArray(params.bench)
     ? params.bench[0]
     : params.bench;
+  const backendParam = Array.isArray(params.backend)
+    ? params.backend[0]
+    : params.backend;
   const [materialRaw, progressionRaw, radiusRaw, depthRaw, scaleRaw] = (
     benchParam ?? ''
   ).split(',');
@@ -359,8 +365,15 @@ export default function ProgressiveShowcaseRoute() {
     );
   };
 
+  // Branch-only A/B: default material stage exercises AndroidX's official
+  // BlurRadiusSpec.verticalGradient(List<BlurStop>). Use ?backend=agsl to
+  // compare immediately against the current custom AGSL material baseline.
+  const materialBackend =
+    backendParam === 'agsl' ? 'agsl' : 'androidx-gradient';
   const debugBackend =
-    debugStage === 'material' ? 'agsl' : `agsl-debug-${debugStage}`;
+    debugStage === 'material'
+      ? materialBackend
+      : `agsl-debug-${debugStage}`;
 
   return (
     <View style={s.page}>

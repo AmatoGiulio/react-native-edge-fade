@@ -360,6 +360,45 @@ Initial constants at `radius=150`:
 
 ---
 
+### 13. Official AndroidX multi-stop radius gradient
+
+**Commit:** pending in this commit
+
+Context check:
+
+The repository already used the new official API through
+`BlurRadiusSpec.shader(maxRadius) { mask }`. What was **not** present was a
+direct `BlurRadiusSpec.verticalGradient(List<BlurStop>)` experiment.
+
+New topology:
+
+`sharp -> official direct-radius Gaussian gradient -> existing material grading`
+
+Key differences from the current AGSL path:
+
+- no `mask -> cbrt -> radius` transfer function;
+- `BlurStop.radius` values are the Gaussian radii directly;
+- 8 radius stops: approximately `0, 1, 4, 12, 30, 65, 110, 150 px`;
+- gradient begins outside the nominal panel boundary, where radius is exactly 0;
+- output is allowed in that outer region, so the old straight clip is not the
+  point at which blur first exists;
+- the official effect uses `TileMode.Decal`, matching the sampling semantics
+  documented for `BlurredEdgeTreatment.Unbounded`;
+- material still uses the existing mask and is absent where its intensity is 0,
+  so the outer transition is pure Gaussian diffusion.
+
+Isolation:
+
+- new internal backend: `androidx-gradient`;
+- showcase defaults to it only on this experiment branch;
+- `?backend=agsl` restores the current custom AGSL baseline for A/B;
+- no public API/default, iOS path, or production `strength=0` path is changed.
+
+**Status:** pending device CLOSED + FULL capture. Do not tune the stop profile
+before the first A/B against the reference.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

@@ -112,6 +112,7 @@ class EdgeFadeViewManager :
       "agsl-debug-capture" -> "agsl-debug-capture"
       "agsl-debug-gaussian" -> "agsl-debug-gaussian"
       "androidx" -> "androidx"
+      "androidx-gradient" -> "androidx-gradient"
       "scaled" -> "scaled"
       else -> "auto"
     }

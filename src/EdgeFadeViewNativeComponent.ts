@@ -23,7 +23,8 @@ interface NativeProps extends ViewProps {
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: CodegenTypes.Float;
   /**
-   * Internal demo/test override: "auto" | "agsl" | "androidx" | "scaled".
+   * Internal demo/test override: "auto" | "agsl" | "androidx" |
+   * "androidx-gradient" | "scaled".
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveBackend?: string;

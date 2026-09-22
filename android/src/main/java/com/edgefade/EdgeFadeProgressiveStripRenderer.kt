@@ -52,6 +52,11 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR = 0.72f
     const val MATERIAL_AIR_INSIDE_RADIUS_FACTOR = 0.95f
     const val MATERIAL_AIR_RADIUS_FACTOR = 0.22f
+
+    // Official BlurRadiusSpec.verticalGradient experiment. The gradient begins
+    // outside the nominal panel, but unlike the AGSL overscan it does not add a
+    // second radius field: the official stops are the Gaussian radii directly.
+    const val ANDROIDX_GRADIENT_OUTSIDE_RADIUS_FACTOR = 0.60f
   }
 
   private data class Key(
@@ -122,9 +127,10 @@ internal class EdgeFadeProgressiveStripRenderer(
       when {
         requestedBackend.startsWith("agsl") -> "agsl"
         requestedBackend == "androidx" -> "androidx"
+        requestedBackend == "androidx-gradient" -> "androidx-gradient"
         else -> if (AndroidxBlurAdapter.available) "androidx" else "agsl"
       }
-    if (exactBackend == "androidx" && !AndroidxBlurAdapter.available) return false
+    if (exactBackend.startsWith("androidx") && !AndroidxBlurAdapter.available) return false
 
     val next = Key(
       width = width,
@@ -289,11 +295,17 @@ internal class EdgeFadeProgressiveStripRenderer(
           next.materialStrength > 0f &&
             next.backend == "agsl" &&
             next.debugStage == "material"
+        val officialGradientMaterial =
+          next.materialStrength > 0f &&
+            next.backend == "androidx-gradient" &&
+            next.debugStage == "material"
         val airOutsidePx =
-          if (experimentalMaterial) {
-            next.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR
-          } else {
-            0f
+          when {
+            experimentalMaterial ->
+              next.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR
+            officialGradientMaterial ->
+              next.radius * ANDROIDX_GRADIENT_OUTSIDE_RADIUS_FACTOR
+            else -> 0f
           }
 
         // Critical topology change: output is allowed to exist before the
@@ -351,7 +363,28 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveRight", curves.right)
 
     val blurEffect =
-      if (key.backend == "androidx") {
+      if (key.backend == "androidx-gradient" && strip.band.edge in 0..1) {
+        val sharpY =
+          if (strip.band.edge == 0) {
+            (strip.output.bottom - source.top) * scale
+          } else {
+            (strip.output.top - source.top) * scale
+          }
+        val maxY =
+          if (strip.band.edge == 0) {
+            (strip.band.visible.top - source.top) * scale
+          } else {
+            (strip.band.visible.bottom - source.top) * scale
+          }
+
+        AndroidxBlurAdapter.createVerticalGradient(
+          rasterWidth,
+          rasterHeight,
+          key.radius,
+          sharpY,
+          maxY,
+        )
+      } else if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
@@ -461,8 +494,9 @@ internal class EdgeFadeProgressiveStripRenderer(
           RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
         )
       } else if (key.materialStrength > 0f) {
-        // AndroidX remains on its existing material post-pass. The seam work is
-        // scoped to the AGSL showcase path under test.
+        // Official AndroidX blur + our already-established optical material.
+        // For androidx-gradient the Gaussian radius comes entirely from
+        // BlurRadiusSpec/BlurStop; this pass does not alter blur radius.
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
@@ -476,6 +510,30 @@ internal class EdgeFadeProgressiveStripRenderer(
         strip.material.setFloatUniform(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
+        )
+        strip.material.setFloatUniform(
+          "materialOrigin",
+          source.left * scale,
+          source.top * scale,
+        )
+        strip.material.setFloatUniform(
+          "materialViewSize",
+          key.width * scale,
+          key.height * scale,
+        )
+        strip.material.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        val materialEdgeDepth =
+          when (strip.band.edge) {
+            0 -> key.top
+            1 -> key.bottom
+            2 -> key.left
+            3 -> key.right
+            else -> 0f
+          }
+        strip.material.setFloatUniform("materialEdgeDepth", materialEdgeDepth * scale)
+        strip.material.setFloatUniform(
+          "materialEntrance",
+          materialEdgeBlendPx(strip.band).toFloat() * scale,
         )
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
