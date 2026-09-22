@@ -39,7 +39,6 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
-      uniform float fixedRadius;
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -53,9 +52,7 @@ internal object BlurLabShaders {
         // Gaussian path unchanged, but use the cubic-root radius field whenever
         // the internal material path enables continuousSupport.
         float radiusIntensity =
-          fixedRadius > 0.5
-            ? 1.0
-            : (continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity);
+          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
@@ -137,6 +134,7 @@ internal object BlurLabShaders {
     uniform float materialSurfaceProgression;
     uniform float materialEdge;
     uniform float materialBoundary;
+    uniform float materialEntrance;
 
     const float maxRadius = 150.0;
 
@@ -157,11 +155,9 @@ internal object BlurLabShaders {
 
     half4 main(float2 coord) {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-
-      // FULL material path: render one stable high-radius processed layer.
-      // Progression is no longer encoded in the Gaussian radius; it is applied
-      // only as a final alpha mask over this already-processed layer.
-      float radius = blurRadius;
+      float radiusIntensity =
+        continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+      float radius = blurRadius * radiusIntensity;
       float r = floor(radius);
       float4 sampled = float4(content.eval(coord));
 
@@ -220,10 +216,7 @@ internal object BlurLabShaders {
       }
 
       if (intensity > 0.0 && materialStrength > 0.0) {
-        // The processed layer is spatially stable: material grading is the
-        // exact full-field response. At coverage=1 this matches the established
-        // deep body; only the final mask controls sharp -> processed blending.
-        float depth = 1.0 / max(materialSurfaceProgression, 0.15);
+        float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
         float density = materialStrength * (1.0 - exp(-3.0 * depth));
         float alpha = max(sampled.a, 0.0001);
         float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
@@ -244,13 +237,14 @@ internal object BlurLabShaders {
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
-      // Real full-area alpha mask over the fixed processed layer.
-      // The mask already carries the configured curve + progression normalized
-      // to the current panel depth, so this works unchanged at any height.
-      // No extra cbrt/plateau is applied here: 0 = exact sharp source,
-      // 1 = exact processed body.
-      float coverage = intensity;
+      float insideMaterial = max(materialDistanceInside(coord), 0.0);
+      float coverage = materialEntrance <= 0.0
+        ? 1.0
+        : smoothstep(0.0, materialEntrance, insideMaterial);
 
+      // The sharp pass remains underneath this narrow overlap. Fade the entire
+      // premultiplied processed pixel, not only material density, so the hard
+      // strip replacement becomes mathematically continuous at the clip edge.
       return half4(sampled * coverage);
     }
   """.trimIndent()
