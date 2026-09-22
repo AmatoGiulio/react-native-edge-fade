@@ -343,6 +343,20 @@ internal object BlurLabShaders {
         float transmission = exp(-density * mix(0.65, 1.0, light));
         transmission /= 1.0 + density * 2.0 * magnitude;
         float3 graded = float3(outputLuma) + chroma * transmission;
+
+        // Bring back only Astra's satin/pearl response, not its old 2D field.
+        // The previous "brilliance" came from a subtle source-driven reflection
+        // toward materialColor. Gate it away from the entrance so CLOSED does
+        // not regain the bright horizontal shoulder that made the old version
+        // read as a hard panel edge.
+        float localHighlight = smoothstep(0.44, 0.88, luma);
+        float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
+        float shoulderGate = smoothstep(0.20, 0.58, intensity);
+        float pearlReflection =
+          density * surface * shoulderGate *
+          (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
+        graded = mix(graded, materialColor, pearlReflection);
+
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
@@ -598,6 +612,19 @@ internal object BlurLabShaders {
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
       float3 result = float3(outputLuma) + chroma * transmission;
+
+      // Same Astra satin response used by the AGSL material body. Keep the
+      // official AndroidX radius field untouched; this is only a post-blur
+      // optical reflection. density already includes the physical entrance,
+      // while shoulderGate keeps the sheen out of the near-zero mask region.
+      float localHighlight = smoothstep(0.44, 0.88, luma);
+      float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
+      float shoulderGate = smoothstep(0.20, 0.58, intensity);
+      float pearlReflection =
+        density * surface * shoulderGate *
+        (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
+      result = mix(result, materialColor, pearlReflection);
+
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }
   """.trimIndent()

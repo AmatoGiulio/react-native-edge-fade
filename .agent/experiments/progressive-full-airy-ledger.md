@@ -409,6 +409,44 @@ Gallery comparison surface:
 
 ---
 
+### 14. Astra satin reflection only
+
+**Commit:** pending in this commit
+
+Goal:
+
+Recover the brighter / more alive material body from the earlier Astra
+experiment without restoring the old entrance defect.
+
+What was transplanted:
+
+- the source-luma-driven `localHighlight` response;
+- the extra `darkContent` contribution;
+- the small satin reflection toward `materialColor`;
+- approximately the original Astra reflection magnitude.
+
+What was deliberately **not** restored:
+
+- `edgeField`;
+- ellipse / oval geometry;
+- `ovalLift`;
+- the old shoulder topology;
+- silver-body convergence.
+
+Boundary protection:
+
+- reflection is multiplied by the current material `density`;
+- a `smoothstep(0.20, 0.58, intensity)` gate suppresses sheen near the
+  progressive entrance;
+- the AndroidX gradient path keeps its official radius field unchanged;
+- the same optical response is applied to both the fused AGSL material path and
+  the AndroidX-gradient post-material path so visual comparison stays fair.
+
+**Status:** pending CLOSED + FULL light/dark capture. Primary check: more body
+brilliance without the bright horizontal edge returning in CLOSED.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:
