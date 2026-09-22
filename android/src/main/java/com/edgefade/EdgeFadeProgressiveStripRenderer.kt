@@ -23,12 +23,6 @@ import kotlin.math.ceil
 internal class EdgeFadeProgressiveStripRenderer(
   host: EdgeFadeView,
 ) {
-  private companion object {
-    // Airy alpha-mask shoulder used only by the internal AGSL material path.
-    // The body remains pixel-identical once this physical overlap is crossed.
-    const val MATERIAL_EDGE_BLEND_PX = 64
-  }
-
   private data class Key(
     val width: Int,
     val height: Int,
@@ -173,20 +167,17 @@ internal class EdgeFadeProgressiveStripRenderer(
         val sharpSave = canvas.save()
         try {
           val current = key
-          val overlap =
-            if (
-              current != null &&
-                current.materialStrength > 0f &&
-                current.backend == "agsl" &&
-                current.debugStage == "material"
-            ) {
-              MATERIAL_EDGE_BLEND_PX
-            } else {
-              0
-            }
+          val fullMaterialMask =
+            current != null &&
+              current.materialStrength > 0f &&
+              current.backend == "agsl" &&
+              current.debugStage == "material"
 
-          for (strip in strips) {
-            clipOut(canvas, insetForSharpOverlap(strip.band, overlap))
+          // FULL uses a real premultiplied alpha mask over the entire processed
+          // band, so the original content must remain underneath for the whole
+          // area. CAP/GAUSS keep the exact hard replacement diagnostic path.
+          if (!fullMaterialMask) {
+            for (strip in strips) clipOut(canvas, strip.band.visible)
           }
           canvas.drawRenderNode(content)
         } finally {
@@ -347,12 +338,15 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 0f
         }
         shader.setFloatUniform("materialBoundary", localBoundary)
-        // Match the sharp-source overlap exactly in raster space. The shader
-        // applies a quintic premultiplied-alpha mask across this shoulder.
-        shader.setFloatUniform(
-          "materialEntrance",
-          MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
-        )
+        val materialDepth = when (strip.band.edge) {
+          0, 1 -> strip.band.visible.height.toFloat()
+          2, 3 -> strip.band.visible.width.toFloat()
+          else -> 0f
+        }
+        // Normalize the alpha envelope to the whole visible band. Because depth
+        // is expressed in this strip's raster space, the same curve works for
+        // any physical panel height without changing the deep material body.
+        shader.setFloatUniform("materialDepth", materialDepth * scale)
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
@@ -410,22 +404,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         ),
       ).coerceIn(0f, 1f)
     }
-
-  private fun insetForSharpOverlap(
-    band: BlurLabGeometry.Band,
-    overlap: Int,
-  ): BlurLabGeometry.Rect {
-    if (overlap <= 0) return band.visible
-
-    val v = band.visible
-    return when (band.edge) {
-      0 -> BlurLabGeometry.Rect(v.left, v.top, v.right, (v.bottom - overlap).coerceAtLeast(v.top))
-      1 -> BlurLabGeometry.Rect(v.left, (v.top + overlap).coerceAtMost(v.bottom), v.right, v.bottom)
-      2 -> BlurLabGeometry.Rect(v.left, v.top, (v.right - overlap).coerceAtLeast(v.left), v.bottom)
-      3 -> BlurLabGeometry.Rect((v.left + overlap).coerceAtMost(v.right), v.top, v.right, v.bottom)
-      else -> v
-    }
-  }
 
   private fun clipOut(canvas: Canvas, rect: BlurLabGeometry.Rect) {
     if (rect.width <= 0 || rect.height <= 0) return
