@@ -9,10 +9,11 @@ const UI_DUMP = '/sdcard/edgefade-showcase-diagnostic.xml';
 const STAGES = ['FULL', 'CAP', 'GAUSS'];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const runId = gitHead() ?? 'unknown';
 const outputDir = resolve(
   repoRoot,
   readArg('--output-dir') ??
-    'benchmarks/progressive-showcase/diagnostic-current'
+    `benchmarks/progressive-showcase/diagnostic-runs/${runId}`
 );
 const requestedSerial = readArg('--serial') ?? process.env.ADB_SERIAL;
 const settleMs = Number(readArg('--settle-ms') ?? 1000);
@@ -308,14 +309,15 @@ function pngSize(png) {
 }
 
 function capture(name) {
-  const path = resolve(outputDir, `${name}.png`);
+  const filename = `${runId}-${name}.png`;
+  const path = resolve(outputDir, filename);
   const png = adb(['exec-out', 'screencap', '-p'], { encoding: null });
   const size = pngSize(png);
   writeFileSync(path, png);
   console.log(
     `[showcase-diagnostic] ${name}: ${size.width}x${size.height} · ${Math.round(png.length / 1024)} KiB`
   );
-  return { name, file: `${name}.png`, size };
+  return { name, file: filename, size };
 }
 
 function gitHead() {
@@ -381,7 +383,8 @@ await ensureClosed();
 
 const metadata = {
   capturedAt: new Date().toISOString(),
-  commit: gitHead(),
+  runId,
+  commit: runId,
   serial,
   package: PACKAGE,
   route: ROUTE,
@@ -395,7 +398,7 @@ const metadata = {
 };
 
 writeFileSync(
-  resolve(outputDir, 'meta.json'),
+  resolve(outputDir, `${runId}-meta.json`),
   `${JSON.stringify(metadata, null, 2)}\n`
 );
 
@@ -408,11 +411,11 @@ const rows = STAGES.map((stage) => {
       <div class="pair">
         <figure>
           <figcaption>CLOSED</figcaption>
-          <img src="./closed-${id}.png?t=${cacheBust}" alt="${stage} closed" />
+          <img src="./${runId}-closed-${id}.png?t=${cacheBust}" alt="${stage} closed" />
         </figure>
         <figure>
           <figcaption>OPEN</figcaption>
-          <img src="./open-${id}.png?t=${cacheBust}" alt="${stage} open" />
+          <img src="./${runId}-open-${id}.png?t=${cacheBust}" alt="${stage} open" />
         </figure>
       </div>
     </section>`;
@@ -461,14 +464,14 @@ const html = `<!doctype html>
 </html>
 `;
 
-const previewPath = resolve(outputDir, 'index.html');
+const previewPath = resolve(outputDir, `${runId}-index.html`);
 writeFileSync(previewPath, html);
 
 console.log('[showcase-diagnostic] done');
 for (const captureResult of captures) {
   console.log(`  ${captureResult.name}: ${resolve(outputDir, captureResult.file)}`);
 }
-console.log(`  meta: ${resolve(outputDir, 'meta.json')}`);
+console.log(`  meta: ${resolve(outputDir, `${runId}-meta.json`)}`);
 console.log(`  preview: ${previewPath}`);
 
 if (
