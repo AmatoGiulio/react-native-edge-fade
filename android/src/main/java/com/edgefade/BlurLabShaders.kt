@@ -135,6 +135,8 @@ internal object BlurLabShaders {
     uniform float materialEdge;
     uniform float materialBoundary;
     uniform float materialEntrance;
+    uniform float materialPanelDepth;
+    uniform float materialPanelAlphaMin;
 
     const float maxRadius = 150.0;
 
@@ -238,14 +240,35 @@ internal object BlurLabShaders {
       }
 
       float insideMaterial = max(materialDistanceInside(coord), 0.0);
-      float coverage = materialEntrance <= 0.0
+
+      // Local seam guard: preserve the proven soft hand-off at the physical
+      // strip boundary.
+      float edgeCoverage = materialEntrance <= 0.0
         ? 1.0
         : smoothstep(0.0, materialEntrance, insideMaterial);
 
-      // The sharp pass remains underneath this narrow overlap. Fade the entire
-      // premultiplied processed pixel, not only material density, so the hard
-      // strip replacement becomes mathematically continuous at the clip edge.
-      return half4(sampled * coverage);
+      // Global alpha mask: keep the exact same processed pixels, but let their
+      // premultiplied coverage breathe in across the entire panel depth.
+      // The modulation is intentionally conservative (90% -> 100%) so the
+      // accepted material body stays visually almost unchanged.
+      float panelT = clamp(
+        insideMaterial / max(materialPanelDepth, 1.0),
+        0.0,
+        1.0
+      );
+      float panelEase =
+        panelT * panelT * panelT *
+        (panelT * (panelT * 6.0 - 15.0) + 10.0);
+      float panelCoverage = mix(
+        clamp(materialPanelAlphaMin, 0.0, 1.0),
+        1.0,
+        panelEase
+      );
+
+      // Sharp content stays underneath the whole material band. This is a real
+      // alpha-mask composite: no blur radius, colour response or material
+      // grading is changed.
+      return half4(sampled * edgeCoverage * panelCoverage);
     }
   """.trimIndent()
 
