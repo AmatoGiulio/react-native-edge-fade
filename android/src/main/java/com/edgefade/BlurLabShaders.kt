@@ -238,13 +238,20 @@ internal object BlurLabShaders {
       }
 
       float insideMaterial = max(materialDistanceInside(coord), 0.0);
-      float coverage = materialEntrance <= 0.0
-        ? 1.0
-        : smoothstep(0.0, materialEntrance, insideMaterial);
+      float coverage = 1.0;
+      if (materialEntrance > 0.0) {
+        float t = clamp(insideMaterial / materialEntrance, 0.0, 1.0);
 
-      // The sharp pass remains underneath this narrow overlap. Fade the entire
-      // premultiplied processed pixel, not only material density, so the hard
-      // strip replacement becomes mathematically continuous at the clip edge.
+        // Real premultiplied-alpha air mask over the processed strip.
+        // Quintic smootherstep keeps zero slope at both ends, so the effect
+        // breathes in gradually from the sharp content and reaches the exact
+        // baseline body with no derivative kink.
+        coverage = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      }
+
+      // The original sharp content stays underneath the overlap. Only the
+      // processed strip alpha is shaped; Gaussian radius, material grading and
+      // the fully opaque body are unchanged.
       return half4(sampled * coverage);
     }
   """.trimIndent()
