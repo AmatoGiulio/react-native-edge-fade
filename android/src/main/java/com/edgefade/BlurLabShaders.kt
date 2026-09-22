@@ -132,8 +132,18 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialEdge;
+    uniform float materialBoundary;
+    uniform float materialEntrance;
 
     const float maxRadius = 150.0;
+
+    float materialDistanceInside(float2 coord) {
+      if (materialEdge < 0.5) return materialBoundary - coord.y;
+      if (materialEdge < 1.5) return coord.y - materialBoundary;
+      if (materialEdge < 2.5) return materialBoundary - coord.x;
+      return coord.x - materialBoundary;
+    }
 
     float gaussian(float x, float sigma) {
       return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -207,7 +217,12 @@ internal object BlurLabShaders {
 
       if (intensity > 0.0 && materialStrength > 0.0) {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
-        float density = materialStrength * (1.0 - exp(-3.0 * depth));
+        float insideMaterial = max(materialDistanceInside(coord), 0.0);
+        float entrance = materialEntrance <= 0.0
+          ? 1.0
+          : smoothstep(0.0, materialEntrance, insideMaterial);
+        float density =
+          materialStrength * (1.0 - exp(-3.0 * depth)) * entrance;
         float alpha = max(sampled.a, 0.0001);
         float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
         float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
