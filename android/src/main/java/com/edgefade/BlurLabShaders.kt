@@ -39,6 +39,7 @@ internal object BlurLabShaders {
       // cannot quantize into visible horizontal bands. Public strength=0 keeps
       // the legacy paired-tap kernel pixel-identical.
       uniform float continuousSupport;
+      uniform float fixedRadius;
       const float maxRadius = 150.0;
       float gaussian(float x, float sigma) {
         return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -52,7 +53,9 @@ internal object BlurLabShaders {
         // Gaussian path unchanged, but use the cubic-root radius field whenever
         // the internal material path enables continuousSupport.
         float radiusIntensity =
-          continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+          fixedRadius > 0.5
+            ? 1.0
+            : (continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity);
         float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
