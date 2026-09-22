@@ -471,6 +471,49 @@ compression.
 
 ---
 
+### 15. Astra body exact transplant, new entrance retained
+
+**Commit:** pending in this commit
+
+Goal:
+
+Keep the new airy/official progressive entrance, but restore the actual optical
+body that made the earlier Astra version read as pearl/glass.
+
+Topology:
+
+`new progressive radius/entrance -> current density -> Astra optical body`
+
+Restored from the Astra body:
+
+- `pearlLuma` convergence toward the material luminance anchor;
+- Astra's dark-content-weighted body density;
+- aggressive perceptual chroma compression;
+- source colour retained as a low-contrast stain;
+- satin `pearlReflection`;
+- deep-body convergence toward neutral material with a small residual chroma.
+
+Explicitly **not** restored:
+
+- `edgeField`;
+- ellipse / oval geometry;
+- `ovalLift`;
+- old shoulder shaping;
+- any old clip or panel-boundary topology.
+
+Boundary protection:
+
+- the Astra body is driven by the current material `density`;
+- it is multiplied by `smoothstep(0.30, 0.68, intensity)`;
+- therefore the new blur entrance remains untouched and the strong pearl body
+  only develops deeper inside the panel;
+- the same response is used for AGSL and `androidx-gradient`.
+
+**Status:** pending CLOSED + FULL light/dark capture. Main check: recover the
+Astra glass/pearl body without recovering its bright CLOSED boundary.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

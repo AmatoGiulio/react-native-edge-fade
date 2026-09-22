@@ -340,45 +340,46 @@ internal object BlurLabShaders {
         float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
         float outputLuma = mix(luma, bodyLuma, density);
         float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
-        float transmission = exp(-density * mix(0.65, 1.0, light));
-        transmission /= 1.0 + density * 2.0 * magnitude;
-        // Astra did not read as glass merely because it was brighter. Its dense
-        // body also pulled luminance toward a neutral pearl anchor and compressed
-        // source chroma. Reintroduce only those optical traits, gated well inside
-        // the panel so none of the old geometric/edge field can return.
-        float glassGate = smoothstep(0.30, 0.68, intensity);
-        float glassBody =
-          density * surface * glassGate * mix(0.55, 1.0, light);
+
+        // Exact Astra body response, but fed by the current material density and
+        // kept away from the progressive entrance. This preserves the new airy
+        // boundary while restoring the old pearl/glass character in the body.
+        float astraGate = smoothstep(0.30, 0.68, intensity);
+        float astraMaterial = clamp(density * astraGate, 0.0, 1.0);
         float materialLuma =
           anchor * clamp(materialExposure, 0.75, 1.10);
-
-        // Contrast compression around the material anchor: bright regions settle
-        // slightly, dark regions lift slightly. This is the part that makes the
-        // body read like a translucent substrate instead of a brighter fog.
-        float glassLuma =
-          mix(outputLuma, materialLuma, 0.18 * glassBody);
-
-        // Keep source colour as a stain, but remove the purple/magenta dominance
-        // that the current body retains more strongly than the Astra reference.
-        float glassTransmission =
-          transmission *
-          (1.0 - 0.38 * glassBody) /
-          (1.0 + 2.5 * glassBody * magnitude);
-
-        float3 graded = float3(glassLuma) + chroma * glassTransmission;
-
-        // Satin reflection stays source-driven, but is now secondary to the
-        // neutral glass body rather than doing all the work by adding brightness.
-        float localHighlight = smoothstep(0.44, 0.88, luma);
         float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-        float sheenStrength =
-          glassBody *
-          (0.045 + 0.030 * localHighlight + 0.015 * darkContent);
-        float3 sheenColor =
-          mix(materialColor, float3(1.0), mix(0.12, 0.42, light));
+        float deep = smoothstep(0.18, 0.78, intensity);
+        float astraSurface =
+          surface * astraMaterial * deep;
 
+        float astraDensity =
+          astraMaterial * mix(0.90, 0.985, darkContent);
+        float lumaMix =
+          clamp(astraDensity + astraSurface * 0.12, 0.0, 0.985);
+        float pearlLuma =
+          mix(luma, materialLuma, lumaMix);
+
+        float chromaCompression =
+          1.0 / (1.0 + 6.5 * astraMaterial * magnitude);
+        float chromaGain =
+          mix(1.0, 0.16, astraMaterial) * chromaCompression;
+        chromaGain *= mix(1.0, 0.82, astraSurface);
+        float3 graded =
+          float3(pearlLuma) + chroma * chromaGain;
+
+        float localHighlight = smoothstep(0.44, 0.88, luma);
+        float pearlReflection =
+          astraSurface *
+          (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
+        graded = mix(graded, materialColor, pearlReflection);
+
+        float astraBody =
+          smoothstep(0.45, 1.0, intensity) * astraMaterial;
+        float3 bodyColour =
+          float3(materialLuma) + chroma * 0.08;
         graded =
-          1.0 - (1.0 - graded) * (1.0 - sheenColor * sheenStrength);
+          mix(graded, bodyColour, 0.38 * astraBody);
 
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
@@ -632,34 +633,45 @@ internal object BlurLabShaders {
       float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
       float outputLuma = mix(luma, bodyLuma, density);
       float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
-      float transmission = exp(-density * mix(0.65, 1.0, light));
-      transmission /= 1.0 + density * 2.0 * magnitude;
-      // Match the fused AGSL optical body while leaving the official AndroidX
-      // radius field completely untouched.
-      float glassGate = smoothstep(0.30, 0.68, intensity);
-      float glassBody =
-        density * surface * glassGate * mix(0.55, 1.0, light);
+
+      // Same Astra body equations as the fused AGSL path. BlurRadiusSpec still
+      // owns the radius field; this block only restores the optical substrate.
+      float astraGate = smoothstep(0.30, 0.68, intensity);
+      float astraMaterial = clamp(density * astraGate, 0.0, 1.0);
       float materialLuma =
         anchor * clamp(materialExposure, 0.75, 1.10);
-      float glassLuma =
-        mix(outputLuma, materialLuma, 0.18 * glassBody);
-      float glassTransmission =
-        transmission *
-        (1.0 - 0.38 * glassBody) /
-        (1.0 + 2.5 * glassBody * magnitude);
+      float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
+      float deep = smoothstep(0.18, 0.78, intensity);
+      float astraSurface =
+        surface * astraMaterial * deep;
 
-      float3 result = float3(glassLuma) + chroma * glassTransmission;
+      float astraDensity =
+        astraMaterial * mix(0.90, 0.985, darkContent);
+      float lumaMix =
+        clamp(astraDensity + astraSurface * 0.12, 0.0, 0.985);
+      float pearlLuma =
+        mix(luma, materialLuma, lumaMix);
+
+      float chromaCompression =
+        1.0 / (1.0 + 6.5 * astraMaterial * magnitude);
+      float chromaGain =
+        mix(1.0, 0.16, astraMaterial) * chromaCompression;
+      chromaGain *= mix(1.0, 0.82, astraSurface);
+      float3 result =
+        float3(pearlLuma) + chroma * chromaGain;
 
       float localHighlight = smoothstep(0.44, 0.88, luma);
-      float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
-      float sheenStrength =
-        glassBody *
-        (0.045 + 0.030 * localHighlight + 0.015 * darkContent);
-      float3 sheenColor =
-        mix(materialColor, float3(1.0), mix(0.12, 0.42, light));
+      float pearlReflection =
+        astraSurface *
+        (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
+      result = mix(result, materialColor, pearlReflection);
 
+      float astraBody =
+        smoothstep(0.45, 1.0, intensity) * astraMaterial;
+      float3 bodyColour =
+        float3(materialLuma) + chroma * 0.08;
       result =
-        1.0 - (1.0 - result) * (1.0 - sheenColor * sheenStrength);
+        mix(result, bodyColour, 0.38 * astraBody);
 
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }
