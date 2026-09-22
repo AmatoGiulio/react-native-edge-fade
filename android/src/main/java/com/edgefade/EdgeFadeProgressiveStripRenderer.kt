@@ -24,10 +24,9 @@ internal class EdgeFadeProgressiveStripRenderer(
   host: EdgeFadeView,
 ) {
   private companion object {
-    // Narrow overlap used only by the internal AGSL material path. The sharp
-    // source stays underneath this many physical pixels while the processed
-    // strip ramps from transparent to opaque.
-    const val MATERIAL_EDGE_BLEND_PX = 16
+    // Airy alpha-mask shoulder used only by the internal AGSL material path.
+    // The body remains pixel-identical once this physical overlap is crossed.
+    const val MATERIAL_EDGE_BLEND_PX = 64
   }
 
   private data class Key(
@@ -348,7 +347,8 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 0f
         }
         shader.setFloatUniform("materialBoundary", localBoundary)
-        // Match the sharp-source overlap exactly in raster space.
+        // Match the sharp-source overlap exactly in raster space. The shader
+        // applies a quintic premultiplied-alpha mask across this shoulder.
         shader.setFloatUniform(
           "materialEntrance",
           MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
