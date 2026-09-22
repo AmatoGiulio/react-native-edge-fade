@@ -236,14 +236,16 @@ internal object BlurLabShaders {
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 
-      // Full-area alpha mask driven by the *optical* progressive field rather
-      // than raw panel geometry. This makes it height-invariant and keeps the
-      // air transition coupled to the actual blur ramp. A gamma delays the
-      // entrance, then a steep complement reaches practical opacity early
-      // enough that the established material body below is not washed out.
+      // Full-area alpha envelope driven by the optical progressive field.
+      // Important: the previous asymptotic curve stayed slightly translucent
+      // across most of OPEN, mixing sharp + processed content and producing the
+      // cheap washed halo. Keep the mask normalized to the field, but give it
+      // an exact opaque plateau after the airy shoulder so the established
+      // material body below is pixel-identical.
       float opticalT = clamp(radiusIntensity, 0.0, 1.0);
-      float airyT = pow(opticalT, 1.5);
-      float coverage = 1.0 - pow(1.0 - airyT, 7.0);
+      const float airyShoulder = 0.14;
+      float u = clamp(opticalT / airyShoulder, 0.0, 1.0);
+      float coverage = u * u * u * (u * (u * 6.0 - 15.0) + 10.0);
 
       return half4(sampled * coverage);
     }
