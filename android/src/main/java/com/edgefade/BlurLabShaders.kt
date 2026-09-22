@@ -341,11 +341,18 @@ internal object BlurLabShaders {
         float outputLuma = mix(luma, bodyLuma, density);
         float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
 
-        // Exact Astra body response, but fed by the current material density and
-        // kept away from the progressive entrance. This preserves the new airy
-        // boundary while restoring the old pearl/glass character in the body.
-        float astraGate = smoothstep(0.30, 0.68, intensity);
-        float astraMaterial = clamp(density * astraGate, 0.0, 1.0);
+        // Keep the accepted current body as the base. The previous transplant
+        // replaced it outright; while the Astra gate was still low that exposed
+        // raw source luma/chroma again, which is why the cards suddenly became
+        // darker, sharper and much more saturated.
+        float transmission = exp(-density * mix(0.65, 1.0, light));
+        transmission /= 1.0 + density * 2.0 * magnitude;
+        float3 baseGraded = float3(outputLuma) + chroma * transmission;
+
+        // Build the original Astra body as a *target*, then cross into it only
+        // once we are safely inside the material. Deep body reaches the Astra
+        // response; the entrance remains the new progressive model.
+        float astraMaterial = clamp(density, 0.0, 1.0);
         float materialLuma =
           anchor * clamp(materialExposure, 0.75, 1.10);
         float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
@@ -365,21 +372,24 @@ internal object BlurLabShaders {
         float chromaGain =
           mix(1.0, 0.16, astraMaterial) * chromaCompression;
         chromaGain *= mix(1.0, 0.82, astraSurface);
-        float3 graded =
+        float3 astraTarget =
           float3(pearlLuma) + chroma * chromaGain;
 
         float localHighlight = smoothstep(0.44, 0.88, luma);
         float pearlReflection =
           astraSurface *
           (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
-        graded = mix(graded, materialColor, pearlReflection);
+        astraTarget = mix(astraTarget, materialColor, pearlReflection);
 
         float astraBody =
           smoothstep(0.45, 1.0, intensity) * astraMaterial;
         float3 bodyColour =
           float3(materialLuma) + chroma * 0.08;
-        graded =
-          mix(graded, bodyColour, 0.38 * astraBody);
+        astraTarget =
+          mix(astraTarget, bodyColour, 0.38 * astraBody);
+
+        float astraMix = smoothstep(0.30, 0.68, intensity);
+        float3 graded = mix(baseGraded, astraTarget, astraMix);
 
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
@@ -634,10 +644,14 @@ internal object BlurLabShaders {
       float outputLuma = mix(luma, bodyLuma, density);
       float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
 
-      // Same Astra body equations as the fused AGSL path. BlurRadiusSpec still
-      // owns the radius field; this block only restores the optical substrate.
-      float astraGate = smoothstep(0.30, 0.68, intensity);
-      float astraMaterial = clamp(density * astraGate, 0.0, 1.0);
+      // Preserve the accepted AndroidX-gradient material response as the base.
+      // The Astra response is a deep-body target, never a replacement near the
+      // entrance, so raw source colour cannot reappear while the gate ramps.
+      float transmission = exp(-density * mix(0.65, 1.0, light));
+      transmission /= 1.0 + density * 2.0 * magnitude;
+      float3 baseResult = float3(outputLuma) + chroma * transmission;
+
+      float astraMaterial = clamp(density, 0.0, 1.0);
       float materialLuma =
         anchor * clamp(materialExposure, 0.75, 1.10);
       float darkContent = 1.0 - smoothstep(0.16, 0.66, luma);
@@ -657,21 +671,24 @@ internal object BlurLabShaders {
       float chromaGain =
         mix(1.0, 0.16, astraMaterial) * chromaCompression;
       chromaGain *= mix(1.0, 0.82, astraSurface);
-      float3 result =
+      float3 astraTarget =
         float3(pearlLuma) + chroma * chromaGain;
 
       float localHighlight = smoothstep(0.44, 0.88, luma);
       float pearlReflection =
         astraSurface *
         (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
-      result = mix(result, materialColor, pearlReflection);
+      astraTarget = mix(astraTarget, materialColor, pearlReflection);
 
       float astraBody =
         smoothstep(0.45, 1.0, intensity) * astraMaterial;
       float3 bodyColour =
         float3(materialLuma) + chroma * 0.08;
-      result =
-        mix(result, bodyColour, 0.38 * astraBody);
+      astraTarget =
+        mix(astraTarget, bodyColour, 0.38 * astraBody);
+
+      float astraMix = smoothstep(0.30, 0.68, intensity);
+      float3 result = mix(baseResult, astraTarget, astraMix);
 
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
     }

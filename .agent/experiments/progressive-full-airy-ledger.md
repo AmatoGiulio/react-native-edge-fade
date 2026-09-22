@@ -509,8 +509,24 @@ Boundary protection:
   only develops deeper inside the panel;
 - the same response is used for AGSL and `androidx-gradient`.
 
-**Status:** pending CLOSED + FULL light/dark capture. Main check: recover the
-Astra glass/pearl body without recovering its bright CLOSED boundary.
+**Status:** first FULL capture exposed a regression: source cards became
+darker/sharper and saturated colour returned strongly, especially the blue lower
+card. Root cause was structural: the transplant replaced the accepted current
+body with Astra equations while `astraMaterial = density * gate` was still
+small. In that region the shader therefore fell back toward raw source
+luma/chroma instead of the already-compressed current body.
+
+Correction:
+
+- restore the accepted current material result as `baseGraded/baseResult`;
+- compute the Astra body separately as `astraTarget`;
+- use `astraMaterial = density` inside that target;
+- crossfade **base -> Astra target** with `smoothstep(0.30, 0.68, intensity)`;
+- entrance can therefore never re-expose raw source colour, while the deep body
+  can still converge fully to the Astra optical response.
+
+**Status:** pending CLOSED + FULL light/dark capture after base-preserving Astra
+target blend.
 
 ---
 
