@@ -135,6 +135,7 @@ internal object BlurLabShaders {
     uniform float materialEdge;
     uniform float materialBoundary;
     uniform float materialEntrance;
+    uniform float materialAirSpan;
 
     const float maxRadius = 150.0;
 
@@ -219,14 +220,15 @@ internal object BlurLabShaders {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
         float density = materialStrength * (1.0 - exp(-3.0 * depth));
 
-        // Keep the progressive Gaussian fully intact and soften only the
-        // material contribution. At low optical intensity the Gaussian is
-        // already visibly active (cubic-root radius), while the old material
-        // response was already close to full strength and created the hard,
-        // milky shoulder. Ramp material independently, then reach an exact
-        // plateau so the established body below stays pixel-identical.
-        const float materialAirPlateau = 0.35;
-        float materialU = clamp(intensity / materialAirPlateau, 0.0, 1.0);
+        // Keep the progressive Gaussian fully intact. Only the pearlescent
+        // material contribution breathes in, and it does so in physical space
+        // instead of intensity space. CLOSED compresses the intensity field,
+        // which made the old intensity threshold look like a horizontal cut.
+        // A distance-based quintic shoulder avoids that compression artifact.
+        float insideMaterialForAir = max(materialDistanceInside(coord), 0.0);
+        float materialU = materialAirSpan <= 0.0
+          ? 1.0
+          : clamp(insideMaterialForAir / materialAirSpan, 0.0, 1.0);
         float materialAir =
           materialU * materialU * materialU *
           (materialU * (materialU * 6.0 - 15.0) + 10.0);
