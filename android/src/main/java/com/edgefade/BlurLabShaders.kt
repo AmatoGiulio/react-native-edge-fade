@@ -117,6 +117,88 @@ internal object BlurLabShaders {
   }
 
 
+  // FULL material uses the same continuous Gaussian as pass(false), but its
+  // support is allowed to begin outside the nominal panel boundary. This is
+  // intentionally a dedicated experimental shader so the public strength=0
+  // Gaussian remains byte-for-byte on the original shared pass().
+  val materialHorizontalPass = """
+    uniform shader content;
+    uniform shader mask;
+    uniform float blurRadius;
+    uniform float2 extent;
+    uniform float materialEdge;
+    uniform float materialBoundary;
+    uniform float materialPanelFullMix;
+    uniform float materialAirOutside;
+    uniform float materialAirInside;
+    uniform float materialAirRadius;
+
+    const float maxRadius = 150.0;
+
+    float materialDistanceInside(float2 coord) {
+      if (materialEdge < 0.5) return materialBoundary - coord.y;
+      if (materialEdge < 1.5) return coord.y - materialBoundary;
+      if (materialEdge < 2.5) return materialBoundary - coord.x;
+      return coord.x - materialBoundary;
+    }
+
+    float gaussian(float x, float sigma) {
+      return exp(-(x * x) / (2.0 * sigma * sigma));
+    }
+
+    float inside(float2 p) {
+      return step(0.0, p.x) * (1.0 - step(extent.x, p.x));
+    }
+
+    half4 main(float2 coord) {
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float radiusIntensity = pow(intensity, 1.0 / 3.0);
+
+      float signedMaterial = materialDistanceInside(coord);
+      float fullMix = clamp(materialPanelFullMix, 0.0, 1.0);
+      float airU = clamp(
+        (signedMaterial + materialAirOutside) /
+          max(materialAirOutside + materialAirInside, 1.0),
+        0.0,
+        1.0
+      );
+      float airEase =
+        airU * airU * airU *
+        (airU * (airU * 6.0 - 15.0) + 10.0);
+      float airRadius = materialAirRadius * airEase * fullMix;
+      float radius = max(blurRadius * radiusIntensity, airRadius);
+
+      float4 sampled = float4(content.eval(coord));
+      if (radius <= 0.0) return half4(sampled);
+
+      float sigma = max(radius / 2.0, 1.0);
+      float weightSum = 1.0;
+      float4 result = sampled;
+
+      // Exact continuous-support paired-tap kernel used by pass(false).
+      for (float i = 1.0; i < maxRadius; i += 2.0) {
+        if (radius <= i - 0.5) break;
+
+        float lowCoverage = smoothstep(i - 0.5, i + 0.5, radius);
+        float highCoverage = smoothstep(i + 0.5, i + 1.5, radius);
+        float low = gaussian(i, sigma) * lowCoverage;
+        float high = gaussian(i + 1.0, sigma) * highCoverage;
+        float weight = low + high;
+        if (weight <= 0.000001) continue;
+
+        float d = i + high / weight;
+        float2 offset = float2(d, 0.0);
+        float2 a = coord - offset;
+        float2 b = coord + offset;
+        if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+        if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+      }
+
+      return half4(result / weightSum);
+    }
+  """.trimIndent()
+
+
   // Material AGSL path fused into the second Gaussian pass. Keeping the
   // material grading inside the vertical pass avoids a third RenderEffect
   // rasterization/resample at the hard strip clip, which was the source of the

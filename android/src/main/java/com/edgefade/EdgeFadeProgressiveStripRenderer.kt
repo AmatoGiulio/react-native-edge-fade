@@ -90,6 +90,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
+    val materialHorizontal by lazy { RuntimeShader(BlurLabShaders.materialHorizontalPass) }
     val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
@@ -398,6 +399,14 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 0f
         }
         shader.setFloatUniform("materialBoundary", localBoundary)
+
+        val horizontal = strip.materialHorizontal
+        horizontal.setInputShader("mask", strip.mask)
+        horizontal.setFloatUniform("blurRadius", key.radius)
+        horizontal.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+        horizontal.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        horizontal.setFloatUniform("materialBoundary", localBoundary)
+
         // Match the sharp-source overlap exactly in raster space.
         shader.setFloatUniform(
           "materialEntrance",
@@ -415,11 +424,15 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialPanelAirSpan",
           panelDepth * MATERIAL_FULL_AIR_SPAN_FRACTION * scale,
         )
+        val fullMix = materialFullMix(strip.band, key.width, key.height)
+        shader.setFloatUniform("materialPanelFullMix", fullMix)
+        horizontal.setFloatUniform("materialPanelFullMix", fullMix)
+
         shader.setFloatUniform(
-          "materialPanelFullMix",
-          materialFullMix(strip.band, key.width, key.height),
+          "materialAirOutside",
+          key.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR * scale,
         )
-        shader.setFloatUniform(
+        horizontal.setFloatUniform(
           "materialAirOutside",
           key.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR * scale,
         )
@@ -427,7 +440,15 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialAirInside",
           key.radius * MATERIAL_AIR_INSIDE_RADIUS_FACTOR * scale,
         )
+        horizontal.setFloatUniform(
+          "materialAirInside",
+          key.radius * MATERIAL_AIR_INSIDE_RADIUS_FACTOR * scale,
+        )
         shader.setFloatUniform(
+          "materialAirRadius",
+          key.radius * MATERIAL_AIR_RADIUS_FACTOR * scale,
+        )
+        horizontal.setFloatUniform(
           "materialAirRadius",
           key.radius * MATERIAL_AIR_RADIUS_FACTOR * scale,
         )
@@ -437,7 +458,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         // domain as GAUSS instead of resampling it once more at the clip.
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
-          RenderEffect.createRuntimeShaderEffect(strip.horizontal, "content"),
+          RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
         )
       } else if (key.materialStrength > 0f) {
         // AndroidX remains on its existing material post-pass. The seam work is
