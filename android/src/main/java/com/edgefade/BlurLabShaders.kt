@@ -134,7 +134,7 @@ internal object BlurLabShaders {
     uniform float materialSurfaceProgression;
     uniform float materialEdge;
     uniform float materialBoundary;
-    uniform float materialEntrance;
+    uniform float materialDepth;
 
     const float maxRadius = 150.0;
 
@@ -238,20 +238,18 @@ internal object BlurLabShaders {
       }
 
       float insideMaterial = max(materialDistanceInside(coord), 0.0);
-      float coverage = 1.0;
-      if (materialEntrance > 0.0) {
-        float t = clamp(insideMaterial / materialEntrance, 0.0, 1.0);
+      float t = materialDepth <= 0.0
+        ? 1.0
+        : clamp(insideMaterial / materialDepth, 0.0, 1.0);
 
-        // Real premultiplied-alpha air mask over the processed strip.
-        // Quintic smootherstep keeps zero slope at both ends, so the effect
-        // breathes in gradually from the sharp content and reaches the exact
-        // baseline body with no derivative kink.
-        coverage = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-      }
+      // Full-height premultiplied alpha mask. The mask is normalized to the
+      // actual visible band, so it scales with any panel height. Smootherstep
+      // gives a zero-slope airy start; the accelerated complement reaches
+      // effectively opaque around mid-depth and exactly 1.0 at the deep edge,
+      // preserving the established material body below.
+      float smoothT = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+      float coverage = 1.0 - pow(1.0 - smoothT, 5.0);
 
-      // The original sharp content stays underneath the overlap. Only the
-      // processed strip alpha is shaped; Gaussian radius, material grading and
-      // the fully opaque body are unchanged.
       return half4(sampled * coverage);
     }
   """.trimIndent()
