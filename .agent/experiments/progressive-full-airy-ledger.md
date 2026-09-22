@@ -411,7 +411,7 @@ Gallery comparison surface:
 
 ### 14. Astra satin reflection only
 
-**Commit:** pending in this commit
+**Commit:** `71a6d041`
 
 Goal:
 
