@@ -218,6 +218,20 @@ internal object BlurLabShaders {
       if (intensity > 0.0 && materialStrength > 0.0) {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
         float density = materialStrength * (1.0 - exp(-3.0 * depth));
+
+        // Keep the progressive Gaussian fully intact and soften only the
+        // material contribution. At low optical intensity the Gaussian is
+        // already visibly active (cubic-root radius), while the old material
+        // response was already close to full strength and created the hard,
+        // milky shoulder. Ramp material independently, then reach an exact
+        // plateau so the established body below stays pixel-identical.
+        const float materialAirPlateau = 0.35;
+        float materialU = clamp(intensity / materialAirPlateau, 0.0, 1.0);
+        float materialAir =
+          materialU * materialU * materialU *
+          (materialU * (materialU * 6.0 - 15.0) + 10.0);
+        density *= materialAir;
+
         float alpha = max(sampled.a, 0.0001);
         float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
         float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
