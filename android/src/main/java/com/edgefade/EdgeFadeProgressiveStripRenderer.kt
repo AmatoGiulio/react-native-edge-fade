@@ -23,6 +23,12 @@ import kotlin.math.ceil
 internal class EdgeFadeProgressiveStripRenderer(
   host: EdgeFadeView,
 ) {
+  private companion object {
+    // Narrow overlap used only by the internal AGSL material path. The sharp
+    // source stays underneath this many physical pixels while the processed
+    // strip ramps from transparent to opaque.
+    const val MATERIAL_EDGE_BLEND_PX = 16
+  }
 
   private data class Key(
     val width: Int,
@@ -167,7 +173,22 @@ internal class EdgeFadeProgressiveStripRenderer(
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
         try {
-          for (strip in strips) clipOut(canvas, strip.band.visible)
+          val current = key
+          val overlap =
+            if (
+              current != null &&
+                current.materialStrength > 0f &&
+                current.backend == "agsl" &&
+                current.debugStage == "material"
+            ) {
+              MATERIAL_EDGE_BLEND_PX
+            } else {
+              0
+            }
+
+          for (strip in strips) {
+            clipOut(canvas, insetForSharpOverlap(strip.band, overlap))
+          }
           canvas.drawRenderNode(content)
         } finally {
           canvas.restoreToCount(sharpSave)
@@ -327,10 +348,11 @@ internal class EdgeFadeProgressiveStripRenderer(
           else -> 0f
         }
         shader.setFloatUniform("materialBoundary", localBoundary)
-        // 32 physical px, expressed directly in this strip's raster space.
-        // At the hard clip edge the material pass is now mathematically
-        // identical to GAUSS; after 32 px it is exactly the baseline material.
-        shader.setFloatUniform("materialEntrance", 32f * scale)
+        // Match the sharp-source overlap exactly in raster space.
+        shader.setFloatUniform(
+          "materialEntrance",
+          MATERIAL_EDGE_BLEND_PX.toFloat() * scale,
+        )
 
         // Two passes total: horizontal Gaussian -> vertical Gaussian + material.
         // Avoiding a third RenderEffect keeps the strip edge in the same raster
@@ -389,7 +411,24 @@ internal class EdgeFadeProgressiveStripRenderer(
       ).coerceIn(0f, 1f)
     }
 
+  private fun insetForSharpOverlap(
+    band: BlurLabGeometry.Band,
+    overlap: Int,
+  ): BlurLabGeometry.Rect {
+    if (overlap <= 0) return band.visible
+
+    val v = band.visible
+    return when (band.edge) {
+      0 -> BlurLabGeometry.Rect(v.left, v.top, v.right, (v.bottom - overlap).coerceAtLeast(v.top))
+      1 -> BlurLabGeometry.Rect(v.left, (v.top + overlap).coerceAtMost(v.bottom), v.right, v.bottom)
+      2 -> BlurLabGeometry.Rect(v.left, v.top, (v.right - overlap).coerceAtLeast(v.left), v.bottom)
+      3 -> BlurLabGeometry.Rect((v.left + overlap).coerceAtMost(v.right), v.top, v.right, v.bottom)
+      else -> v
+    }
+  }
+
   private fun clipOut(canvas: Canvas, rect: BlurLabGeometry.Rect) {
+    if (rect.width <= 0 || rect.height <= 0) return
     canvas.clipOutRect(rect.left, rect.top, rect.right, rect.bottom)
   }
 
