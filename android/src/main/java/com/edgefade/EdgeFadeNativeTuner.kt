@@ -84,7 +84,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.rootView,
         Gravity.TOP or Gravity.END,
         dp(10),
-        edgeTopOnScreen(),
+        panelTopOnScreen(),
       )
       syncToEdgeBounds()
     }
@@ -99,7 +99,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val hostLocation = IntArray(2)
     host.getLocationOnScreen(hostLocation)
     val x = (hostLocation[0] + host.width - width - dp(8)).coerceAtLeast(0)
-    val y = edgeTopOnScreen()
+    val y = panelTopOnScreen()
     p.update(x, y, width, height)
   }
 
@@ -601,15 +601,25 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private fun panelWidth() =
     minOf(dp(348), (host.resources.displayMetrics.widthPixels * 0.94f).roundToInt())
 
+  private fun panelTopOnScreen(): Int {
+    val hostLocation = IntArray(2)
+    host.getLocationOnScreen(hostLocation)
+    return hostLocation[1] + dp(52)
+  }
+
   private fun edgeTopOnScreen(): Int {
     val hostLocation = IntArray(2)
     host.getLocationOnScreen(hostLocation)
     val edgeTopLocal = (host.height - host.effectiveFadeBottom()).roundToInt()
-    return hostLocation[1] + edgeTopLocal + dp(4)
+    return hostLocation[1] + edgeTopLocal
   }
 
   private fun constrainedPanelHeight(): Int {
-    val available = (host.effectiveFadeBottom().roundToInt() - dp(8)).coerceAtLeast(dp(52))
+    // The tuner stays pinned at the top-right. Only its bottom edge follows
+    // the progressive sheet, so the live blur/material field always remains
+    // visible while editing.
+    val available =
+      (edgeTopOnScreen() - panelTopOnScreen() - dp(8)).coerceAtLeast(dp(52))
     return minOf(dp(650), available)
   }
 

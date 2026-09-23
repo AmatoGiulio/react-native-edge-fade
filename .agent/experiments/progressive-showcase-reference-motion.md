@@ -257,3 +257,22 @@ response has an independent spatial domain. New controls expose that domain:
 The material shader transforms its mask intensity through that height/offset
 before the existing surface-progression response. Defaults (height=1,
 offset=0) are pixel-equivalent to the previous material curve.
+
+
+## 2026-09-23 — Tuner pinned above the effect, not inside it
+
+The previous docking direction was wrong for live optical tuning: the popup was
+anchored to the top of the bottom EdgeFade field and extended downward inside
+the effect, hiding exactly the blur/material area being edited.
+
+Corrected layout:
+
+- collapsed and expanded TUNE remain fixed at the top-right;
+- expanded height is dynamic;
+- the panel bottom stops 8dp before the current top boundary of the bottom
+  EdgeFade field;
+- when OPEN/CLOSED depth changes, only panel height changes — its top position
+  never follows the sheet.
+
+This keeps the complete live blur/material composition visible below the tuner
+while every runtime control remains reachable through the internal ScrollView.
