@@ -106,7 +106,7 @@ class EdgeFadeViewManager :
 
   @ReactProp(name = "progressiveNativeTuner")
   override fun setProgressiveNativeTuner(view: EdgeFadeView, value: Boolean) {
-    view.setProgressiveNativeTunerEnabled(value)
+    view.updateProgressiveNativeTunerEnabled(value)
   }
 
   @ReactProp(name = "progressiveBackend")

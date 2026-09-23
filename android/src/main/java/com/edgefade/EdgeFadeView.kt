@@ -174,7 +174,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     super.onDetachedFromWindow()
   }
 
-  internal fun setProgressiveNativeTunerEnabled(enabled: Boolean) {
+  internal fun updateProgressiveNativeTunerEnabled(enabled: Boolean) {
     progressiveNativeTunerEnabled = enabled
     if (!enabled) {
       nativeTuner?.dismiss()
