@@ -566,7 +566,7 @@ The Astra gradient profile uses the exact 13-stop radius distribution implied by
 
 ### 17. 3f639cc exact material over AndroidX gradient
 
-**Commit:** pending in this commit
+**Commit:** `75f27383`
 
 Goal:
 
