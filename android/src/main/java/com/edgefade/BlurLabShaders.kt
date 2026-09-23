@@ -221,13 +221,6 @@ internal object BlurLabShaders {
     uniform float materialBoundary;
     uniform float materialEntrance;
     uniform float materialPanelDepth;
-    uniform float bodyFusionEnabled;
-    uniform float bodyUniformity;
-    uniform float deepChromaGain;
-    uniform float deepLumaCompression;
-    uniform float bodyFusionStart;
-    uniform float bodyFusionEnd;
-    uniform float materialPanelDepth;
     uniform float materialPanelAlphaMin;
     uniform float materialPanelFullAlphaMin;
     uniform float materialPanelAirSpan;
@@ -610,6 +603,13 @@ internal object BlurLabShaders {
     uniform float materialEdge;
     uniform float materialBoundary;
     uniform float materialEntrance;
+    uniform float materialPanelDepth;
+    uniform float bodyFusionEnabled;
+    uniform float bodyUniformity;
+    uniform float deepChromaGain;
+    uniform float deepLumaCompression;
+    uniform float bodyFusionStart;
+    uniform float bodyFusionEnd;
 
     float materialDistanceInside(float2 coord) {
       if (materialEdge < 0.5) return materialBoundary - coord.y;
