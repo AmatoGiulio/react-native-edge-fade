@@ -595,6 +595,46 @@ reflection/body additions.
 
 ---
 
+### 18. Deep-body fusion over 3f639cc exact
+
+**Commit:** pending in this commit
+
+Observed issue:
+
+The AndroidX-gradient + 3f639cc configuration has the desired overall material,
+but saturated cards remain visible as large soft orange/blue islands in the
+middle/deep body. These blobs track source geometry, so increasing Gaussian
+radius would only make them larger.
+
+Hypothesis:
+
+Keep the exact 3f639cc shoulder/material response, then progressively reduce
+local luminance contrast and chroma only deeper inside the panel.
+
+Implementation:
+
+- the original 3f639cc material equations run first and remain unchanged;
+- an optional post-material body-fusion stage is gated by normalized physical
+  depth inside the panel;
+- the shoulder is untouched before `bodyFusionStart`;
+- deep luminance converges toward the existing material luminance anchor;
+- deep chroma is attenuated without replacing it with a flat tint;
+- no additional Gaussian, alpha-mask topology or source resampling is added.
+
+Initial runtime defaults:
+
+- body fusion: on;
+- uniformity: 0.72;
+- deep chroma gain: 0.38;
+- deep luma compression: 0.50;
+- body start: 0.16;
+- body end: 0.68.
+
+The native tuner exposes all five values plus an on/off switch. Turning body
+fusion off restores the unmodified 3f639cc material/compositor response.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

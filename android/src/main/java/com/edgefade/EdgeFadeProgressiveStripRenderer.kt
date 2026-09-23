@@ -87,6 +87,12 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialReflectionGain: Float,
     val materialBodyGain: Float,
     val materialChromaGain: Float,
+    val bodyFusionEnabled: Boolean,
+    val bodyUniformity: Float,
+    val deepChromaGain: Float,
+    val deepLumaCompression: Float,
+    val bodyFusionStart: Float,
+    val bodyFusionEnd: Float,
   )
 
   private data class CurveSamples(
@@ -181,6 +187,17 @@ internal class EdgeFadeProgressiveStripRenderer(
         BlurLabGeometry.finite(host.progressiveBodyGain, 1f).coerceIn(0f, 2f),
       materialChromaGain =
         BlurLabGeometry.finite(host.progressiveChromaGain, 1f).coerceIn(0f, 2f),
+      bodyFusionEnabled = host.progressiveBodyFusionEnabled,
+      bodyUniformity =
+        BlurLabGeometry.finite(host.progressiveBodyUniformity, 0.72f).coerceIn(0f, 1f),
+      deepChromaGain =
+        BlurLabGeometry.finite(host.progressiveDeepChromaGain, 0.38f).coerceIn(0f, 1f),
+      deepLumaCompression =
+        BlurLabGeometry.finite(host.progressiveDeepLumaCompression, 0.50f).coerceIn(0f, 1f),
+      bodyFusionStart =
+        BlurLabGeometry.finite(host.progressiveBodyFusionStart, 0.16f).coerceIn(0f, 0.95f),
+      bodyFusionEnd =
+        BlurLabGeometry.finite(host.progressiveBodyFusionEnd, 0.68f).coerceIn(0.05f, 1f),
     )
 
     if (key == next) return true
@@ -566,6 +583,22 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialEntrance",
           materialEdgeBlendPx(strip.band).toFloat() * scale,
         )
+        val panelDepth =
+          when (strip.band.edge) {
+            0, 1 -> strip.band.visible.height.toFloat()
+            2, 3 -> strip.band.visible.width.toFloat()
+            else -> 1f
+          }
+        shader.setFloatUniform("materialPanelDepth", panelDepth * scale)
+        shader.setFloatUniform(
+          "bodyFusionEnabled",
+          if (key.bodyFusionEnabled) 1f else 0f,
+        )
+        shader.setFloatUniform("bodyUniformity", key.bodyUniformity)
+        shader.setFloatUniform("deepChromaGain", key.deepChromaGain)
+        shader.setFloatUniform("deepLumaCompression", key.deepLumaCompression)
+        shader.setFloatUniform("bodyFusionStart", key.bodyFusionStart)
+        shader.setFloatUniform("bodyFusionEnd", key.bodyFusionEnd)
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
           blurEffect,

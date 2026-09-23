@@ -221,6 +221,13 @@ internal object BlurLabShaders {
     uniform float materialBoundary;
     uniform float materialEntrance;
     uniform float materialPanelDepth;
+    uniform float bodyFusionEnabled;
+    uniform float bodyUniformity;
+    uniform float deepChromaGain;
+    uniform float deepLumaCompression;
+    uniform float bodyFusionStart;
+    uniform float bodyFusionEnd;
+    uniform float materialPanelDepth;
     uniform float materialPanelAlphaMin;
     uniform float materialPanelFullAlphaMin;
     uniform float materialPanelAirSpan;
@@ -634,6 +641,34 @@ internal object BlurLabShaders {
         float transmission = exp(-density * mix(0.65, 1.0, light));
         transmission /= 1.0 + density * 2.0 * magnitude;
         float3 graded = float3(outputLuma) + chroma * transmission;
+
+        // 3f639cc body fusion: preserve the exact shoulder, then progressively
+        // reduce local scene contrast/chroma deeper in the panel. This removes
+        // card-shaped colour islands without increasing Gaussian radius.
+        if (bodyFusionEnabled > 0.5 && bodyUniformity > 0.0 && materialPanelDepth > 0.0) {
+          float insideBody = max(materialDistanceInside(coord), 0.0);
+          float bodyDepth = clamp(insideBody / max(materialPanelDepth, 1.0), 0.0, 1.0);
+          float start = clamp(min(bodyFusionStart, bodyFusionEnd - 0.01), 0.0, 0.99);
+          float end = clamp(max(bodyFusionEnd, start + 0.01), start + 0.01, 1.0);
+          float bodyGate =
+            smoothstep(start, end, bodyDepth) * clamp(bodyUniformity, 0.0, 1.0);
+
+          float gradedLuma = dot(graded, float3(0.2126, 0.7152, 0.0722));
+          float3 gradedChroma = graded - float3(gradedLuma);
+
+          // Compress local luminance around the material anchor instead of
+          // whitening the body. 1 keeps source contrast; 0 converges to anchor.
+          float uniformLuma =
+            anchor + (gradedLuma - anchor) * clamp(deepLumaCompression, 0.0, 1.0);
+
+          // Preserve broad scene colour while suppressing local saturated blobs.
+          float3 uniformBody =
+            float3(uniformLuma) +
+            gradedChroma * clamp(deepChromaGain, 0.0, 1.0);
+
+          graded = mix(graded, uniformBody, bodyGate);
+        }
+
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
       }
 

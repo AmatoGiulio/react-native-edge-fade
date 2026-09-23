@@ -75,6 +75,15 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveBodyGain: Float = 1f
   internal var progressiveChromaGain: Float = 1f
 
+  // Optional post-material body fusion for the 3f639cc profile. Turning this
+  // off returns the exact 3f639cc material/compositor math byte-for-byte.
+  internal var progressiveBodyFusionEnabled: Boolean = true
+  internal var progressiveBodyUniformity: Float = 0.72f
+  internal var progressiveDeepChromaGain: Float = 0.38f
+  internal var progressiveDeepLumaCompression: Float = 0.50f
+  internal var progressiveBodyFusionStart: Float = 0.16f
+  internal var progressiveBodyFusionEnd: Float = 0.68f
+
   internal var tunerBackendOverride: String? = null
   internal var tunerBlurRadiusOverride: Float? = null
   internal var tunerProgressionOverride: Float? = null
@@ -217,6 +226,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     progressiveReflectionGain = 1f
     progressiveBodyGain = 1f
     progressiveChromaGain = 1f
+    progressiveBodyFusionEnabled = true
+    progressiveBodyUniformity = 0.72f
+    progressiveDeepChromaGain = 0.38f
+    progressiveDeepLumaCompression = 0.50f
+    progressiveBodyFusionStart = 0.16f
+    progressiveBodyFusionEnd = 0.68f
     tunerShowBounds = false
     nativeTuneChanged()
   }

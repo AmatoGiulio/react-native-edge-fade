@@ -31,7 +31,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val materialSurface: Float, val materialSurfaceProgression: Float,
     val profile: String, val materialProfile: String, val air: Float, val span: Float,
     val astraMix: Float, val reflection: Float, val body: Float,
-    val chroma: Float, val bounds: Boolean,
+    val chroma: Float,
+    val bodyFusion: Boolean, val bodyUniformity: Float,
+    val deepChroma: Float, val deepLuma: Float,
+    val bodyStart: Float, val bodyEnd: Float,
+    val bounds: Boolean,
   )
 
   private val context: Context = host.context
@@ -152,7 +156,33 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     addSlider(body, "exposure", 0.5f, 1.2f, host.effectiveMaterialExposure(), "") { host.tunerMaterialExposureOverride = it; host.nativeTuneChanged() }
     addSlider(body, "surface prog", 0.15f, 1f, host.effectiveMaterialSurfaceProgression(), "") { host.tunerMaterialSurfaceProgressionOverride = it; host.nativeTuneChanged() }
 
-    addSection(body, "ASTRA BODY")
+    addSection(body, "BODY FUSION · 3f639cc")
+    addSwitch(body, "body fusion", host.progressiveBodyFusionEnabled) {
+      host.progressiveBodyFusionEnabled = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "uniformity", 0f, 1f, host.progressiveBodyUniformity, "") {
+      host.progressiveBodyUniformity = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "deep chroma", 0f, 1f, host.progressiveDeepChromaGain, "") {
+      host.progressiveDeepChromaGain = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "deep luma", 0f, 1f, host.progressiveDeepLumaCompression, "") {
+      host.progressiveDeepLumaCompression = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "body start", 0f, 0.8f, host.progressiveBodyFusionStart, "") {
+      host.progressiveBodyFusionStart = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "body end", 0.2f, 1f, host.progressiveBodyFusionEnd, "") {
+      host.progressiveBodyFusionEnd = it
+      host.nativeTuneChanged()
+    }
+
+    addSection(body, "CURRENT BODY · inactive on 3f639cc")
     addSlider(body, "Astra mix", 0f, 1f, host.progressiveAstraMix, "") { host.progressiveAstraMix = it; host.nativeTuneChanged() }
     addSlider(body, "reflection", 0f, 2f, host.progressiveReflectionGain, "×") { host.progressiveReflectionGain = it; host.nativeTuneChanged() }
     addSlider(body, "body", 0f, 2f, host.progressiveBodyGain, "×") { host.progressiveBodyGain = it; host.nativeTuneChanged() }
@@ -195,7 +225,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialStrength(), host.effectiveMaterialExposure(), host.effectiveMaterialSurface(),
     host.effectiveMaterialSurfaceProgression(), host.progressiveGradientProfile, host.progressiveMaterialProfile,
     host.progressiveGradientOutsideFactor, host.progressiveGradientSpan, host.progressiveAstraMix,
-    host.progressiveReflectionGain, host.progressiveBodyGain, host.progressiveChromaGain, host.tunerShowBounds,
+    host.progressiveReflectionGain, host.progressiveBodyGain, host.progressiveChromaGain,
+    host.progressiveBodyFusionEnabled, host.progressiveBodyUniformity,
+    host.progressiveDeepChromaGain, host.progressiveDeepLumaCompression,
+    host.progressiveBodyFusionStart, host.progressiveBodyFusionEnd,
+    host.tunerShowBounds,
   )
 
   private fun applySnapshot(s: Snapshot) {
@@ -214,6 +248,12 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.progressiveReflectionGain = s.reflection
     host.progressiveBodyGain = s.body
     host.progressiveChromaGain = s.chroma
+    host.progressiveBodyFusionEnabled = s.bodyFusion
+    host.progressiveBodyUniformity = s.bodyUniformity
+    host.progressiveDeepChromaGain = s.deepChroma
+    host.progressiveDeepLumaCompression = s.deepLuma
+    host.progressiveBodyFusionStart = s.bodyStart
+    host.progressiveBodyFusionEnd = s.bodyEnd
     host.tunerShowBounds = s.bounds
     host.nativeTuneChanged()
     rebuildExpanded()
@@ -227,7 +267,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         "air=${fmt(s.air)} span=${fmt(s.span)} material=${fmt(s.materialStrength)} " +
         "surface=${fmt(s.materialSurface)} exposure=${fmt(s.materialExposure)} " +
         "surfaceProg=${fmt(s.materialSurfaceProgression)} astra=${fmt(s.astraMix)} " +
-        "reflection=${fmt(s.reflection)} body=${fmt(s.body)} chroma=${fmt(s.chroma)} bounds=${s.bounds}"
+        "reflection=${fmt(s.reflection)} body=${fmt(s.body)} chroma=${fmt(s.chroma)} " +
+        "bodyFusion=${s.bodyFusion} uniformity=${fmt(s.bodyUniformity)} " +
+        "deepChroma=${fmt(s.deepChroma)} deepLuma=${fmt(s.deepLuma)} " +
+        "bodyStart=${fmt(s.bodyStart)} bodyEnd=${fmt(s.bodyEnd)} bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("EdgeFade tuner", line))
     Log.i(TAG, line)
