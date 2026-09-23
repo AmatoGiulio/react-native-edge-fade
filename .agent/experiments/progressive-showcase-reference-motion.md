@@ -276,3 +276,42 @@ Corrected layout:
 
 This keeps the complete live blur/material composition visible below the tuner
 while every runtime control remains reachable through the internal ScrollView.
+
+
+## 2026-09-24 — Low-frequency material colour field
+
+Visual hypothesis requested by the user:
+
+- keep the current validated AndroidX progressive Gaussian geometry;
+- let material begin perceptually before strong blur via the existing independent
+  material curve;
+- before the pearl/smoke response, fuse source colours over a broader spatial
+  neighbourhood so individual cards stop reading as isolated blur blobs and
+  instead form larger continuous colour shapes.
+
+Implementation:
+
+- showcase anchors changed to light `#D4D4D4` and dark `#010101`;
+- new material-only low-frequency RGB field samples 13 points from the already
+  blurred content (centre, half-radius cardinals, full-radius cardinals,
+  diagonals);
+- the field changes RGB only: output alpha, blur radius, AndroidX BlurStops and
+  geometry are untouched;
+- field radius = `blurRadius × 0.18 × radiusScale`; at radius 150 and the
+  initial scale 1.85 this is ~50 px;
+- field RGB is mixed back into the normal blurred RGB before the existing
+  luminance/chroma material response.
+
+Initial showcase experiment defaults:
+
+- field enabled;
+- field mix = 0.42;
+- field radius scale = 1.85;
+- anchors = `#D4D4D4 / #010101`.
+
+Native TUNE adds a COLOR FIELD section with ON/OFF, mix, radius scale and live
+hex light/dark anchors. A new `LOAD SHAPE TEST` preset reproduces the user's
+latest preferred configuration plus this colour-field experiment.
+
+Public progressive blur remains unaffected because all new material-field props
+default to disabled/zero.

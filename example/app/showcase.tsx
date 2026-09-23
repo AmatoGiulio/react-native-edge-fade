@@ -37,9 +37,12 @@ const DEFAULT_MATERIAL_STRENGTH = 0.96;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
-const LIGHT_MATERIAL_COLOR = '#bfc0c4';
-// Smoke retains source illumination instead of converging to a silver overlay.
-const DARK_MATERIAL_COLOR = '#595a60';
+const LIGHT_MATERIAL_COLOR = '#d4d4d4';
+// Near-black smoke anchor: colour shapes come from the source field, not from
+// a silver/grey material tint.
+const DARK_MATERIAL_COLOR = '#010101';
+const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 0.42;
+const DEFAULT_MATERIAL_COLOR_FIELD_RADIUS_SCALE = 1.85;
 // CLOSED in the reference is essentially the bottom navigation bar plus a
 // small optical shoulder, not a 200+ px material panel.
 const CLOSED_BAR_HEIGHT = 54;
@@ -487,6 +490,11 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
         progressiveMaterialSurfaceProgression={
           DEFAULT_MATERIAL_SURFACE_PROGRESSION
+        }
+        progressiveMaterialColorFieldEnabled={true}
+        progressiveMaterialColorFieldMix={DEFAULT_MATERIAL_COLOR_FIELD_MIX}
+        progressiveMaterialColorFieldRadiusScale={
+          DEFAULT_MATERIAL_COLOR_FIELD_RADIUS_SCALE
         }
         style={StyleSheet.absoluteFill}
       >

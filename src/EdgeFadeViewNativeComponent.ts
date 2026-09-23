@@ -55,6 +55,12 @@ interface NativeProps extends ViewProps {
    * sheet reach full density earlier across the edge band.
    */
   progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
+  /** Internal low-frequency RGB field before the material tone response. */
+  progressiveMaterialColorFieldEnabled?: boolean;
+  /** 0 = blurred source only, 1 = low-frequency colour field only. */
+  progressiveMaterialColorFieldMix?: CodegenTypes.Float;
+  /** Relative sampling radius for the low-frequency colour field. */
+  progressiveMaterialColorFieldRadiusScale?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

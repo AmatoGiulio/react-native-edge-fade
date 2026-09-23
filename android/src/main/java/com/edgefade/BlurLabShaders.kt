@@ -265,6 +265,18 @@ internal object BlurLabShaders {
     uniform float materialSurfaceProgression;
     uniform float materialCurveHeight;
     uniform float materialCurveOffset;
+    uniform float materialColorFieldEnabled;
+    uniform float materialColorFieldMix;
+    uniform float materialColorFieldRadius;
+    uniform float2 materialExtent;
+
+    float3 sampleMaterialRgb(float2 coord) {
+      float2 maxCoord = max(materialExtent - float2(0.5), float2(0.5));
+      float2 p = clamp(coord, float2(0.5), maxCoord);
+      half4 sample = content.eval(p);
+      float alpha = max(float(sample.a), 0.0001);
+      return clamp(float3(sample.rgb) / alpha, 0.0, 1.0);
+    }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
@@ -291,6 +303,40 @@ internal object BlurLabShaders {
       float density = materialStrength * densityCurve;
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
+
+      // Wide RGB-only field. Geometry/alpha stay exactly on the original
+      // progressive Gaussian, while neighbouring source colours merge into
+      // larger, smoother shapes before the pearl/smoke response.
+      if (
+        materialColorFieldEnabled > 0.5 &&
+        materialColorFieldMix > 0.0001 &&
+        materialColorFieldRadius > 0.5
+      ) {
+        float r = materialColorFieldRadius;
+        float h = r * 0.5;
+        float d = r * 0.70710678;
+
+        float3 field = rgb * 4.0;
+
+        field += sampleMaterialRgb(coord + float2( h, 0.0)) * 2.0;
+        field += sampleMaterialRgb(coord + float2(-h, 0.0)) * 2.0;
+        field += sampleMaterialRgb(coord + float2(0.0,  h)) * 2.0;
+        field += sampleMaterialRgb(coord + float2(0.0, -h)) * 2.0;
+
+        field += sampleMaterialRgb(coord + float2( r, 0.0));
+        field += sampleMaterialRgb(coord + float2(-r, 0.0));
+        field += sampleMaterialRgb(coord + float2(0.0,  r));
+        field += sampleMaterialRgb(coord + float2(0.0, -r));
+
+        field += sampleMaterialRgb(coord + float2( d,  d));
+        field += sampleMaterialRgb(coord + float2(-d,  d));
+        field += sampleMaterialRgb(coord + float2( d, -d));
+        field += sampleMaterialRgb(coord + float2(-d, -d));
+
+        field /= 20.0;
+        rgb = mix(rgb, field, clamp(materialColorFieldMix, 0.0, 1.0));
+      }
+
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
       float3 chroma = rgb - float3(luma);
       float anchor = dot(materialColor, float3(0.2126, 0.7152, 0.0722));

@@ -8,6 +8,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -15,6 +18,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
@@ -48,6 +52,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val materialCurveSync: Boolean,
     val materialCurveHeight: Float,
     val materialCurveOffset: Float,
+    val colorFieldEnabled: Boolean,
+    val colorFieldMix: Float,
+    val colorFieldRadiusScale: Float,
+    val materialLightColor: Int,
+    val materialDarkColor: Int,
     val bounds: Boolean,
   )
 
@@ -196,6 +205,31 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.nativeTuneChanged()
         host.postDelayed({ rebuildExpanded() }, 40L)
       },
+      "LOAD SHAPE TEST" to {
+        host.tunerBackendOverride = "androidx-gradient"
+        host.tunerBlurRadiusOverride = 150f
+        host.tunerProgressionOverride = 1f
+        host.tunerGradientSpanOverride = 0.92f
+        host.tunerBottomScaleOverride = 1.35f
+        host.tunerBottomOffsetDpOverride = 34.08f
+        host.tunerCurveProfileOverride = "soft"
+        host.tunerCurvePowerOverride = 3f
+        host.tunerMaterialEnabledOverride = true
+        host.tunerMaterialStrengthOverride = 0.77f
+        host.tunerMaterialExposureOverride = 0.71f
+        host.tunerMaterialSurfaceOverride = 0.45f
+        host.tunerMaterialSurfaceProgressionOverride = 0.26f
+        host.tunerMaterialCurveSyncOverride = false
+        host.tunerMaterialCurveHeightOverride = 1.14f
+        host.tunerMaterialCurveOffsetOverride = 0.07f
+        host.tunerMaterialColorFieldEnabledOverride = true
+        host.tunerMaterialColorFieldMixOverride = 0.42f
+        host.tunerMaterialColorFieldRadiusScaleOverride = 1.85f
+        host.tunerMaterialColorLightOverride = Color.rgb(0xD4, 0xD4, 0xD4)
+        host.tunerMaterialColorDarkOverride = Color.rgb(0x01, 0x01, 0x01)
+        host.nativeTuneChanged()
+        host.postDelayed({ rebuildExpanded() }, 40L)
+      },
     ))
 
     addSwitch(body, "panel bounds", host.tunerShowBounds) {
@@ -314,6 +348,35 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.nativeTuneChanged()
     }
 
+    addSection(body, "COLOR FIELD")
+    addSwitch(body, "color field", host.effectiveMaterialColorFieldEnabled()) {
+      host.tunerMaterialColorFieldEnabledOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "field mix", 0f, 1f, host.effectiveMaterialColorFieldMix(), "") {
+      host.tunerMaterialColorFieldMixOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(
+      body,
+      "field radius ×",
+      0.5f,
+      3f,
+      host.effectiveMaterialColorFieldRadiusScale(),
+      "×",
+    ) {
+      host.tunerMaterialColorFieldRadiusScaleOverride = it
+      host.nativeTuneChanged()
+    }
+    addHexColor(body, "light anchor", host.effectiveMaterialColorLight()) {
+      host.tunerMaterialColorLightOverride = it
+      host.nativeTuneChanged()
+    }
+    addHexColor(body, "dark anchor", host.effectiveMaterialColorDark()) {
+      host.tunerMaterialColorDarkOverride = it
+      host.nativeTuneChanged()
+    }
+
     addSection(body, "A/B")
     addActions(body, listOf(
       "SAVE A" to { slotA = capture() },
@@ -379,6 +442,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialCurveSync(),
     host.effectiveMaterialCurveHeight(),
     host.effectiveMaterialCurveOffset(),
+    host.effectiveMaterialColorFieldEnabled(),
+    host.effectiveMaterialColorFieldMix(),
+    host.effectiveMaterialColorFieldRadiusScale(),
+    host.effectiveMaterialColorLight(),
+    host.effectiveMaterialColorDark(),
     host.tunerShowBounds,
   )
 
@@ -399,6 +467,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerMaterialCurveSyncOverride = s.materialCurveSync
     host.tunerMaterialCurveHeightOverride = s.materialCurveHeight
     host.tunerMaterialCurveOffsetOverride = s.materialCurveOffset
+    host.tunerMaterialColorFieldEnabledOverride = s.colorFieldEnabled
+    host.tunerMaterialColorFieldMixOverride = s.colorFieldMix
+    host.tunerMaterialColorFieldRadiusScaleOverride = s.colorFieldRadiusScale
+    host.tunerMaterialColorLightOverride = s.materialLightColor
+    host.tunerMaterialColorDarkOverride = s.materialDarkColor
     host.tunerShowBounds = s.bounds
     host.nativeTuneChanged()
     rebuildExpanded()
@@ -413,10 +486,46 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         "curvePower=${fmt(s.curvePower)} material=${s.materialEnabled} strength=${fmt(s.strength)} " +
         "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} surfaceProg=${fmt(s.surfaceProgression)} " +
         "materialCurveSync=${s.materialCurveSync} materialCurveHeight=${fmt(s.materialCurveHeight)} " +
-        "materialCurveOffset=${fmt(s.materialCurveOffset)} bounds=${s.bounds}"
+        "materialCurveOffset=${fmt(s.materialCurveOffset)} colorField=${s.colorFieldEnabled} " +
+        "colorFieldMix=${fmt(s.colorFieldMix)} colorFieldRadiusScale=${fmt(s.colorFieldRadiusScale)} " +
+        "lightAnchor=${hexColor(s.materialLightColor)} darkAnchor=${hexColor(s.materialDarkColor)} " +
+        "bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("EdgeFade clean tuner", line))
     Log.i(TAG, line)
+  }
+
+  private fun addHexColor(
+    parent: LinearLayout,
+    label: String,
+    color: Int,
+    onChange: (Int) -> Unit,
+  ) {
+    val row = settingRow()
+    row.addView(labelView(label), LinearLayout.LayoutParams(0, dp(42), 0.52f))
+
+    val input = EditText(context).apply {
+      setText(hexColor(color))
+      setTextColor(Color.WHITE)
+      textSize = 11f
+      gravity = Gravity.CENTER_VERTICAL
+      setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+      setSingleLine(true)
+      inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+      setPadding(dp(8), 0, dp(8), 0)
+      background = rounded(0xff18181c.toInt(), 8f, 0x22ffffff)
+      addTextChangedListener(object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+          val raw = s?.toString()?.trim().orEmpty()
+          if (!raw.matches(Regex("^#[0-9A-Fa-f]{6}$"))) return
+          runCatching { Color.parseColor(raw) }.getOrNull()?.let(onChange)
+        }
+        override fun afterTextChanged(s: Editable?) = Unit
+      })
+    }
+    row.addView(input, LinearLayout.LayoutParams(0, dp(36), 0.48f))
+    parent.addView(row)
   }
 
   private fun addSection(parent: LinearLayout, title: String) {
@@ -625,6 +734,14 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
   private fun dp(value: Int) = (value * density).roundToInt()
   private fun fmt(value: Float) = "%.2f".format(java.util.Locale.US, value)
+  private fun hexColor(value: Int): String =
+    String.format(
+      java.util.Locale.US,
+      "#%02X%02X%02X",
+      Color.red(value),
+      Color.green(value),
+      Color.blue(value),
+    )
 
   private companion object {
     const val TAG = "EdgeFadeCleanTuner"

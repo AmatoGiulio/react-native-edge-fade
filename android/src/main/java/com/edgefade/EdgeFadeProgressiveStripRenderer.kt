@@ -38,6 +38,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     // AndroidX gradient now keeps a full-res entrance/body. Double only the
     // internal kernel radius to preserve the old 0.5x screen-space diffusion.
     const val ANDROIDX_GRADIENT_RADIUS_COMPENSATION = 2f
+
+    // Low-frequency RGB sampling only. At radius=150 and scale=1.85 this is
+    // ~50 px, broad enough to merge local colours without becoming geometry.
+    const val MATERIAL_COLOR_FIELD_BASE_RADIUS_FRACTION = 0.18f
   }
 
   private data class Key(
@@ -65,6 +69,9 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialSurfaceProgression: Float,
     val materialCurveHeight: Float,
     val materialCurveOffset: Float,
+    val materialColorFieldEnabled: Boolean,
+    val materialColorFieldMix: Float,
+    val materialColorFieldRadiusScale: Float,
   )
 
   private data class CurveSamples(
@@ -140,8 +147,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialEnabled = host.effectiveMaterialEnabled(),
       materialStrength =
         BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
-      materialColor = host.progressiveMaterialColor,
-      materialColorDark = host.progressiveMaterialColorDark,
+      materialColor = host.effectiveMaterialColorLight(),
+      materialColorDark = host.effectiveMaterialColorDark(),
       materialExposure =
         BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
       materialSurface =
@@ -155,6 +162,13 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialCurveOffset =
         BlurLabGeometry.finite(host.effectiveMaterialCurveOffset(), 0f)
           .coerceIn(-0.35f, 0.35f),
+      materialColorFieldEnabled = host.effectiveMaterialColorFieldEnabled(),
+      materialColorFieldMix =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldMix(), 0f)
+          .coerceIn(0f, 1f),
+      materialColorFieldRadiusScale =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldRadiusScale(), 1f)
+          .coerceIn(0.5f, 3f),
     )
 
     val nextThemeProgress =
@@ -174,7 +188,9 @@ internal class EdgeFadeProgressiveStripRenderer(
         "material=${next.materialEnabled} strength=${next.materialStrength} exposure=${next.materialExposure} " +
         "kernelRadius=${if (next.backend == "androidx-gradient" && next.materialStrength > 0f) next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION else next.radius} " +
         "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression} " +
-        "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset}",
+        "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset} " +
+        "colorField=${next.materialColorFieldEnabled} colorFieldMix=${next.materialColorFieldMix} " +
+        "colorFieldRadiusScale=${next.materialColorFieldRadiusScale}",
     )
 
     if (next.radius <= 0f) {
@@ -428,6 +444,23 @@ internal class EdgeFadeProgressiveStripRenderer(
       )
       strip.material.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
       strip.material.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
+      strip.material.setFloatUniform(
+        "materialColorFieldEnabled",
+        if (key.materialColorFieldEnabled) 1f else 0f,
+      )
+      strip.material.setFloatUniform("materialColorFieldMix", key.materialColorFieldMix)
+      strip.material.setFloatUniform(
+        "materialColorFieldRadius",
+        key.radius *
+          MATERIAL_COLOR_FIELD_BASE_RADIUS_FRACTION *
+          key.materialColorFieldRadiusScale *
+          strip.scale,
+      )
+      strip.material.setFloatUniform(
+        "materialExtent",
+        rasterWidth.toFloat(),
+        rasterHeight.toFloat(),
+      )
     }
 
     applyFinalEffect(strip, key)
