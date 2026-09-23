@@ -10,6 +10,7 @@ import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
+import kotlin.math.pow
 
 /**
  * Exact API 33+ progressive renderer used by the public EdgeFadeView.
@@ -268,7 +269,24 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveRight", curves.right)
 
     val blurEffect =
-      if (key.backend == "androidx") {
+      if (key.backend == "androidx" && key.materialStrength > 0f &&
+          key.top == 0f && key.left == 0f && key.right == 0f && key.bottom > 0f) {
+        // Sample the same mask LUT and cube-root transfer as the restored
+        // AGSL variant. Only the Gaussian implementation changes; density,
+        // raster scale, source padding and clamp treatment remain unchanged.
+        val radii = FloatArray(rasterHeight + 1) { row ->
+          val y = source.top + row / scale
+          val distance = key.height - y
+          val intensity = if (distance >= key.bottom) 0f else {
+            val t = ((1f - distance / key.bottom) / key.progression).coerceIn(0f, 1f)
+            val pos = t * (curves.bottom.size - 1)
+            val lo = pos.toInt().coerceAtMost(curves.bottom.size - 2)
+            curves.bottom[lo] + (curves.bottom[lo + 1] - curves.bottom[lo]) * (pos - lo)
+          }
+          key.radius * intensity.coerceIn(0f, 1f).pow(1f / 3f)
+        }
+        AndroidxBlurAdapter.createVerticalGradient(rasterWidth, rasterHeight, radii)
+      } else if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {

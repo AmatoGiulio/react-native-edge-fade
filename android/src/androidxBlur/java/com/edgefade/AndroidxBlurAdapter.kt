@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.blur.BlurStop
 import androidx.compose.ui.graphics.blur.BlurRadiusSpec
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -21,4 +22,14 @@ internal object AndroidxBlurAdapter {
       // manager. Density(1f) deliberately prevents a second density conversion.
       .createRenderEffect(Size(width.toFloat(), height.toFloat()), Density(1f), TileMode.Clamp)
       .asAndroidRenderEffect()
+  /** Official gradient API; radii and positions are already in raster space. */
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  fun createVerticalGradient(width: Int, height: Int, radii: FloatArray): RenderEffect =
+    BlurRadiusSpec.verticalGradient(
+      radii.mapIndexed { index, radius ->
+        BlurStop(index.toFloat() / (radii.size - 1), radius.dp)
+      },
+    ).createRenderEffect(
+      Size(width.toFloat(), height.toFloat()), Density(1f), TileMode.Clamp,
+    ).asAndroidRenderEffect()
 }

@@ -48,7 +48,10 @@ internal object BlurLabShaders {
       }
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-        float radius = blurRadius * intensity;
+        // Restore the discarded material-only cube-root radius variant.
+        float radiusIntensity = continuousSupport > 0.5
+          ? pow(intensity, 1.0 / 3.0) : intensity;
+        float radius = blurRadius * radiusIntensity;
         float r = floor(radius);
         float4 sampled = float4(content.eval(coord));
 
