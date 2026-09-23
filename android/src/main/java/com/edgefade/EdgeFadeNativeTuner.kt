@@ -113,7 +113,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(4), dp(8), dp(4), dp(12))
     }
-    scroll.addView(body, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    scroll.addView(body, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     outer.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(4) })
 
     addSection(body, "RENDER")
@@ -249,7 +249,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     row.addView(labelView(label), LinearLayout.LayoutParams(0, dp(42), 0.44f))
     val spinner = Spinner(context).apply {
       backgroundTintList = ColorStateList.valueOf(0xff777780.toInt())
-      popupBackgroundDrawable = ColorDrawable(0xff252529.toInt())
+      setPopupBackgroundDrawable(ColorDrawable(0xff252529.toInt()))
     }
     val choiceAdapter = object : ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, labels) {
       override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
