@@ -186,7 +186,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     style,
     children,
     ...viewProps
-  } = props as AnimatedEdgeFadeViewProps & { children?: React.ReactNode };
+  } = props as AnimatedEdgeFadeViewProps & {
+    children?: React.ReactNode;
+    progressiveMaterialThemeProgress?: number | SharedValueLike<number>;
+  };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
   const { borderRadius: _ignoredBorderRadius, ...cleanStyle } = flat;

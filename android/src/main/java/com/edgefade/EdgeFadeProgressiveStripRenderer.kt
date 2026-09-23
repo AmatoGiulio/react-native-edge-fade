@@ -49,6 +49,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialEnabled: Boolean,
     val materialStrength: Float,
     val materialColor: Int,
+    val materialColorDark: Int,
     val materialExposure: Float,
     val materialSurface: Float,
     val materialSurfaceProgression: Float,
@@ -80,6 +81,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   private val content = RenderNode("EdgeFade.Progressive.content")
   private var key: Key? = null
   private var strips = emptyList<Strip>()
+  private var materialThemeProgress = Float.NaN
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -123,12 +125,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialEnabled = host.effectiveMaterialEnabled(),
       materialStrength =
         BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
-      materialColor =
-        mixColor(
-          host.progressiveMaterialColor,
-          host.progressiveMaterialColorDark,
-          host.progressiveMaterialThemeProgress,
-        ),
+      materialColor = host.progressiveMaterialColor,
+      materialColorDark = host.progressiveMaterialColorDark,
       materialExposure =
         BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
       materialSurface =
@@ -138,7 +136,15 @@ internal class EdgeFadeProgressiveStripRenderer(
           .coerceIn(0.15f, 1f),
     )
 
-    if (key == next) return true
+    val nextThemeProgress =
+      BlurLabGeometry.finite(host.progressiveMaterialThemeProgress).coerceIn(0f, 1f)
+
+    if (key == next) {
+      updateMaterialTheme(next, nextThemeProgress)
+      return true
+    }
+
+    materialThemeProgress = nextThemeProgress
 
     Log.i(
       "EdgeFadeCleanConfig",
@@ -374,11 +380,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       if (key.materialEnabled && key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
-        strip.material.setFloatUniform(
-          "materialColor",
-          Color.red(key.materialColor) / 255f,
-          Color.green(key.materialColor) / 255f,
-          Color.blue(key.materialColor) / 255f,
+        setMaterialColor(
+          strip.material,
+          mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
         )
         strip.material.setFloatUniform("materialExposure", key.materialExposure)
         strip.material.setFloatUniform("materialSurface", key.materialSurface)
@@ -404,6 +408,26 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     strip.node.setRenderEffect(finalEffect)
+  }
+
+  private fun updateMaterialTheme(key: Key, progress: Float) {
+    if (progress == materialThemeProgress) return
+    materialThemeProgress = progress
+    if (!key.materialEnabled || key.materialStrength <= 0f) return
+
+    val color = mixColor(key.materialColor, key.materialColorDark, progress)
+    for (strip in strips) {
+      setMaterialColor(strip.material, color)
+    }
+  }
+
+  private fun setMaterialColor(shader: RuntimeShader, color: Int) {
+    shader.setFloatUniform(
+      "materialColor",
+      Color.red(color) / 255f,
+      Color.green(color) / 255f,
+      Color.blue(color) / 255f,
+    )
   }
 
   private fun mixColor(light: Int, dark: Int, progress: Float): Int {
@@ -454,6 +478,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     content.setUseCompositingLayer(false, null)
     content.discardDisplayList()
     key = null
+    materialThemeProgress = Float.NaN
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {
