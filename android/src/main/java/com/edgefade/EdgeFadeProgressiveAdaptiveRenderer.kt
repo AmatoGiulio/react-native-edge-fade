@@ -45,8 +45,10 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     val override = when (host.effectiveProgressiveBackend()) {
       "exact" -> "exact"
       "agsl" -> "agsl"
+      "agsl-3f639" -> "agsl-3f639"
       "androidx" -> "androidx"
       "androidx-gradient" -> "androidx-gradient"
+      "androidx-gradient-hybrid" -> "androidx-gradient-hybrid"
       "scaled" -> "scaled"
       else -> "auto"
     }
@@ -70,7 +72,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
         (host.fadeTop > 0f || host.fadeBottom > 0f)
 
     val nextMode = when (override) {
-      "exact", "agsl", "androidx", "androidx-gradient" -> Mode.EXACT
+      "exact", "agsl", "agsl-3f639", "androidx", "androidx-gradient", "androidx-gradient-hybrid" -> Mode.EXACT
       "scaled" -> Mode.SCALED
       else -> when (mode) {
         Mode.EXACT ->

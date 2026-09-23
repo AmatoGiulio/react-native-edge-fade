@@ -123,8 +123,24 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
     addSection(body, "RENDER")
     addChoice(body, "renderer",
-      listOf("JS/default", "AndroidX gradient", "AndroidX mask", "AGSL", "scaled"),
-      listOf<String?>(null, "androidx-gradient", "androidx", "agsl", "scaled"),
+      listOf(
+        "JS/default",
+        "AndroidX gradient",
+        "AndroidX + 3f639 H",
+        "3f639 exact AGSL",
+        "AndroidX mask",
+        "AGSL current",
+        "scaled",
+      ),
+      listOf<String?>(
+        null,
+        "androidx-gradient",
+        "androidx-gradient-hybrid",
+        "agsl-3f639",
+        "androidx",
+        "agsl",
+        "scaled",
+      ),
       host.tunerBackendOverride,
     ) { host.tunerBackendOverride = it; host.nativeTuneChanged() }
     addChoice(body, "gradient profile",
@@ -134,9 +150,20 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     ) { host.progressiveGradientProfile = it; host.nativeTuneChanged() }
     addSwitch(body, "panel bounds", host.tunerShowBounds) { host.tunerShowBounds = it; host.nativeTuneChanged() }
     addActions(body, listOf(
-      "3f639 RADIUS" to {
-        host.tunerBackendOverride = "androidx-gradient"
+      "3f639 EXACT" to {
+        host.tunerBackendOverride = "agsl-3f639"
+        host.progressiveMaterialProfile = "3f639cc"
+        host.tunerBlurRadiusOverride = 150f
+        host.tunerProgressionOverride = 0.90f
+        host.progressiveGradientOutsideFactor = 0f
+        host.progressiveBodyFusionEnabled = false
+        host.nativeTuneChanged()
+        rebuildExpanded()
+      },
+      "3f639 HYBRID" to {
+        host.tunerBackendOverride = "androidx-gradient-hybrid"
         host.progressiveGradientProfile = "3f639cc"
+        host.progressiveMaterialProfile = "3f639cc"
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
         host.progressiveGradientOutsideFactor = 0f
@@ -162,7 +189,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.progressiveMaterialProfile,
     ) {
       host.progressiveMaterialProfile = it
-      if (it == "3f639cc") host.tunerBackendOverride = "androidx-gradient"
       host.nativeTuneChanged()
     }
     addSlider(body, "strength", 0f, 1f, host.effectiveMaterialStrength(), "") { host.tunerMaterialStrengthOverride = it; host.nativeTuneChanged() }

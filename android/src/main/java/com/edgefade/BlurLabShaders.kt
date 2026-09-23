@@ -116,6 +116,136 @@ internal object BlurLabShaders {
   }
 
 
+  // Diagnostic baseline copied verbatim from tree state 3f639cc.
+  // This preserves its fused vertical Gaussian + material semantics exactly.
+  val materialVerticalPass3f639cc = """
+    uniform shader content;
+    uniform shader mask;
+    uniform float blurRadius;
+    uniform float2 extent;
+    uniform float continuousSupport;
+    uniform float materialStrength;
+    uniform float3 materialColor;
+    uniform float materialExposure;
+    uniform float materialSurface;
+    uniform float materialSurfaceProgression;
+    uniform float materialEdge;
+    uniform float materialBoundary;
+    uniform float materialEntrance;
+
+    const float maxRadius = 150.0;
+
+    float materialDistanceInside(float2 coord) {
+      if (materialEdge < 0.5) return materialBoundary - coord.y;
+      if (materialEdge < 1.5) return coord.y - materialBoundary;
+      if (materialEdge < 2.5) return materialBoundary - coord.x;
+      return coord.x - materialBoundary;
+    }
+
+    float gaussian(float x, float sigma) {
+      return exp(-(x * x) / (2.0 * sigma * sigma));
+    }
+
+    float inside(float2 p) {
+      return step(0.0, p.y) * (1.0 - step(extent.y, p.y));
+    }
+
+    half4 main(float2 coord) {
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float radiusIntensity =
+        continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
+      float radius = blurRadius * radiusIntensity;
+      float r = floor(radius);
+      float4 sampled = float4(content.eval(coord));
+
+      if (continuousSupport > 0.5 && radius > 0.0) {
+        float sigma = max(radius / 2.0, 1.0);
+        float weightSum = 1.0;
+        float4 result = sampled;
+
+        for (float i = 1.0; i < maxRadius; i += 2.0) {
+          if (radius <= i - 0.5) break;
+
+          float lowCoverage = smoothstep(i - 0.5, i + 0.5, radius);
+          float highCoverage = smoothstep(i + 0.5, i + 1.5, radius);
+          float low = gaussian(i, sigma) * lowCoverage;
+          float high = gaussian(i + 1.0, sigma) * highCoverage;
+          float weight = low + high;
+          if (weight <= 0.000001) continue;
+
+          float d = i + high / weight;
+          float2 offset = float2(0.0, d);
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+        sampled = result / weightSum;
+      } else if (r >= 1.0) {
+        float sigma = max(radius / 2.0, 1.0);
+        float weightSum = 1.0;
+        float4 result = sampled;
+
+        for (float i = 1.0; i < maxRadius; i += 2.0) {
+          if (i >= r) break;
+          float low = gaussian(i, sigma);
+          float high = gaussian(i + 1.0, sigma);
+          float weight = low + high;
+          float d = i + high / weight;
+          float2 offset = float2(0.0, d);
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+
+        float odd = mod(r, 2.0) * (1.0 - step(maxRadius, r));
+        if (odd > 0.0) {
+          float weight = gaussian(r, sigma);
+          float d = r;
+          float2 offset = float2(0.0, d);
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (inside(a) > 0.0) { result += weight * content.eval(a); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * content.eval(b); weightSum += weight; }
+        }
+        sampled = result / weightSum;
+      }
+
+      if (intensity > 0.0 && materialStrength > 0.0) {
+        float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
+        float density = materialStrength * (1.0 - exp(-3.0 * depth));
+        float alpha = max(sampled.a, 0.0001);
+        float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
+        float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+        float3 chroma = rgb - float3(luma);
+        float anchor = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
+        float light = smoothstep(0.40, 0.72, anchor);
+        float surface = clamp(materialSurface, 0.0, 1.0);
+
+        float slope = mix(0.72, 0.30, light) * mix(1.0, 0.85, surface);
+        float exposed = clamp(luma * materialExposure, 0.0, 1.0);
+        float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
+        float outputLuma = mix(luma, bodyLuma, density);
+        float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
+        float transmission = exp(-density * mix(0.65, 1.0, light));
+        transmission /= 1.0 + density * 2.0 * magnitude;
+        float3 graded = float3(outputLuma) + chroma * transmission;
+        sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
+      }
+
+      float insideMaterial = max(materialDistanceInside(coord), 0.0);
+      float coverage = materialEntrance <= 0.0
+        ? 1.0
+        : smoothstep(0.0, materialEntrance, insideMaterial);
+
+      // The sharp pass remains underneath this narrow overlap. Fade the entire
+      // premultiplied processed pixel, not only material density, so the hard
+      // strip replacement becomes mathematically continuous at the clip edge.
+      return half4(sampled * coverage);
+    }
+  """.trimIndent()
+
   // FULL material uses the same continuous Gaussian as pass(false), but its
   // support is allowed to begin outside the nominal panel boundary. This is
   // intentionally a dedicated experimental shader so the public strength=0

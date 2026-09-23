@@ -754,6 +754,46 @@ feeding the material the same effective radius topology as 3f639cc.
 
 ---
 
+### 22. Kernel-topology isolation: exact 3f639cc vs AndroidX hybrid
+
+**Commit:** pending in this commit
+
+Target clarified by the saved clean run:
+
+The desired body is a broad, smooth blue/purple/pink field with essentially no
+local card silhouettes. Attempts to remove those shapes downstream failed:
+tonal compression, local diffusion and cross-panel field replacement did not
+address the real difference.
+
+Code-level difference:
+
+`3f639cc` does not perform one local variable-radius blur. It is a
+non-stationary **separable** pipeline:
+
+1. horizontal AGSL Gaussian, radius driven by the cbrt mask per output row;
+2. vertical AGSL Gaussian + material, whose samples come from rows that have
+   already been horizontally blurred with their own radius.
+
+The official AndroidX variable-radius effect is a different kernel topology.
+Matching only the radius-vs-y curve therefore cannot guarantee the same broad
+field.
+
+This attempt adds two internal comparators:
+
+- `3f639 exact AGSL`: exact fused shader copied directly from tree state
+  `3f639cc`, old output topology, no later air/body experiments;
+- `AndroidX + 3f639 H`: exact old horizontal cbrt prefilter first, then the
+  official `BlurRadiusSpec.verticalGradient`, then the exact 3f639cc material
+  post-pass.
+
+The hybrid keeps AndroidX as the final progressive blur while restoring the
+specific horizontal preconditioning that produced the clean old body.
+
+Native tuner adds one-tap `3f639 EXACT` and `3f639 HYBRID` presets.
+No production/public path changes.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

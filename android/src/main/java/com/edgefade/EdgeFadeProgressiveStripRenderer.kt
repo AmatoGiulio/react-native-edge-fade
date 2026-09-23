@@ -112,6 +112,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val materialHorizontal by lazy { RuntimeShader(BlurLabShaders.materialHorizontalPass) }
+    val materialVertical3f639cc by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass3f639cc) }
     val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
     val material3f639cc by lazy { RuntimeShader(BlurLabShaders.materialComposite3f639cc) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
@@ -142,6 +143,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
     val exactBackend =
       when {
+        requestedBackend == "agsl-3f639" -> "agsl-3f639"
+        requestedBackend == "androidx-gradient-hybrid" -> "androidx-gradient-hybrid"
         requestedBackend.startsWith("agsl") -> "agsl"
         requestedBackend == "androidx" -> "androidx"
         requestedBackend == "androidx-gradient" -> "androidx-gradient"
@@ -260,7 +263,9 @@ internal class EdgeFadeProgressiveStripRenderer(
           val exact3f639Blend =
             current != null &&
               current.materialStrength > 0f &&
-              current.backend == "androidx-gradient" &&
+              (current.backend == "androidx-gradient" ||
+                current.backend == "androidx-gradient-hybrid" ||
+                current.backend == "agsl-3f639") &&
               current.materialProfile == "3f639cc" &&
               current.debugStage == "material"
 
@@ -354,7 +359,8 @@ internal class EdgeFadeProgressiveStripRenderer(
             next.debugStage == "material"
         val officialGradientMaterial =
           next.materialStrength > 0f &&
-            next.backend == "androidx-gradient" &&
+            (next.backend == "androidx-gradient" ||
+              next.backend == "androidx-gradient-hybrid") &&
             next.debugStage == "material"
         val airOutsidePx =
           when {
@@ -420,7 +426,11 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("curveRight", curves.right)
 
     val blurEffect =
-      if (key.backend == "androidx-gradient" && strip.band.edge in 0..1) {
+      if (
+        (key.backend == "androidx-gradient" ||
+          key.backend == "androidx-gradient-hybrid") &&
+        strip.band.edge in 0..1
+      ) {
         val sharpY =
           if (strip.band.edge == 0) {
             (strip.output.bottom - source.top) * scale
@@ -437,14 +447,35 @@ internal class EdgeFadeProgressiveStripRenderer(
           if (key.gradientProfile == "3f639cc") key.progression else key.gradientSpan
         val maxY = sharpY + (farY - sharpY) * effectiveGradientSpan
 
-        AndroidxBlurAdapter.createVerticalGradient(
-          rasterWidth,
-          rasterHeight,
-          key.radius,
-          sharpY,
-          maxY,
-          key.gradientProfile,
-        )
+        val officialGradient =
+          AndroidxBlurAdapter.createVerticalGradient(
+            rasterWidth,
+            rasterHeight,
+            key.radius,
+            sharpY,
+            maxY,
+            key.gradientProfile,
+          )
+
+        if (key.backend == "androidx-gradient-hybrid") {
+          // 3f639cc's clean body came from a non-stationary separable pipeline:
+          // every row was first horizontally blurred with its own cbrt radius,
+          // then the vertical pass mixed those already-smoothed rows. The
+          // official variable-radius effect is not equivalent. Preserve
+          // AndroidX as the final progressive blur, but feed it the exact old
+          // horizontal prefilter instead of raw scene content.
+          val horizontal = strip.horizontal
+          horizontal.setInputShader("mask", strip.mask)
+          horizontal.setFloatUniform("blurRadius", key.radius)
+          horizontal.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+          horizontal.setFloatUniform("continuousSupport", 1f)
+          RenderEffect.createChainEffect(
+            officialGradient,
+            RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
+          )
+        } else {
+          officialGradient
+        }
       } else if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
       } else {
@@ -465,7 +496,47 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     val materialEffect =
-      if (key.materialStrength > 0f && key.backend == "agsl") {
+      if (key.materialStrength > 0f && key.backend == "agsl-3f639") {
+        val shader = strip.materialVertical3f639cc
+        shader.setInputShader("mask", strip.mask)
+        shader.setFloatUniform("blurRadius", key.radius)
+        shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+        shader.setFloatUniform("continuousSupport", 1f)
+        shader.setFloatUniform("materialStrength", key.materialStrength)
+        shader.setFloatUniform(
+          "materialColor",
+          Color.red(key.materialColor) / 255f,
+          Color.green(key.materialColor) / 255f,
+          Color.blue(key.materialColor) / 255f,
+        )
+        shader.setFloatUniform("materialExposure", key.materialExposure)
+        shader.setFloatUniform("materialSurface", key.materialSurface)
+        shader.setFloatUniform("materialSurfaceProgression", key.materialSurfaceProgression)
+        shader.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        val localBoundary = when (strip.band.edge) {
+          0 -> (strip.band.visible.bottom - source.top) * scale
+          1 -> (strip.band.visible.top - source.top) * scale
+          2 -> (strip.band.visible.right - source.left) * scale
+          3 -> (strip.band.visible.left - source.left) * scale
+          else -> 0f
+        }
+        shader.setFloatUniform("materialBoundary", localBoundary)
+        shader.setFloatUniform(
+          "materialEntrance",
+          materialEdgeBlendPx(strip.band).toFloat() * scale,
+        )
+
+        val horizontal = strip.horizontal
+        horizontal.setInputShader("mask", strip.mask)
+        horizontal.setFloatUniform("blurRadius", key.radius)
+        horizontal.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+        horizontal.setFloatUniform("continuousSupport", 1f)
+
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(shader, "content"),
+          RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
+        )
+      } else if (key.materialStrength > 0f && key.backend == "agsl") {
         val shader = strip.materialVertical
         shader.setInputShader("mask", strip.mask)
         shader.setFloatUniform("blurRadius", key.radius)
@@ -560,7 +631,8 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
       } else if (
         key.materialStrength > 0f &&
-        key.backend == "androidx-gradient" &&
+        (key.backend == "androidx-gradient" ||
+          key.backend == "androidx-gradient-hybrid") &&
         key.materialProfile == "3f639cc"
       ) {
         val shader = strip.material3f639cc
