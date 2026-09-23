@@ -67,6 +67,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Showcase-only Android tuning state. None of these knobs are public API.
   internal var progressiveNativeTunerEnabled: Boolean = false
   internal var progressiveGradientProfile: String = "current"
+  internal var progressiveMaterialProfile: String = "3f639cc"
   internal var progressiveGradientOutsideFactor: Float = 0.60f
   internal var progressiveGradientSpan: Float = 1f
   internal var progressiveAstraMix: Float = 1f
@@ -209,6 +210,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialSurfaceOverride = null
     tunerMaterialSurfaceProgressionOverride = null
     progressiveGradientProfile = "current"
+    progressiveMaterialProfile = "3f639cc"
     progressiveGradientOutsideFactor = 0.60f
     progressiveGradientSpan = 1f
     progressiveAstraMix = 1f

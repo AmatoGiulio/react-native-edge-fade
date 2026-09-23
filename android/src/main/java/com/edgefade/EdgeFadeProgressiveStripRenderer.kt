@@ -82,6 +82,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val gradientProfile: String,
     val gradientOutsideFactor: Float,
     val gradientSpan: Float,
+    val materialProfile: String,
     val materialAstraMix: Float,
     val materialReflectionGain: Float,
     val materialBodyGain: Float,
@@ -104,6 +105,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val materialHorizontal by lazy { RuntimeShader(BlurLabShaders.materialHorizontalPass) }
     val materialVertical by lazy { RuntimeShader(BlurLabShaders.materialVerticalPass) }
+    val material3f639cc by lazy { RuntimeShader(BlurLabShaders.materialComposite3f639cc) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
 
     fun release() {
@@ -170,6 +172,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         BlurLabGeometry.finite(host.progressiveGradientOutsideFactor, 0.60f).coerceIn(0f, 1.2f),
       gradientSpan =
         BlurLabGeometry.finite(host.progressiveGradientSpan, 1f).coerceIn(0.25f, 1f),
+      materialProfile = host.progressiveMaterialProfile,
       materialAstraMix =
         BlurLabGeometry.finite(host.progressiveAstraMix, 1f).coerceIn(0f, 1f),
       materialReflectionGain =
@@ -226,17 +229,28 @@ internal class EdgeFadeProgressiveStripRenderer(
         val sharpSave = canvas.save()
         try {
           val current = key
-          val materialMask =
+          val currentAgslMask =
             current != null &&
               current.materialStrength > 0f &&
               current.backend == "agsl" &&
               current.debugStage == "material"
+          val exact3f639Blend =
+            current != null &&
+              current.materialStrength > 0f &&
+              current.backend == "androidx-gradient" &&
+              current.materialProfile == "3f639cc" &&
+              current.debugStage == "material"
 
-          // FULL material now behaves like a true alpha-masked effect layer:
-          // keep the original sharp content underneath the whole panel. Where
-          // processed coverage reaches 1.0, output is identical to replacement.
-          if (!materialMask) {
-            for (strip in strips) clipOut(canvas, strip.band.visible)
+          when {
+            exact3f639Blend -> {
+              for (strip in strips) {
+                clipOut(canvas, insetForSharpOverlap(strip.band, materialEdgeBlendPx(strip.band)))
+              }
+            }
+            currentAgslMask -> Unit
+            else -> {
+              for (strip in strips) clipOut(canvas, strip.band.visible)
+            }
           }
           canvas.drawRenderNode(content)
         } finally {
@@ -518,6 +532,43 @@ internal class EdgeFadeProgressiveStripRenderer(
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
           RenderEffect.createRuntimeShaderEffect(horizontal, "content"),
+        )
+      } else if (
+        key.materialStrength > 0f &&
+        key.backend == "androidx-gradient" &&
+        key.materialProfile == "3f639cc"
+      ) {
+        val shader = strip.material3f639cc
+        shader.setInputShader("mask", strip.mask)
+        shader.setFloatUniform("materialStrength", key.materialStrength)
+        shader.setFloatUniform(
+          "materialColor",
+          Color.red(key.materialColor) / 255f,
+          Color.green(key.materialColor) / 255f,
+          Color.blue(key.materialColor) / 255f,
+        )
+        shader.setFloatUniform("materialExposure", key.materialExposure)
+        shader.setFloatUniform("materialSurface", key.materialSurface)
+        shader.setFloatUniform(
+          "materialSurfaceProgression",
+          key.materialSurfaceProgression,
+        )
+        shader.setFloatUniform("materialEdge", strip.band.edge.toFloat())
+        val localBoundary = when (strip.band.edge) {
+          0 -> (strip.band.visible.bottom - source.top) * scale
+          1 -> (strip.band.visible.top - source.top) * scale
+          2 -> (strip.band.visible.right - source.left) * scale
+          3 -> (strip.band.visible.left - source.left) * scale
+          else -> 0f
+        }
+        shader.setFloatUniform("materialBoundary", localBoundary)
+        shader.setFloatUniform(
+          "materialEntrance",
+          materialEdgeBlendPx(strip.band).toFloat() * scale,
+        )
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(shader, "content"),
+          blurEffect,
         )
       } else if (key.materialStrength > 0f) {
         // Official AndroidX blur + our already-established optical material.

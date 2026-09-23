@@ -564,6 +564,37 @@ The Astra gradient profile uses the exact 13-stop radius distribution implied by
 
 ---
 
+### 17. 3f639cc exact material over AndroidX gradient
+
+**Commit:** pending in this commit
+
+Goal:
+
+Use the material/compositing behavior from tree state `3f639cc` while changing
+only the Gaussian upstream to the new official AndroidX
+`BlurRadiusSpec.verticalGradient` pipeline.
+
+Preserved from `3f639cc`:
+
+- material density equation;
+- luminance compression / exposure response;
+- chroma transmission response;
+- premultiplied material output;
+- final entrance coverage applied to the full processed pixel;
+- depth-adaptive 16..64px sharp-source overlap.
+
+Deliberate difference:
+
+- the old AGSL cbrt Gaussian is removed from this profile;
+- the shader receives AndroidX gradient-blurred content instead;
+- outside support / gradient stops remain tunable as part of the new AndroidX
+  pipeline.
+
+The `3f639cc exact` material profile does not execute any later Astra
+reflection/body additions.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

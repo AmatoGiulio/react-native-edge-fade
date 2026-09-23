@@ -589,6 +589,66 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
+  // 3f639cc exact material/compositing response. The only deliberate change
+  // from that state is upstream: "content" is supplied by AndroidX
+  // BlurRadiusSpec.verticalGradient instead of the old AGSL Gaussian.
+  val materialComposite3f639cc = """
+    uniform shader content;
+    uniform shader mask;
+    uniform float materialStrength;
+    uniform float3 materialColor;
+    uniform float materialExposure;
+    uniform float materialSurface;
+    uniform float materialSurfaceProgression;
+    uniform float materialEdge;
+    uniform float materialBoundary;
+    uniform float materialEntrance;
+
+    float materialDistanceInside(float2 coord) {
+      if (materialEdge < 0.5) return materialBoundary - coord.y;
+      if (materialEdge < 1.5) return coord.y - materialBoundary;
+      if (materialEdge < 2.5) return materialBoundary - coord.x;
+      return coord.x - materialBoundary;
+    }
+
+    half4 main(float2 coord) {
+      float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
+      float4 sampled = float4(content.eval(coord));
+
+      if (intensity > 0.0 && materialStrength > 0.0) {
+        float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
+        float density = materialStrength * (1.0 - exp(-3.0 * depth));
+        float alpha = max(sampled.a, 0.0001);
+        float3 rgb = clamp(sampled.rgb / alpha, 0.0, 1.0);
+        float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+        float3 chroma = rgb - float3(luma);
+        float anchor = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
+        float light = smoothstep(0.40, 0.72, anchor);
+        float surface = clamp(materialSurface, 0.0, 1.0);
+
+        float slope = mix(0.72, 0.30, light) * mix(1.0, 0.85, surface);
+        float exposed = clamp(luma * materialExposure, 0.0, 1.0);
+        float bodyLuma = max(0.035, anchor - 0.5 * slope) + slope * exposed;
+        float outputLuma = mix(luma, bodyLuma, density);
+        float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
+        float transmission = exp(-density * mix(0.65, 1.0, light));
+        transmission /= 1.0 + density * 2.0 * magnitude;
+        float3 graded = float3(outputLuma) + chroma * transmission;
+        sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
+      }
+
+      float insideMaterial = max(materialDistanceInside(coord), 0.0);
+      float coverage = materialEntrance <= 0.0
+        ? 1.0
+        : smoothstep(0.0, materialEntrance, insideMaterial);
+
+      // The sharp pass remains underneath this narrow overlap. Fade the entire
+      // premultiplied processed pixel, not only material density, so the hard
+      // strip replacement becomes mathematically continuous at the clip edge.
+      return half4(sampled * coverage);
+    }
+  """.trimIndent()
+
   // Demo-only optical response after ONE continuously varying Gaussian.
   // No screen-space shape: the apparent contour must come from source colour.
   val materialComposite = """

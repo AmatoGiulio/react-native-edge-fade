@@ -29,7 +29,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val backend: String, val radius: Float, val progression: Float,
     val materialStrength: Float, val materialExposure: Float,
     val materialSurface: Float, val materialSurfaceProgression: Float,
-    val profile: String, val air: Float, val span: Float,
+    val profile: String, val materialProfile: String, val air: Float, val span: Float,
     val astraMix: Float, val reflection: Float, val body: Float,
     val chroma: Float, val bounds: Boolean,
   )
@@ -136,6 +136,17 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     addSlider(body, "gradient span", 0.25f, 1f, host.progressiveGradientSpan, "") { host.progressiveGradientSpan = it; host.nativeTuneChanged() }
 
     addSection(body, "MATERIAL")
+    addChoice(
+      body,
+      "material profile",
+      listOf("3f639cc exact", "current experimental"),
+      listOf("3f639cc", "current"),
+      host.progressiveMaterialProfile,
+    ) {
+      host.progressiveMaterialProfile = it
+      if (it == "3f639cc") host.tunerBackendOverride = "androidx-gradient"
+      host.nativeTuneChanged()
+    }
     addSlider(body, "strength", 0f, 1f, host.effectiveMaterialStrength(), "") { host.tunerMaterialStrengthOverride = it; host.nativeTuneChanged() }
     addSlider(body, "surface", 0f, 1f, host.effectiveMaterialSurface(), "") { host.tunerMaterialSurfaceOverride = it; host.nativeTuneChanged() }
     addSlider(body, "exposure", 0.5f, 1.2f, host.effectiveMaterialExposure(), "") { host.tunerMaterialExposureOverride = it; host.nativeTuneChanged() }
@@ -182,7 +193,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private fun capture() = Snapshot(
     host.effectiveProgressiveBackend(), host.effectiveBlurRadius(), host.effectiveFrostProgression(),
     host.effectiveMaterialStrength(), host.effectiveMaterialExposure(), host.effectiveMaterialSurface(),
-    host.effectiveMaterialSurfaceProgression(), host.progressiveGradientProfile,
+    host.effectiveMaterialSurfaceProgression(), host.progressiveGradientProfile, host.progressiveMaterialProfile,
     host.progressiveGradientOutsideFactor, host.progressiveGradientSpan, host.progressiveAstraMix,
     host.progressiveReflectionGain, host.progressiveBodyGain, host.progressiveChromaGain, host.tunerShowBounds,
   )
@@ -196,6 +207,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerMaterialSurfaceOverride = s.materialSurface
     host.tunerMaterialSurfaceProgressionOverride = s.materialSurfaceProgression
     host.progressiveGradientProfile = s.profile
+    host.progressiveMaterialProfile = s.materialProfile
     host.progressiveGradientOutsideFactor = s.air
     host.progressiveGradientSpan = s.span
     host.progressiveAstraMix = s.astraMix
@@ -210,7 +222,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private fun copyConfig() {
     val s = capture()
     val line =
-      "backend=${s.backend} profile=${s.profile} radius=${fmt(s.radius)} progression=${fmt(s.progression)} " +
+      "backend=${s.backend} gradient=${s.profile} materialProfile=${s.materialProfile} " +
+        "radius=${fmt(s.radius)} progression=${fmt(s.progression)} " +
         "air=${fmt(s.air)} span=${fmt(s.span)} material=${fmt(s.materialStrength)} " +
         "surface=${fmt(s.materialSurface)} exposure=${fmt(s.materialExposure)} " +
         "surfaceProg=${fmt(s.materialSurfaceProgression)} astra=${fmt(s.astraMix)} " +
