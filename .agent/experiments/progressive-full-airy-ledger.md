@@ -641,7 +641,7 @@ footprint, because every pixel was still transformed independently.
 
 ### 19. Spatial deep-body diffusion
 
-**Commit:** pending in this commit
+**Commit:** `0d3bdb90`
 
 Root cause:
 
