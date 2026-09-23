@@ -83,8 +83,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveDeepLumaCompression: Float = 0.50f
   internal var progressiveBodyFusionStart: Float = 0.16f
   internal var progressiveBodyFusionEnd: Float = 0.68f
-  internal var progressiveBodyDiffusion: Float = 0.88f
-  internal var progressiveBodyDiffusionRadius: Float = 64f
+  internal var progressiveBodyDiffusion: Float = 1f
+  internal var progressiveBodyDiffusionRadius: Float = 72f
 
   internal var tunerBackendOverride: String? = null
   internal var tunerBlurRadiusOverride: Float? = null
@@ -234,8 +234,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     progressiveDeepLumaCompression = 0.50f
     progressiveBodyFusionStart = 0.16f
     progressiveBodyFusionEnd = 0.68f
-    progressiveBodyDiffusion = 0.88f
-    progressiveBodyDiffusionRadius = 64f
+    progressiveBodyDiffusion = 1f
+    progressiveBodyDiffusionRadius = 72f
     tunerShowBounds = false
     nativeTuneChanged()
   }

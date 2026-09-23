@@ -626,29 +626,32 @@ internal object BlurLabShaders {
       return float4(content.eval(clamp(p, float2(0.0), hi)));
     }
 
-    float4 diffuseBody(float2 coord, float radius) {
-      if (radius <= 0.5) return sampleContentSafe(coord);
+    float4 crossPanelRow(float y) {
+      float w = max(materialExtent.x - 1.0, 1.0);
+      float yy = clamp(y, 0.0, max(materialExtent.y - 1.0, 0.0));
 
-      float d = radius * 0.70710678;
-      float4 sum = sampleContentSafe(coord) * 0.20;
+      // Fixed screen-space samples intentionally ignore coord.x. This destroys
+      // card-shaped horizontal geometry while retaining the row's broad scene
+      // colour. The five taps are symmetric and cover almost the whole raster.
+      float4 sum = float4(0.0);
+      sum += sampleContentSafe(float2(w * 0.08, yy));
+      sum += sampleContentSafe(float2(w * 0.29, yy));
+      sum += sampleContentSafe(float2(w * 0.50, yy));
+      sum += sampleContentSafe(float2(w * 0.71, yy));
+      sum += sampleContentSafe(float2(w * 0.92, yy));
+      return sum * 0.20;
+    }
 
-      // Ring 1: isotropic 8 taps.
-      sum += sampleContentSafe(coord + float2( radius, 0.0)) * 0.07;
-      sum += sampleContentSafe(coord + float2(-radius, 0.0)) * 0.07;
-      sum += sampleContentSafe(coord + float2(0.0,  radius)) * 0.07;
-      sum += sampleContentSafe(coord + float2(0.0, -radius)) * 0.07;
-      sum += sampleContentSafe(coord + float2( d,  d)) * 0.07;
-      sum += sampleContentSafe(coord + float2(-d,  d)) * 0.07;
-      sum += sampleContentSafe(coord + float2( d, -d)) * 0.07;
-      sum += sampleContentSafe(coord + float2(-d, -d)) * 0.07;
+    float4 bodyField(float2 coord, float radius) {
+      if (radius <= 0.5) return crossPanelRow(coord.y);
 
-      // Ring 2: wider cardinal taps erase card-sized low-frequency islands.
-      float far = radius * 2.0;
-      sum += sampleContentSafe(coord + float2( far, 0.0)) * 0.06;
-      sum += sampleContentSafe(coord + float2(-far, 0.0)) * 0.06;
-      sum += sampleContentSafe(coord + float2(0.0,  far)) * 0.06;
-      sum += sampleContentSafe(coord + float2(0.0, -far)) * 0.06;
-      return sum;
+      // Three vertically separated cross-panel averages form a smooth 1D scene
+      // field. Unlike sparse local diffusion, the result cannot retain the
+      // horizontal silhouette of any single card/image.
+      float4 center = crossPanelRow(coord.y);
+      float4 upper = crossPanelRow(coord.y - radius);
+      float4 lower = crossPanelRow(coord.y + radius);
+      return center * 0.50 + (upper + lower) * 0.25;
     }
 
     half4 main(float2 coord) {
@@ -661,17 +664,17 @@ internal object BlurLabShaders {
       float bodyEnd = clamp(max(bodyFusionEnd, bodyStart + 0.01), bodyStart + 0.01, 1.0);
       float bodyShape = smoothstep(bodyStart, bodyEnd, bodyDepth);
 
-      // The previous pass only compressed each pixel independently, so large
-      // orange/blue source regions remained visible as equally large soft blobs.
-      // Diffuse the *already AndroidX-blurred* scene spatially in the deep body.
+      // Sparse local diffusion still preserved the low-frequency silhouette of
+      // each card. Instead construct a cross-panel scene field: horizontally
+      // uniform by definition, vertically smooth, and still derived from the
+      // real blurred content so the material keeps the source palette.
       if (
         bodyFusionEnabled > 0.5 &&
         bodyDiffusion > 0.0 &&
-        bodyDiffusionRadius > 0.5 &&
         materialPanelDepth > 0.0
       ) {
-        float4 diffuse = diffuseBody(coord, bodyDiffusionRadius);
-        sampled = mix(sampled, diffuse, bodyShape * clamp(bodyDiffusion, 0.0, 1.0));
+        float4 field = bodyField(coord, bodyDiffusionRadius);
+        sampled = mix(sampled, field, bodyShape * clamp(bodyDiffusion, 0.0, 1.0));
       }
 
       if (intensity > 0.0 && materialStrength > 0.0) {

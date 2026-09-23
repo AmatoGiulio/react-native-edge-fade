@@ -201,9 +201,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       bodyFusionEnd =
         BlurLabGeometry.finite(host.progressiveBodyFusionEnd, 0.68f).coerceIn(0.05f, 1f),
       bodyDiffusion =
-        BlurLabGeometry.finite(host.progressiveBodyDiffusion, 0.88f).coerceIn(0f, 1f),
+        BlurLabGeometry.finite(host.progressiveBodyDiffusion, 1f).coerceIn(0f, 1f),
       bodyDiffusionRadius =
-        BlurLabGeometry.finite(host.progressiveBodyDiffusionRadius, 64f).coerceIn(0f, 160f),
+        BlurLabGeometry.finite(host.progressiveBodyDiffusionRadius, 72f).coerceIn(0f, 160f),
     )
 
     if (key == next) return true

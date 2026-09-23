@@ -670,6 +670,43 @@ This is deliberately not another global Gaussian-radius increase: the official
 AndroidX blur field is untouched, and the extra spatial averaging exists only
 inside the deep body where the card-shaped blobs were visible.
 
+**Observed result:** rejected. A sparse local kernel made the blobs softer but
+did not remove their silhouette. The low-frequency card geometry was still
+present because every output pixel continued to sample around its own local x/y
+position.
+
+---
+
+### 20. Cross-panel low-frequency body field
+
+**Commit:** pending in this commit
+
+Root cause refinement:
+
+The unwanted forms are not high-frequency detail anymore; they are broad
+low-frequency colour masses. More local blur cannot remove their topology.
+
+New model:
+
+- keep AndroidX `verticalGradient` unchanged;
+- keep the exact 3f639cc material equations;
+- in the deep-body gate, replace the local blurred scene with a scene-derived
+  field that is **independent of output x**;
+- each field row is the average of five samples distributed across the full
+  captured raster;
+- vertically smooth that row using y-radius samples above and below;
+- because every pixel on a row receives the same field colour, individual card
+  silhouettes cannot survive in the deep body;
+- the field is still derived from the real blurred scene, so broad warm/cool
+  palette changes remain instead of collapsing to a flat material tint.
+
+Runtime:
+
+- `field mix`: default 1.00;
+- `vertical field radius`: default 72 px;
+- body start/end still preserve the original shoulder before the field takes
+  over.
+
 ---
 
 ## Rejected / exhausted families

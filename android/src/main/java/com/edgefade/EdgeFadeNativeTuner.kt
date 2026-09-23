@@ -182,11 +182,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.progressiveBodyFusionEnd = it
       host.nativeTuneChanged()
     }
-    addSlider(body, "spatial diffusion", 0f, 1f, host.progressiveBodyDiffusion, "") {
+    addSlider(body, "field mix", 0f, 1f, host.progressiveBodyDiffusion, "") {
       host.progressiveBodyDiffusion = it
       host.nativeTuneChanged()
     }
-    addSlider(body, "diffusion radius", 0f, 160f, host.progressiveBodyDiffusionRadius, "px") {
+    addSlider(body, "vertical field radius", 0f, 160f, host.progressiveBodyDiffusionRadius, "px") {
       host.progressiveBodyDiffusionRadius = it
       host.nativeTuneChanged()
     }
