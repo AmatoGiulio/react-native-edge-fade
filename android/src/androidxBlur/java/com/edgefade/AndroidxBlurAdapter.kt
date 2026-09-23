@@ -42,6 +42,8 @@ internal object AndroidxBlurAdapter {
     val safeHeight = (height - 1).coerceAtLeast(1).toFloat()
     val (positions, radii) =
       when (profile) {
+        "3f639cc" ->
+          floatArrayOf(0f, 1f) to floatArrayOf(0f, 1f)
         "astra" ->
           FloatArray(13) { it.toFloat() / 12f } to
             floatArrayOf(

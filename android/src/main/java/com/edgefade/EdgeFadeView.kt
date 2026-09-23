@@ -77,7 +77,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   // Optional post-material body fusion for the 3f639cc profile. Turning this
   // off returns the exact 3f639cc material/compositor math byte-for-byte.
-  internal var progressiveBodyFusionEnabled: Boolean = true
+  internal var progressiveBodyFusionEnabled: Boolean = false
   internal var progressiveBodyUniformity: Float = 0.72f
   internal var progressiveDeepChromaGain: Float = 0.38f
   internal var progressiveDeepLumaCompression: Float = 0.50f
@@ -228,7 +228,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     progressiveReflectionGain = 1f
     progressiveBodyGain = 1f
     progressiveChromaGain = 1f
-    progressiveBodyFusionEnabled = true
+    progressiveBodyFusionEnabled = false
     progressiveBodyUniformity = 0.72f
     progressiveDeepChromaGain = 0.38f
     progressiveDeepLumaCompression = 0.50f

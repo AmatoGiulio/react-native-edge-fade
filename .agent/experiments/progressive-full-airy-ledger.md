@@ -707,6 +707,51 @@ Runtime:
 - body start/end still preserve the original shoulder before the field takes
   over.
 
+**Observed result:** rejected. Even a field independent of output x did not fix
+the visible shapes. This rules out the post-material/body response as the
+primary cause.
+
+---
+
+### 21. Restore 3f639cc effective radius field in AndroidX
+
+**Commit:** pending in this commit
+
+Code audit result:
+
+The desired 3f639cc state does **not** feed the material with the current
+AndroidX `current airy` radius profile.
+
+At 3f639cc:
+
+- showcase alpha stops are approximately `alpha = 1 - t^3`;
+- `presence = 1 - alpha = t^3`;
+- fused Gaussian uses `radiusIntensity = cbrt(presence)`;
+- therefore the effective Gaussian radius is approximately **linear in t**;
+- `progression = 0.90` means max radius is reached at 90% of panel depth and
+  held for the final 10%;
+- material raster runs at 0.5x.
+
+Current AndroidX `current airy` instead uses:
+`0,1,4,12,30,65,110,150px` over the full gradient span. It therefore leaves
+far more source geometry intact through the middle of the panel. The broad
+orange/blue forms seen by the user are already present in the Gaussian input
+before material grading.
+
+Change:
+
+- add explicit AndroidX gradient profile `3f639cc` = direct linear radius;
+- for that profile, derive gradient span from the existing `progression`
+  value, preserving old `/ progression` semantics;
+- add native `3f639 RADIUS` button that sets only upstream radius-field state:
+  AndroidX gradient, radius 150, progression 0.90, outer-air 0, body-fusion off;
+- do **not** change the user's material tuning;
+- failed body-fusion experiments remain available diagnostically but are off by
+  default.
+
+This is the first test that preserves the new AndroidX implementation while
+feeding the material the same effective radius topology as 3f639cc.
+
 ---
 
 ## Rejected / exhausted families

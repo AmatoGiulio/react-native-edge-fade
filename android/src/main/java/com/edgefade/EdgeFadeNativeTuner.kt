@@ -128,11 +128,24 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerBackendOverride,
     ) { host.tunerBackendOverride = it; host.nativeTuneChanged() }
     addChoice(body, "gradient profile",
-      listOf("current airy", "Astra 93ac1b0", "linear"),
-      listOf("current", "astra", "linear"),
+      listOf("current airy", "3f639cc effective", "Astra 93ac1b0", "linear"),
+      listOf("current", "3f639cc", "astra", "linear"),
       host.progressiveGradientProfile,
     ) { host.progressiveGradientProfile = it; host.nativeTuneChanged() }
     addSwitch(body, "panel bounds", host.tunerShowBounds) { host.tunerShowBounds = it; host.nativeTuneChanged() }
+    addActions(body, listOf(
+      "3f639 RADIUS" to {
+        host.tunerBackendOverride = "androidx-gradient"
+        host.progressiveGradientProfile = "3f639cc"
+        host.tunerBlurRadiusOverride = 150f
+        host.tunerProgressionOverride = 0.90f
+        host.progressiveGradientOutsideFactor = 0f
+        host.progressiveGradientSpan = 1f
+        host.progressiveBodyFusionEnabled = false
+        host.nativeTuneChanged()
+        rebuildExpanded()
+      },
+    ))
 
     addSection(body, "GAUSSIAN")
     addSlider(body, "radius", 0f, 150f, host.effectiveBlurRadius(), "px") { host.tunerBlurRadiusOverride = it; host.nativeTuneChanged() }

@@ -433,7 +433,9 @@ internal class EdgeFadeProgressiveStripRenderer(
           } else {
             (strip.band.visible.bottom - source.top) * scale
           }
-        val maxY = sharpY + (farY - sharpY) * key.gradientSpan
+        val effectiveGradientSpan =
+          if (key.gradientProfile == "3f639cc") key.progression else key.gradientSpan
+        val maxY = sharpY + (farY - sharpY) * effectiveGradientSpan
 
         AndroidxBlurAdapter.createVerticalGradient(
           rasterWidth,
