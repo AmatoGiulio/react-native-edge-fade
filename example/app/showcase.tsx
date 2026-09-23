@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
+  Extrapolation,
   interpolate,
   interpolateColor,
   type SharedValue,
@@ -42,12 +43,14 @@ const DEFAULT_CLOSED_DEPTH = 210;
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 0.7;
 
-// Reference timing: the material reaches the expanded state in roughly
-// 300 ms and collapses materially faster. Keep one shared timeline for blur
-// depth and chrome so no layer can drift vertically or temporally.
-const OPEN_MS = 300;
-const CLOSE_MS = 220;
-const EASE = Easing.bezier(0.16, 1, 0.3, 1);
+// Motion extracted frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
+// One emphasized curve explains panel open/close and both theme directions:
+// near-zero launch velocity, fast middle section, then a long deceleration tail.
+const FIELD_OPEN_MS = 600;
+const FIELD_CLOSE_MS = 540;
+const THEME_SURFACE_MS = 525;
+const THEME_CONTROL_MS = 420;
+const REFERENCE_MOTION_EASE = Easing.bezier(0.24, 0, 0.15, 1);
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -88,28 +91,36 @@ function AccountRow({
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#111111', '#f3f2ef']
+      ['#111111', '#f3f2ef'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
   const secondaryTextStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#222222', '#d9d7d2']
+      ['#222222', '#d9d7d2'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
   const dateStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#aaa7a2', '#85827d']
+      ['#aaa7a2', '#85827d'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
   const badgeStyle = useAnimatedStyle(() => ({
     borderColor: interpolateColor(
       themeProgress.value,
       [0, 1],
-      ['#efeeec', '#121210']
+      ['#efeeec', '#121210'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
@@ -178,7 +189,8 @@ export default function ProgressiveShowcaseRoute() {
     'material' | 'capture' | 'gaussian'
   >('material');
   const progress = useSharedValue(0);
-  const themeProgress = useSharedValue(0);
+  const themeSurfaceProgress = useSharedValue(0);
+  const themeControlProgress = useSharedValue(0);
 
   const expandedDepth = Math.min(height * expandedScale, 720);
   const bottomDepth = useDerivedValue(() =>
@@ -223,52 +235,54 @@ export default function ProgressiveShowcaseRoute() {
     mediaWidth * 0.9
   );
 
-  // Reference: the chrome stays spatially pinned. Only the material field
-  // changes depth; labels cross-fade in place and never ride the blur.
+  // Chrome stays spatially pinned in the reference. View/Perfection leave
+  // early; the expanded menu resolves continuously with the material field.
   const closedNavStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.24, 0.5], [1, 1, 0]),
+    opacity: interpolate(
+      progress.value,
+      [0.05, 0.42],
+      [1, 0],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const openMenuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.52, 0.78, 1], [0, 0, 0.86, 1]),
-  }));
-
-  const menuAvatarStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.5, 0.72, 1], [0, 0.74, 1]),
-    transform: [
-      {
-        scale: interpolate(progress.value, [0.5, 1], [0.97, 1]),
-      },
-    ],
-  }));
-
-  const menuLinksStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.58, 0.82, 1], [0, 0.78, 1]),
+    opacity: interpolate(
+      progress.value,
+      [0.12, 0.87],
+      [0, 1],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const menuLinkTextStyle = useAnimatedStyle(() => ({
     // The reference keeps menu copy white in both themes. The pearly material
     // supplies contrast in light mode; a subtle shadow preserves edge clarity.
     color: interpolateColor(
-      themeProgress.value,
+      themeSurfaceProgress.value,
       [0, 1],
-      ['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.98)']
+      ['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.98)'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
-  const menuControlStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.68, 0.9, 1], [0, 0.84, 1]),
-  }));
-
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.35, 1], [0, 0, 1]),
+    opacity: interpolate(
+      progress.value,
+      [0.08, 0.78],
+      [0, 1],
+      Extrapolation.CLAMP
+    ),
   }));
 
   const surfaceStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      themeProgress.value,
+      themeSurfaceProgress.value,
       [0, 1],
-      ['#efeeec', '#121210']
+      ['#efeeec', '#121210'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
@@ -283,14 +297,18 @@ export default function ProgressiveShowcaseRoute() {
 
   const segmentTrackStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['rgba(205,199,190,0.56)', 'rgba(67,63,59,0.78)']
+      ['rgba(205,199,190,0.56)', 'rgba(67,63,59,0.78)'],
+      'RGB',
+      { gamma: 1 }
     ),
     borderColor: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.16)']
+      ['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.16)'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
@@ -298,43 +316,61 @@ export default function ProgressiveShowcaseRoute() {
     width: segmentHalf,
     transform: [
       {
-        translateX: interpolate(themeProgress.value, [0, 1], [segmentHalf, 0]),
+        translateX: interpolate(
+          themeControlProgress.value,
+          [0, 1],
+          [segmentHalf, 0]
+        ),
       },
     ],
     backgroundColor: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['rgba(250,248,244,0.96)', 'rgba(5,5,4,0.96)']
+      ['rgba(250,248,244,0.96)', 'rgba(5,5,4,0.96)'],
+      'RGB',
+      { gamma: 1 }
     ),
     borderColor: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.08)']
+      ['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.08)'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
   const darkSegmentTextStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['rgba(91,86,79,0.88)', '#f6f3ee']
+      ['rgba(91,86,79,0.88)', '#f6f3ee'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
   const lightSegmentTextStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
-      themeProgress.value,
+      themeControlProgress.value,
       [0, 1],
-      ['#171513', 'rgba(206,201,194,0.72)']
+      ['#171513', 'rgba(206,201,194,0.72)'],
+      'RGB',
+      { gamma: 1 }
     ),
   }));
 
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
     setDarkMode(nextDark);
-    themeProgress.value = withTiming(nextDark ? 1 : 0, {
-      duration: OPEN_MS,
-      easing: EASE,
+    const target = nextDark ? 1 : 0;
+
+    themeControlProgress.value = withTiming(target, {
+      duration: THEME_CONTROL_MS,
+      easing: REFERENCE_MOTION_EASE,
+    });
+    themeSurfaceProgress.value = withTiming(target, {
+      duration: THEME_SURFACE_MS,
+      easing: REFERENCE_MOTION_EASE,
     });
   };
 
@@ -342,10 +378,9 @@ export default function ProgressiveShowcaseRoute() {
     const next = !open;
     setOpen(next);
 
-    const duration = next ? OPEN_MS : CLOSE_MS;
     progress.value = withTiming(next ? 1 : 0, {
-      duration,
-      easing: EASE,
+      duration: next ? FIELD_OPEN_MS : FIELD_CLOSE_MS,
+      easing: REFERENCE_MOTION_EASE,
     });
   };
 
@@ -385,9 +420,9 @@ export default function ProgressiveShowcaseRoute() {
         progressiveBackend={debugBackend}
         progressiveNativeTuner={true}
         progressiveMaterialStrength={materialStrength}
-        progressiveMaterialColor={
-          darkMode ? DARK_MATERIAL_COLOR : LIGHT_MATERIAL_COLOR
-        }
+        progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
+        progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
+        progressiveMaterialThemeProgress={themeSurfaceProgress}
         progressiveMaterialExposure={DEFAULT_MATERIAL_EXPOSURE}
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
         progressiveMaterialSurfaceProgression={
@@ -429,7 +464,7 @@ export default function ProgressiveShowcaseRoute() {
               name="roma.daily"
               subtitle="by Studio 19"
               date="Today"
-              themeProgress={themeProgress}
+              themeProgress={themeSurfaceProgress}
             />
           </View>
 
@@ -484,7 +519,7 @@ export default function ProgressiveShowcaseRoute() {
               name="roma.afterdark"
               subtitle="A visual diary from Rome"
               date="May 12"
-              themeProgress={themeProgress}
+              themeProgress={themeSurfaceProgress}
             />
           </View>
 
@@ -558,8 +593,21 @@ export default function ProgressiveShowcaseRoute() {
           <Text style={s.closedNavLabel}>Perfection</Text>
         </Pressable>
 
-        <Text style={[s.closedNavLabel, s.closedNavSettings]}>Settings</Text>
       </Animated.View>
+
+      <Text
+        pointerEvents="none"
+        style={[
+          s.closedNavLabel,
+          s.persistentSettings,
+          {
+            right: sceneLeft,
+            bottom: insets.bottom + 18,
+          },
+        ]}
+      >
+        Settings
+      </Text>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
@@ -573,15 +621,13 @@ export default function ProgressiveShowcaseRoute() {
           openMenuStyle,
         ]}
       >
-        <Animated.View style={menuAvatarStyle}>
-          <Image
-            source={ITEMS[25]!.source}
-            style={s.menuAvatar}
-            contentFit="cover"
-          />
-        </Animated.View>
+        <Image
+          source={ITEMS[25]!.source}
+          style={s.menuAvatar}
+          contentFit="cover"
+        />
 
-        <Animated.View style={[s.menuLinks, menuLinksStyle]}>
+        <View style={s.menuLinks}>
           <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
             Subscription
           </Animated.Text>
@@ -591,9 +637,9 @@ export default function ProgressiveShowcaseRoute() {
           <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
             About
           </Animated.Text>
-        </Animated.View>
+        </View>
 
-        <Animated.View style={[s.menuBottomRow, menuControlStyle]}>
+        <View style={s.menuBottomRow}>
           <Animated.View
             style={[
               s.themeSegment,
@@ -646,7 +692,7 @@ export default function ProgressiveShowcaseRoute() {
               </Animated.Text>
             </Pressable>
           </Animated.View>
-        </Animated.View>
+        </View>
       </Animated.View>
     </View>
   );
@@ -776,10 +822,9 @@ const s = StyleSheet.create({
     left: 0,
     bottom: 0,
   },
-  closedNavSettings: {
+  persistentSettings: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
+    zIndex: 31,
   },
   closedNavCenter: {
     minWidth: 96,

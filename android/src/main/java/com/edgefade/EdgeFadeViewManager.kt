@@ -133,6 +133,16 @@ class EdgeFadeViewManager :
     view.progressiveMaterialColor = value ?: Color.rgb(239, 238, 236)
   }
 
+  @ReactProp(name = "progressiveMaterialColorDark", customType = "Color")
+  override fun setProgressiveMaterialColorDark(view: EdgeFadeView, value: Int?) {
+    view.progressiveMaterialColorDark = value ?: Color.rgb(89, 90, 96)
+  }
+
+  @ReactProp(name = "progressiveMaterialThemeProgress", defaultFloat = 0f)
+  override fun setProgressiveMaterialThemeProgress(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialThemeProgress = value.coerceIn(0f, 1f)
+  }
+
   @ReactProp(name = "progressiveMaterialExposure", defaultFloat = 1f)
   override fun setProgressiveMaterialExposure(view: EdgeFadeView, value: Float) {
     view.progressiveMaterialExposure = value.coerceIn(0.5f, 1.2f)

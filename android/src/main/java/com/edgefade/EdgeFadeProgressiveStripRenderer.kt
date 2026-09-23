@@ -123,7 +123,12 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialEnabled = host.effectiveMaterialEnabled(),
       materialStrength =
         BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
-      materialColor = host.progressiveMaterialColor,
+      materialColor =
+        mixColor(
+          host.progressiveMaterialColor,
+          host.progressiveMaterialColorDark,
+          host.progressiveMaterialThemeProgress,
+        ),
       materialExposure =
         BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
       materialSurface =
@@ -399,6 +404,18 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     strip.node.setRenderEffect(finalEffect)
+  }
+
+  private fun mixColor(light: Int, dark: Int, progress: Float): Int {
+    val t = progress.coerceIn(0f, 1f)
+    fun mixChannel(a: Int, b: Int): Int =
+      (a + (b - a) * t).toInt().coerceIn(0, 255)
+
+    return Color.rgb(
+      mixChannel(Color.red(light), Color.red(dark)),
+      mixChannel(Color.green(light), Color.green(dark)),
+      mixChannel(Color.blue(light), Color.blue(dark)),
+    )
   }
 
   private fun expandOutward(

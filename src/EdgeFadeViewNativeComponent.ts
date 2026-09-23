@@ -34,8 +34,12 @@ interface NativeProps extends ViewProps {
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveMaterialStrength?: CodegenTypes.Float;
-  /** Internal showcase neutral luminance anchor; not an opacity tint. */
+  /** Internal showcase light-theme luminance anchor; not an opacity tint. */
   progressiveMaterialColor?: ColorValue;
+  /** Internal showcase dark-theme luminance anchor. */
+  progressiveMaterialColorDark?: ColorValue;
+  /** Internal 0(light)..1(dark) material colour animation progress. */
+  progressiveMaterialThemeProgress?: CodegenTypes.Float;
   /**
    * Internal showcase source exposure before the material tone response.
    * 1 is neutral exposure. Public progressive blur never sets this.

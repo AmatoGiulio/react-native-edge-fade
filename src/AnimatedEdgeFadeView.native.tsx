@@ -66,7 +66,8 @@ function useEdgeFadeAnimatedProps(
   endSV: SharedValueLike<number> | null,
   radiusSV: SharedValueLike<number> | null,
   blurRadiusSV: SharedValueLike<number> | null,
-  blurProgressionSV: SharedValueLike<number> | null
+  blurProgressionSV: SharedValueLike<number> | null,
+  materialThemeProgressSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -83,6 +84,9 @@ function useEdgeFadeAnimatedProps(
     // Public blurProgression maps to the historical native frostProgression
     // prop. Keep the mapping here so animated and static APIs stay identical.
     if (blurProgressionSV) out.frostProgression = blurProgressionSV.value;
+    if (materialThemeProgressSV) {
+      out.progressiveMaterialThemeProgress = materialThemeProgressSV.value;
+    }
     return out;
   });
 }
@@ -127,6 +131,11 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     : null;
   const blurProgressionSV = isSharedValue(props.blurProgression)
     ? (props.blurProgression as SharedValueLike<number>)
+    : null;
+  const materialThemeProgressProp = (props as any)
+    .progressiveMaterialThemeProgress;
+  const materialThemeProgressSV = isSharedValue(materialThemeProgressProp)
+    ? (materialThemeProgressProp as SharedValueLike<number>)
     : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
@@ -173,6 +182,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     frostLift: _fl,
     frostProgression: _fp,
     radius: _radius,
+    progressiveMaterialThemeProgress: _materialThemeProgress,
     style,
     children,
     ...viewProps
@@ -194,7 +204,8 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     endSV,
     radiusSV,
     blurRadiusSV,
-    blurProgressionSV
+    blurProgressionSV,
+    materialThemeProgressSV
   );
 
   return (
@@ -214,6 +225,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       frostSaturation={n.frostSaturation}
       frostLift={n.frostLift}
       frostProgression={n.frostProgression}
+      progressiveMaterialThemeProgress={
+        materialThemeProgressSV ? 0 : _materialThemeProgress
+      }
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

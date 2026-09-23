@@ -60,6 +60,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
    */
   internal var progressiveMaterialStrength: Float = 0f
   internal var progressiveMaterialColor: Int = Color.rgb(239, 238, 236)
+  internal var progressiveMaterialColorDark: Int = Color.rgb(89, 90, 96)
+  internal var progressiveMaterialThemeProgress: Float = 0f
   internal var progressiveMaterialExposure: Float = 1f
   internal var progressiveMaterialSurface: Float = 0f
   internal var progressiveMaterialSurfaceProgression: Float = 0.7f
