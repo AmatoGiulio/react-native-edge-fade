@@ -95,3 +95,26 @@ The open-menu reveal end was also moved from field progress 0.87 to 0.935.
 With the extracted 600 ms emphasized easing this places visual completion at
 ~400 ms after expansion starts, matching the dense reference frames more
 closely while keeping the first visible menu pixels at ~70–80 ms.
+
+
+## 2026-09-23 — Remove the OPEN/CLOSED entrance seam
+
+The remaining horizontal cut was traced to a resolution discontinuity rather
+than the progressive radius curve.
+
+The sharp scene was full-resolution while every material strip was rasterised
+at 0.5x. At the optical entrance radius and material density are mathematically
+zero, but a 0.5x downsample/upscale is still not pixel-identical to the sharp
+scene. The compositor therefore switched resolution at the panel boundary.
+Because OPEN and CLOSED place that boundary over different source content, the
+seam also looked different between the two states.
+
+For the official `androidx-gradient` material path only:
+
+- strip raster is now full-resolution;
+- internal Gaussian radius is multiplied by 2x to preserve the historical
+  screen-space diffusion produced by the old 0.5x raster;
+- source padding follows the compensated kernel radius;
+- public/tuner radius values and the radius-stop curve remain unchanged.
+
+This is a topology/quality fix, not another alpha-mask or material-curve test.

@@ -28,6 +28,16 @@ internal class EdgeFadeProgressiveStripRenderer(
     // Clip overscan only. The radius profile still starts at the nominal panel
     // boundary, so this does not alter the accepted 6f4 optical body.
     const val ANDROIDX_GRADIENT_CLIP_OVERSCAN_PX = 32
+
+    // The former 0.5x material raster created a real compositor seam: even
+    // where blur/material evaluate to identity, a half-res round trip is not
+    // pixel-identical to the full-res sharp scene. OPEN and CLOSED placed that
+    // resolution switch over different source content, so the line changed
+    // character between states.
+    //
+    // AndroidX gradient now keeps a full-res entrance/body. Double only the
+    // internal kernel radius to preserve the old 0.5x screen-space diffusion.
+    const val ANDROIDX_GRADIENT_RADIUS_COMPENSATION = 2f
   }
 
   private data class Key(
@@ -64,6 +74,7 @@ internal class EdgeFadeProgressiveStripRenderer(
 
   private class Strip(var band: BlurLabGeometry.Band) {
     var scale = 1f
+    var kernelRadius = 0f
     var output = band.visible
     val node = RenderNode("EdgeFade.Progressive.strip")
     val mask = RuntimeShader(BlurLabShaders.maskPerEdge)
@@ -151,6 +162,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       "backend=${next.backend} stage=${next.debugStage} radius=${next.radius} " +
         "progression=${next.progression} gradientSpan=${next.gradientSpan} " +
         "material=${next.materialEnabled} strength=${next.materialStrength} exposure=${next.materialExposure} " +
+        "kernelRadius=${if (next.backend == "androidx-gradient" && next.materialStrength > 0f) next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION else next.radius} " +
         "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression}",
     )
 
@@ -267,9 +279,21 @@ internal class EdgeFadeProgressiveStripRenderer(
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
       (previous.remove(band.edge) ?: Strip(band)).also { strip ->
-        // Broader diffusion at half resolution is restricted to the material
-        // experiment. The public strength=0 geometry and Gaussian stay exact.
-        strip.scale = if (next.materialStrength > 0f) 0.5f else 1f
+        val highQualityAndroidxGradient =
+          next.backend == "androidx-gradient" && next.materialStrength > 0f
+
+        // The official gradient path is production-quality/full-resolution.
+        // Legacy experimental backends keep their previous half-res behaviour.
+        strip.scale =
+          if (highQualityAndroidxGradient) 1f
+          else if (next.materialStrength > 0f) 0.5f
+          else 1f
+        strip.kernelRadius =
+          if (highQualityAndroidxGradient) {
+            next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION
+          } else {
+            next.radius
+          }
 
         strip.output =
           if (next.backend == "androidx-gradient" && band.edge in 0..1) {
@@ -283,7 +307,7 @@ internal class EdgeFadeProgressiveStripRenderer(
             band.visible
           }
 
-        val pad = ceil(next.radius / strip.scale).toInt() + 1
+        val pad = ceil(strip.kernelRadius / strip.scale).toInt() + 1
         val o = strip.output
         strip.band = if (strip.scale == 1f) band else band.copy(
           source = BlurLabGeometry.Rect(
@@ -344,7 +368,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         AndroidxBlurAdapter.createShowcaseVerticalGradient(
           rasterWidth,
           rasterHeight,
-          key.radius,
+          strip.kernelRadius,
           sharpY,
           maxY,
           presence,
