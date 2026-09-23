@@ -64,6 +64,25 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveMaterialSurface: Float = 0f
   internal var progressiveMaterialSurfaceProgression: Float = 0.7f
 
+  // Showcase-only Android tuning state. None of these knobs are public API.
+  internal var progressiveNativeTunerEnabled: Boolean = false
+  internal var progressiveGradientProfile: String = "current"
+  internal var progressiveGradientOutsideFactor: Float = 0.60f
+  internal var progressiveGradientSpan: Float = 1f
+  internal var progressiveAstraMix: Float = 1f
+  internal var progressiveReflectionGain: Float = 1f
+  internal var progressiveBodyGain: Float = 1f
+  internal var progressiveChromaGain: Float = 1f
+
+  internal var tunerBackendOverride: String? = null
+  internal var tunerBlurRadiusOverride: Float? = null
+  internal var tunerProgressionOverride: Float? = null
+  internal var tunerMaterialStrengthOverride: Float? = null
+  internal var tunerMaterialExposureOverride: Float? = null
+  internal var tunerMaterialSurfaceOverride: Float? = null
+  internal var tunerMaterialSurfaceProgressionOverride: Float? = null
+  internal var tunerShowBounds: Boolean = false
+
   // Kept temporarily for source compatibility with the 0.2.x public API.
   // Saturation/lift are intentionally ignored by Public Progressive.
   var frostSaturation: Float = 0.9f
@@ -117,6 +136,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   private var lastClipW = 0f
   private var lastClipH = 0f
   private val singleEdgeRect = RectF()
+  private var nativeTuner: EdgeFadeNativeTuner? = null
+  private val tunerBoundsPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.MAGENTA
+    style = Paint.Style.STROKE
+    strokeWidth = 3f * resources.displayMetrics.density
+  }
 
   // Descendant scrolling does not necessarily invalidate this host display
   // list. Re-run dispatchDraw so the progressive materialized scene and the
@@ -130,6 +155,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     viewTreeObserver.addOnScrollChangedListener(scrollListener)
+    if (progressiveNativeTunerEnabled) post { ensureNativeTuner() }
   }
 
   override fun onDetachedFromWindow() {
@@ -142,7 +168,59 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       lensNode?.discardDisplayList()
     }
     lensNode = null
+    nativeTuner?.dismiss()
+    nativeTuner = null
     super.onDetachedFromWindow()
+  }
+
+  internal fun setProgressiveNativeTunerEnabled(enabled: Boolean) {
+    progressiveNativeTunerEnabled = enabled
+    if (!enabled) {
+      nativeTuner?.dismiss()
+      nativeTuner = null
+      tunerShowBounds = false
+      invalidate()
+    } else if (isAttachedToWindow) {
+      post { ensureNativeTuner() }
+    }
+  }
+
+  private fun ensureNativeTuner() {
+    if (!progressiveNativeTunerEnabled || !isAttachedToWindow) return
+    val tuner = nativeTuner ?: EdgeFadeNativeTuner(this).also { nativeTuner = it }
+    tuner.show()
+  }
+
+  internal fun effectiveProgressiveBackend(): String = tunerBackendOverride ?: progressiveBackend
+  internal fun effectiveBlurRadius(): Float = tunerBlurRadiusOverride ?: blurRadius
+  internal fun effectiveFrostProgression(): Float = tunerProgressionOverride ?: frostProgression
+  internal fun effectiveMaterialStrength(): Float = tunerMaterialStrengthOverride ?: progressiveMaterialStrength
+  internal fun effectiveMaterialExposure(): Float = tunerMaterialExposureOverride ?: progressiveMaterialExposure
+  internal fun effectiveMaterialSurface(): Float = tunerMaterialSurfaceOverride ?: progressiveMaterialSurface
+  internal fun effectiveMaterialSurfaceProgression(): Float =
+    tunerMaterialSurfaceProgressionOverride ?: progressiveMaterialSurfaceProgression
+
+  internal fun clearNativeTunerOverrides() {
+    tunerBackendOverride = null
+    tunerBlurRadiusOverride = null
+    tunerProgressionOverride = null
+    tunerMaterialStrengthOverride = null
+    tunerMaterialExposureOverride = null
+    tunerMaterialSurfaceOverride = null
+    tunerMaterialSurfaceProgressionOverride = null
+    progressiveGradientProfile = "current"
+    progressiveGradientOutsideFactor = 0.60f
+    progressiveGradientSpan = 1f
+    progressiveAstraMix = 1f
+    progressiveReflectionGain = 1f
+    progressiveBodyGain = 1f
+    progressiveChromaGain = 1f
+    tunerShowBounds = false
+    nativeTuneChanged()
+  }
+
+  internal fun nativeTuneChanged() {
+    postInvalidateOnAnimation()
   }
 
   /**
@@ -157,7 +235,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
    */
   override fun onDescendantInvalidated(child: View, target: View) {
     super.onDescendantInvalidated(child, target)
-    if (progressiveBlurActive && blurRadius > 0f) {
+    if (progressiveBlurActive && effectiveBlurRadius() > 0f) {
       invalidate()
     }
   }
@@ -191,7 +269,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
       when {
         mode == "lens" -> drawLens(canvas)
-        mode == "blur" && blurRadius <= 0f -> super.dispatchDraw(canvas)
+        mode == "blur" && effectiveBlurRadius() <= 0f -> super.dispatchDraw(canvas)
         !hasAnyFade -> super.dispatchDraw(canvas)
         mode == "overlay" -> {
           super.dispatchDraw(canvas)
@@ -216,9 +294,22 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       }
 
       if (clipSave >= 0) canvas.restoreToCount(clipSave)
+      if (progressiveNativeTunerEnabled && tunerShowBounds) drawNativeTunerBounds(canvas)
     } finally {
       Trace.endSection()
     }
+  }
+
+  private fun drawNativeTunerBounds(canvas: Canvas) {
+    val d = resources.displayMetrics.density
+    val inset = 5f * d
+    val w = width.toFloat()
+    val h = height.toFloat()
+    if (w <= inset * 2f || h <= inset * 2f) return
+    if (fadeTop > 0f) canvas.drawRect(inset, inset, w - inset, fadeTop.coerceAtMost(h - inset), tunerBoundsPaint)
+    if (fadeBottom > 0f) canvas.drawRect(inset, (h - fadeBottom).coerceAtLeast(inset), w - inset, h - inset, tunerBoundsPaint)
+    if (fadeLeft > 0f) canvas.drawRect(inset, inset, fadeLeft.coerceAtMost(w - inset), h - inset, tunerBoundsPaint)
+    if (fadeRight > 0f) canvas.drawRect((w - fadeRight).coerceAtLeast(inset), inset, w - inset, h - inset, tunerBoundsPaint)
   }
 
   private fun drawOverlay(canvas: Canvas) {

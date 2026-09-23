@@ -79,6 +79,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialExposure: Float,
     val materialSurface: Float,
     val materialSurfaceProgression: Float,
+    val gradientProfile: String,
+    val gradientOutsideFactor: Float,
+    val gradientSpan: Float,
+    val materialAstraMix: Float,
+    val materialReflectionGain: Float,
+    val materialBodyGain: Float,
+    val materialChromaGain: Float,
   )
 
   private data class CurveSamples(
@@ -116,7 +123,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val height = host.height
     if (width <= 0 || height <= 0) return false
 
-    val requestedBackend = host.progressiveBackend
+    val requestedBackend = host.effectiveProgressiveBackend()
     val debugStage =
       when (requestedBackend) {
         "agsl-debug-capture" -> "capture"
@@ -139,9 +146,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       bottom = BlurLabGeometry.edge(host.fadeBottom, height),
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
-      radius = BlurLabGeometry.radius(host.blurRadius),
+      radius = BlurLabGeometry.radius(host.effectiveBlurRadius()),
       progression =
-        BlurLabGeometry.finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
+        BlurLabGeometry.finite(host.effectiveFrostProgression(), 1f).coerceIn(0.05f, 1f),
       curveTop = host.curveTop,
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
@@ -149,15 +156,28 @@ internal class EdgeFadeProgressiveStripRenderer(
       backend = exactBackend,
       debugStage = debugStage,
       materialStrength =
-        BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
+        BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
       materialExposure =
-        BlurLabGeometry.finite(host.progressiveMaterialExposure, 1f).coerceIn(0.5f, 1.2f),
+        BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
       materialSurface =
-        BlurLabGeometry.finite(host.progressiveMaterialSurface).coerceIn(0f, 1f),
+        BlurLabGeometry.finite(host.effectiveMaterialSurface()).coerceIn(0f, 1f),
       materialSurfaceProgression =
-        BlurLabGeometry.finite(host.progressiveMaterialSurfaceProgression, 0.7f)
+        BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
           .coerceIn(0.15f, 1f),
+      gradientProfile = host.progressiveGradientProfile,
+      gradientOutsideFactor =
+        BlurLabGeometry.finite(host.progressiveGradientOutsideFactor, 0.60f).coerceIn(0f, 1.2f),
+      gradientSpan =
+        BlurLabGeometry.finite(host.progressiveGradientSpan, 1f).coerceIn(0.25f, 1f),
+      materialAstraMix =
+        BlurLabGeometry.finite(host.progressiveAstraMix, 1f).coerceIn(0f, 1f),
+      materialReflectionGain =
+        BlurLabGeometry.finite(host.progressiveReflectionGain, 1f).coerceIn(0f, 2f),
+      materialBodyGain =
+        BlurLabGeometry.finite(host.progressiveBodyGain, 1f).coerceIn(0f, 2f),
+      materialChromaGain =
+        BlurLabGeometry.finite(host.progressiveChromaGain, 1f).coerceIn(0f, 2f),
     )
 
     if (key == next) return true
@@ -304,7 +324,7 @@ internal class EdgeFadeProgressiveStripRenderer(
             experimentalMaterial ->
               next.radius * MATERIAL_AIR_OUTSIDE_RADIUS_FACTOR
             officialGradientMaterial ->
-              next.radius * ANDROIDX_GRADIENT_OUTSIDE_RADIUS_FACTOR
+              next.radius * next.gradientOutsideFactor
             else -> 0f
           }
 
@@ -370,12 +390,13 @@ internal class EdgeFadeProgressiveStripRenderer(
           } else {
             (strip.output.top - source.top) * scale
           }
-        val maxY =
+        val farY =
           if (strip.band.edge == 0) {
             (strip.band.visible.top - source.top) * scale
           } else {
             (strip.band.visible.bottom - source.top) * scale
           }
+        val maxY = sharpY + (farY - sharpY) * key.gradientSpan
 
         AndroidxBlurAdapter.createVerticalGradient(
           rasterWidth,
@@ -383,6 +404,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           key.radius,
           sharpY,
           maxY,
+          key.gradientProfile,
         )
       } else if (key.backend == "androidx") {
         AndroidxBlurAdapter.create(rasterWidth, rasterHeight, key.radius, strip.mask)
@@ -423,6 +445,10 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
         )
+        shader.setFloatUniform("materialAstraMix", key.materialAstraMix)
+        shader.setFloatUniform("materialReflectionGain", key.materialReflectionGain)
+        shader.setFloatUniform("materialBodyGain", key.materialBodyGain)
+        shader.setFloatUniform("materialChromaGain", key.materialChromaGain)
         shader.setFloatUniform("materialEdge", strip.band.edge.toFloat())
         val localBoundary = when (strip.band.edge) {
           0 -> (strip.band.visible.bottom - source.top) * scale
@@ -511,6 +537,10 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           key.materialSurfaceProgression,
         )
+        strip.material.setFloatUniform("materialAstraMix", key.materialAstraMix)
+        strip.material.setFloatUniform("materialReflectionGain", key.materialReflectionGain)
+        strip.material.setFloatUniform("materialBodyGain", key.materialBodyGain)
+        strip.material.setFloatUniform("materialChromaGain", key.materialChromaGain)
         strip.material.setFloatUniform(
           "materialOrigin",
           source.left * scale,
@@ -545,8 +575,8 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     // One-build diagnostic:
     // capture  = 0.5x raster only, no Gaussian/material
-    // gaussian = baseline 0.5x + pure-cbrt Gaussian, no material
-    // material = two-pass fused pure-cbrt + material pipeline
+    // gaussian = baseline 0.5x + current material Gaussian, no material
+    // material = two-pass fused current material + material pipeline
     val finalEffect =
       when {
         key.materialStrength <= 0f -> blurEffect

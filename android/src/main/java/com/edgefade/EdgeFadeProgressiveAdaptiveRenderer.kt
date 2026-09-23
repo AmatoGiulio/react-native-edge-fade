@@ -36,13 +36,13 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val radius =
-      if (host.blurRadius.isFinite()) {
-        host.blurRadius.coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
+      if (host.effectiveBlurRadius().isFinite()) {
+        host.effectiveBlurRadius().coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
       } else {
         0f
       }
 
-    val override = when (host.progressiveBackend) {
+    val override = when (host.effectiveProgressiveBackend()) {
       "exact" -> "exact"
       "agsl" -> "agsl"
       "androidx" -> "androidx"

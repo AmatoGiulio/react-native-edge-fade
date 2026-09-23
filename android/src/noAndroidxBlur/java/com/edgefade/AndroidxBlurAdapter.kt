@@ -14,6 +14,7 @@ internal object AndroidxBlurAdapter {
     maxRadiusPx: Float,
     sharpY: Float,
     maxY: Float,
+    profile: String,
   ): RenderEffect =
     error("AndroidX comparison backend not compiled; use -PedgeFadeAndroidxBlur=true")
 }

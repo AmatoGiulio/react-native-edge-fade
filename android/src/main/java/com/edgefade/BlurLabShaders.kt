@@ -48,9 +48,8 @@ internal object BlurLabShaders {
       }
       half4 main(float2 coord) {
         float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-        // Recreate the discarded Astra experiment exactly: keep the public
-        // Gaussian path unchanged, but use the cubic-root radius field whenever
-        // the internal material path enables continuousSupport.
+        // Later AGSL material experiment only. Historical Astra baseline
+        // 93ac1b0 used radius = blurRadius * intensity, not cbrt.
         float radiusIntensity =
           continuousSupport > 0.5 ? pow(intensity, 1.0 / 3.0) : intensity;
         float radius = blurRadius * radiusIntensity;
@@ -214,6 +213,10 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialAstraMix;
+    uniform float materialReflectionGain;
+    uniform float materialBodyGain;
+    uniform float materialChromaGain;
     uniform float materialEdge;
     uniform float materialBoundary;
     uniform float materialEntrance;
@@ -368,7 +371,8 @@ internal object BlurLabShaders {
           mix(luma, materialLuma, lumaMix);
 
         float chromaCompression =
-          1.0 / (1.0 + 6.5 * astraMaterial * magnitude);
+          1.0 /
+          (1.0 + 6.5 * clamp(materialChromaGain, 0.0, 2.0) * astraMaterial * magnitude);
         float chromaGain =
           mix(1.0, 0.16, astraMaterial) * chromaCompression;
         chromaGain *= mix(1.0, 0.82, astraSurface);
@@ -377,7 +381,7 @@ internal object BlurLabShaders {
 
         float localHighlight = smoothstep(0.44, 0.88, luma);
         float pearlReflection =
-          astraSurface *
+          astraSurface * clamp(materialReflectionGain, 0.0, 2.0) *
           (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
         astraTarget = mix(astraTarget, materialColor, pearlReflection);
 
@@ -386,9 +390,15 @@ internal object BlurLabShaders {
         float3 bodyColour =
           float3(materialLuma) + chroma * 0.08;
         astraTarget =
-          mix(astraTarget, bodyColour, 0.38 * astraBody);
+          mix(
+          astraTarget,
+          bodyColour,
+          clamp(0.38 * materialBodyGain * astraBody, 0.0, 1.0)
+        );
 
-        float astraMix = smoothstep(0.30, 0.68, intensity);
+        float astraMix =
+          smoothstep(0.30, 0.68, intensity) *
+          clamp(materialAstraMix, 0.0, 1.0);
         float3 graded = mix(baseGraded, astraTarget, astraMix);
 
         sampled = float4(clamp(graded, 0.0, 1.0) * sampled.a, sampled.a);
@@ -589,6 +599,10 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialAstraMix;
+    uniform float materialReflectionGain;
+    uniform float materialBodyGain;
+    uniform float materialChromaGain;
     uniform float2 materialOrigin;
     uniform float2 materialViewSize;
     uniform float materialEdge;
@@ -667,7 +681,8 @@ internal object BlurLabShaders {
         mix(luma, materialLuma, lumaMix);
 
       float chromaCompression =
-        1.0 / (1.0 + 6.5 * astraMaterial * magnitude);
+        1.0 /
+          (1.0 + 6.5 * clamp(materialChromaGain, 0.0, 2.0) * astraMaterial * magnitude);
       float chromaGain =
         mix(1.0, 0.16, astraMaterial) * chromaCompression;
       chromaGain *= mix(1.0, 0.82, astraSurface);
@@ -685,9 +700,15 @@ internal object BlurLabShaders {
       float3 bodyColour =
         float3(materialLuma) + chroma * 0.08;
       astraTarget =
-        mix(astraTarget, bodyColour, 0.38 * astraBody);
+        mix(
+          astraTarget,
+          bodyColour,
+          clamp(0.38 * materialBodyGain * astraBody, 0.0, 1.0)
+        );
 
-      float astraMix = smoothstep(0.30, 0.68, intensity);
+      float astraMix =
+          smoothstep(0.30, 0.68, intensity) *
+          clamp(materialAstraMix, 0.0, 1.0);
       float3 result = mix(baseResult, astraTarget, astraMix);
 
       return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);

@@ -530,6 +530,40 @@ target blend.
 
 ---
 
+### 16. Native runtime optical tuner
+
+**Commit:** pending in this commit
+
+Purpose:
+
+Stop using Git history as the tuning UI. The showcase enables an Android-native
+PopupWindow tuner outside the captured EdgeFade scene.
+
+Controls:
+
+- renderer: JS/default, AndroidX gradient, AndroidX shader-mask, AGSL, scaled;
+- gradient profile: current airy, exact 93ac1b0 Astra radius distribution,
+  linear diagnostic;
+- native panel bounds on/off;
+- radius, progression, outer air/support, gradient span;
+- material strength, surface, exposure, surface progression;
+- Astra mix, reflection, body convergence and chroma-compression gains;
+- in-memory A/B slots plus copy-to-clipboard / Logcat;
+- reset returns control to JS props.
+
+Isolation:
+
+- only an internal native-component enable flag is added; no public library prop;
+- production defaults stay unchanged;
+- all tuner UI uses Android platform widgets;
+- native overrides live separately from JS props, so rerenders do not destroy
+  the tuning session.
+
+The Astra gradient profile uses the exact 13-stop radius distribution implied by
+93ac1b0: `radius = maxRadius * (1 - alpha)`.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

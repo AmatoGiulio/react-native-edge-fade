@@ -37,12 +37,27 @@ internal object AndroidxBlurAdapter {
     maxRadiusPx: Float,
     sharpY: Float,
     maxY: Float,
+    profile: String,
   ): RenderEffect {
     val safeHeight = (height - 1).coerceAtLeast(1).toFloat()
-    val positions = floatArrayOf(0f, 0.12f, 0.25f, 0.40f, 0.56f, 0.72f, 0.86f, 1f)
-    val radii = floatArrayOf(0f, 1f / 150f, 4f / 150f, 12f / 150f, 30f / 150f, 65f / 150f, 110f / 150f, 1f)
+    val (positions, radii) =
+      when (profile) {
+        "astra" ->
+          FloatArray(13) { it.toFloat() / 12f } to
+            floatArrayOf(
+              0f, 0.0006f, 0.0046f, 0.0156f, 0.0370f, 0.0723f, 0.1250f,
+              0.1985f, 0.2963f, 0.4219f, 0.5787f, 0.7703f, 1f,
+            )
+        "linear" -> floatArrayOf(0f, 1f) to floatArrayOf(0f, 1f)
+        else ->
+          floatArrayOf(0f, 0.12f, 0.25f, 0.40f, 0.56f, 0.72f, 0.86f, 1f) to
+            floatArrayOf(
+              0f, 1f / 150f, 4f / 150f, 12f / 150f, 30f / 150f,
+              65f / 150f, 110f / 150f, 1f,
+            )
+      }
 
-    val raw = ArrayList<Pair<Float, Float>>(10)
+    val raw = ArrayList<Pair<Float, Float>>(positions.size + 2)
     val increasing = maxY >= sharpY
 
     // Hold the endpoint radius outside the explicit gradient segment.
