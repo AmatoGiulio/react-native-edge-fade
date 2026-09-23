@@ -715,7 +715,7 @@ primary cause.
 
 ### 21. Restore 3f639cc effective radius field in AndroidX
 
-**Commit:** pending in this commit
+**Commit:** `abd8a4ec`
 
 Code audit result:
 
