@@ -364,7 +364,7 @@ export default function ProgressiveShowcaseRoute() {
         curve={REFERENCE_BLUR_CURVE}
         blurRadius={blurRadiusDp}
         blurProgression={blurProgression}
-        progressiveBackend="agsl"
+        progressiveBackend="androidx-gradient"
         progressiveMaterialStrength={materialStrength}
         progressiveMaterialColor={
           darkMode ? DARK_MATERIAL_COLOR : LIGHT_MATERIAL_COLOR
