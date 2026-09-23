@@ -679,7 +679,7 @@ position.
 
 ### 20. Cross-panel low-frequency body field
 
-**Commit:** pending in this commit
+**Commit:** `7521eed5`
 
 Root cause refinement:
 
