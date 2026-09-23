@@ -145,3 +145,42 @@ CLOSE:
 
 The material field timing/easing is untouched. `Settings` remains permanently
 pinned as in the reference.
+
+
+## 2026-09-23 — Theme/material frame sync + reference panel depth
+
+Two issues from device validation:
+
+### Material theme could lag behind the scene
+
+`progressiveMaterialThemeProgress` is intentionally not part of the expensive
+renderer key. The native setter updated only the stored float, however, so a
+Fabric animated-prop update did not guarantee a new EdgeFade draw on every
+frame. The material shader uniform could therefore retain an older light/dark
+mix while the rest of the React Native scene had already advanced.
+
+Fix:
+
+- light/dark material anchors invalidate after native prop changes;
+- every `progressiveMaterialThemeProgress` update calls
+  `postInvalidateOnAnimation()`;
+- renderer still uses the cheap uniform-only fast path, so AndroidX/RenderEffect
+  is not rebuilt per frame.
+
+### Panel depth was much larger than the reference
+
+Previous defaults:
+
+- CLOSED: 210 px;
+- OPEN: 70% of viewport, capped at 720 px.
+
+New reference-oriented geometry:
+
+- CLOSED = safe-area bottom + 18 px chrome offset + 54 px bottom-bar height +
+  14 px optical shoulder;
+- OPEN default scale = 0.38 of viewport, capped at 380 px;
+- OPEN is always at least CLOSED + 150 px so the expanded menu remains inside
+  the material field.
+
+This changes only the demo panel geometry; blur/material curves and motion
+timings remain unchanged.

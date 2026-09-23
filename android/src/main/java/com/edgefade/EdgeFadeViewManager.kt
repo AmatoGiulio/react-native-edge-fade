@@ -131,16 +131,22 @@ class EdgeFadeViewManager :
   @ReactProp(name = "progressiveMaterialColor", customType = "Color")
   override fun setProgressiveMaterialColor(view: EdgeFadeView, value: Int?) {
     view.progressiveMaterialColor = value ?: Color.rgb(239, 238, 236)
+    view.postInvalidateOnAnimation()
   }
 
   @ReactProp(name = "progressiveMaterialColorDark", customType = "Color")
   override fun setProgressiveMaterialColorDark(view: EdgeFadeView, value: Int?) {
     view.progressiveMaterialColorDark = value ?: Color.rgb(89, 90, 96)
+    view.postInvalidateOnAnimation()
   }
 
   @ReactProp(name = "progressiveMaterialThemeProgress", defaultFloat = 0f)
   override fun setProgressiveMaterialThemeProgress(view: EdgeFadeView, value: Float) {
     view.progressiveMaterialThemeProgress = value.coerceIn(0f, 1f)
+    // This prop is animated on the UI thread and is intentionally excluded
+    // from the expensive renderer key. Explicitly schedule a frame so the
+    // RuntimeShader materialColor uniform cannot lag/freeze behind the scene.
+    view.postInvalidateOnAnimation()
   }
 
   @ReactProp(name = "progressiveMaterialExposure", defaultFloat = 1f)

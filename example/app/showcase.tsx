@@ -40,10 +40,17 @@ const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
 const LIGHT_MATERIAL_COLOR = '#bfc0c4';
 // Smoke retains source illumination instead of converging to a silver overlay.
 const DARK_MATERIAL_COLOR = '#595a60';
-const DEFAULT_CLOSED_DEPTH = 210;
-// One moving field; the deep region settles before the upper shoulder.
+// CLOSED in the reference is essentially the bottom navigation bar plus a
+// small optical shoulder, not a 200+ px material panel.
+const CLOSED_BAR_HEIGHT = 54;
+const CLOSED_BAR_BOTTOM_OFFSET = 18;
+const CLOSED_FIELD_SHOULDER = 14;
+
+// OPEN is also substantially shorter than the previous 70% viewport field.
+// The reference keeps the field concentrated around the lower menu/content.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
-const DEFAULT_EXPANDED_SCALE = 0.7;
+const DEFAULT_EXPANDED_SCALE = 0.38;
+const MAX_EXPANDED_DEPTH = 380;
 
 // Motion extracted frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
 // One emphasized curve explains panel open/close and both theme directions:
@@ -190,12 +197,17 @@ export default function ProgressiveShowcaseRoute() {
     1
   );
   const blurRadiusPx = clampNumber(radiusRaw, DEFAULT_BLUR_RADIUS_PX, 1, 150);
-  const closedDepth = clampNumber(depthRaw, DEFAULT_CLOSED_DEPTH, 48, 240);
+  const defaultClosedDepth =
+    insets.bottom +
+    CLOSED_BAR_BOTTOM_OFFSET +
+    CLOSED_BAR_HEIGHT +
+    CLOSED_FIELD_SHOULDER;
+  const closedDepth = clampNumber(depthRaw, defaultClosedDepth, 72, 180);
   const expandedScale = clampNumber(
     scaleRaw,
     DEFAULT_EXPANDED_SCALE,
-    0.45,
-    0.9
+    0.28,
+    0.65
   );
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
@@ -210,7 +222,10 @@ export default function ProgressiveShowcaseRoute() {
   const themeSurfaceProgress = useSharedValue(0);
   const themeControlProgress = useSharedValue(0);
 
-  const expandedDepth = Math.min(height * expandedScale, 720);
+  const expandedDepth = Math.max(
+    closedDepth + 150,
+    Math.min(height * expandedScale, MAX_EXPANDED_DEPTH)
+  );
   const bottomDepth = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [closedDepth, expandedDepth])
   );
