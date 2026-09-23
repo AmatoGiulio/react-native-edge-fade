@@ -172,6 +172,15 @@ internal object EdgeFadeProgressiveBlurEffect {
     else -> null
   }
 
+  internal fun activeBackendName(view: EdgeFadeView): String =
+    when {
+      !view.progressiveBlurActive -> "inactive"
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+        Api33.backendFor(view) ?: "api33-unprepared"
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> "gles31"
+      else -> "unsupported"
+    }
+
   private fun clearProgressive(view: EdgeFadeView) {
     view.progressiveBlurActive = false
     when {

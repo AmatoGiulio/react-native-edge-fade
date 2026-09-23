@@ -128,10 +128,11 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
     val requested = hostRef.get()?.effectiveProgressiveBackend()
     return when (mode) {
       Mode.SCALED -> "hwui-scaled33"
-      Mode.EXACT -> when (requested) {
-        "agsl" -> "agsl33"
-        "androidx" -> "androidx33"
-        "androidx-gradient" -> "androidx-gradient33"
+      Mode.EXACT -> when {
+        requested?.startsWith("agsl-debug-") == true -> "agsl33-debug"
+        requested == "agsl" -> "agsl33"
+        requested == "androidx" -> "androidx33"
+        requested == "androidx-gradient" -> "androidx-gradient33"
         else -> if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
       }
     }

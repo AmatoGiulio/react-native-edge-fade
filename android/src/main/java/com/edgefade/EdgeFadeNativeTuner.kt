@@ -46,7 +46,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private val context: Context = host.context
   private val density = host.resources.displayMetrics.density
   private var popup: PopupWindow? = null
-  private var bodyView: View? = null
+  private var backendStatusView: TextView? = null
   private var expanded = false
   private var slotA: Snapshot? = null
   private var slotB: Snapshot? = null
@@ -79,7 +79,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   fun dismiss() {
     popup?.dismiss()
     popup = null
-    bodyView = null
+    backendStatusView = null
   }
 
   private fun buildContent(): View {
@@ -116,11 +116,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     header.addView(collapse, LinearLayout.LayoutParams(dp(38), dp(36)).apply { marginStart = dp(6) })
     outer.addView(header)
 
+    if (!expanded) return outer
+
     val scroll = ScrollView(context).apply {
       isVerticalScrollBarEnabled = false
-      visibility = if (expanded) View.VISIBLE else View.GONE
     }
-    bodyView = scroll
     val body = LinearLayout(context).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(4), dp(8), dp(4), dp(12))
@@ -138,7 +138,33 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     ) {
       host.tunerBackendOverride = it
       host.nativeTuneChanged()
+      refreshBackendStatus()
+      host.postDelayed({ rebuildExpanded() }, 40L)
     }
+
+    backendStatusView = TextView(context).apply {
+      text = backendStatusText()
+      setTextColor(0xff8e8e96.toInt())
+      textSize = 10f
+      setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
+      setPadding(dp(4), dp(4), dp(4), dp(8))
+    }.also(body::addView)
+
+    addActions(body, listOf(
+      "LOAD LIKED AX" to {
+        host.tunerBackendOverride = "androidx-gradient"
+        host.tunerBlurRadiusOverride = 150f
+        host.tunerProgressionOverride = 0.90f
+        host.tunerGradientSpanOverride = 1.00f
+        host.tunerMaterialStrengthOverride = 0.43f
+        host.tunerMaterialExposureOverride = 0.68f
+        host.tunerMaterialSurfaceOverride = 0.69f
+        host.tunerMaterialSurfaceProgressionOverride = 0.66f
+        host.nativeTuneChanged()
+        host.postDelayed({ rebuildExpanded() }, 40L)
+      },
+    ))
+
     addSwitch(body, "panel bounds", host.tunerShowBounds) {
       host.tunerShowBounds = it
       host.nativeTuneChanged()
@@ -153,9 +179,11 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerProgressionOverride = it
       host.nativeTuneChanged()
     }
-    addSlider(body, "AX gradient span", 0.05f, 1f, host.effectiveGradientSpan(), "") {
-      host.tunerGradientSpanOverride = it
-      host.nativeTuneChanged()
+    if (host.effectiveProgressiveBackend() == "androidx-gradient") {
+      addSlider(body, "AX gradient span", 0.05f, 1f, host.effectiveGradientSpan(), "") {
+        host.tunerGradientSpanOverride = it
+        host.nativeTuneChanged()
+      }
     }
 
     addSection(body, "MATERIAL")
@@ -203,18 +231,25 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
   private fun setExpanded(value: Boolean) {
     if (expanded == value) return
-    expanded = value
-    bodyView?.visibility = if (value) View.VISIBLE else View.GONE
-    popup?.let {
-      it.width = if (value) panelWidth() else dp(88)
-      it.height = if (value) panelHeight() else ViewGroup.LayoutParams.WRAP_CONTENT
-      it.update(it.width, it.height)
-    }
+    dismiss()
+    host.post { show(value) }
   }
 
   private fun rebuildExpanded() {
     dismiss()
     host.post { show(true) }
+  }
+
+  private fun backendStatusText(): String {
+    val requested = host.effectiveProgressiveBackend()
+    val active = EdgeFadeProgressiveBlurEffect.activeBackendName(host)
+    return "requested=$requested · active=$active"
+  }
+
+  private fun refreshBackendStatus() {
+    host.postDelayed({
+      backendStatusView?.text = backendStatusText()
+    }, 32L)
   }
 
   private fun capture() = Snapshot(

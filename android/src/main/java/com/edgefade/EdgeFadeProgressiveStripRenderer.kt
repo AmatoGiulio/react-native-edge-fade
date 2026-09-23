@@ -7,6 +7,7 @@ import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.os.Build
 import android.os.Trace
+import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
@@ -131,6 +132,14 @@ internal class EdgeFadeProgressiveStripRenderer(
     )
 
     if (key == next) return true
+
+    Log.i(
+      "EdgeFadeCleanConfig",
+      "backend=${next.backend} stage=${next.debugStage} radius=${next.radius} " +
+        "progression=${next.progression} gradientSpan=${next.gradientSpan} " +
+        "strength=${next.materialStrength} exposure=${next.materialExposure} " +
+        "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression}",
+    )
 
     if (next.radius <= 0f) {
       strips.forEach { it.release() }

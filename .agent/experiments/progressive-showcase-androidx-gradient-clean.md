@@ -90,3 +90,22 @@ Important bug fixed at the same time:
 normalized it to `auto`. Therefore the showcase could silently run the normal
 auto backend instead of the new official vertical-gradient backend. The manager
 now preserves `androidx-gradient` explicitly.
+
+
+## 2026-09-23 — Native tuner correctness pass
+
+User-selected visual baseline pinned as a one-tap runtime preset:
+
+`backend=androidx-gradient radius=150 progression=0.90 gradientSpan=1.00 strength=0.43 exposure=0.68 surface=0.69 surfaceProg=0.66`.
+
+Fixes and verification:
+
+- collapsed PopupWindow is now destroyed/recreated as a header-only popup;
+- AndroidX gradient span is shown only for the `androidx-gradient` backend;
+- renderer selection reports both requested and actual native backend;
+- every effective renderer/config-key change is logged as `EdgeFadeCleanConfig`;
+- `LOAD LIKED AX` restores the exact user-approved configuration;
+- backend switch wiring was audited end-to-end;
+- radius, progression, gradient span, material strength, exposure, surface and
+  surface progression all participate in the native renderer key and trigger
+  effect reconfiguration when active.
