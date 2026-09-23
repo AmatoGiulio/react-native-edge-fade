@@ -4,6 +4,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Platform,
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
