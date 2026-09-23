@@ -756,7 +756,7 @@ feeding the material the same effective radius topology as 3f639cc.
 
 ### 22. Kernel-topology isolation: exact 3f639cc vs AndroidX hybrid
 
-**Commit:** pending in this commit
+**Commit:** `d48ca551`
 
 Target clarified by the saved clean run:
 
