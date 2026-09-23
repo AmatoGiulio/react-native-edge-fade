@@ -37,7 +37,12 @@ import type { EdgeFadeCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 import { useDialCurve, useThrottledMirror } from '@/components/dial';
 
-export type DemoBlurRenderer = 'auto' | 'agsl' | 'androidx' | 'scaled';
+export type DemoBlurRenderer =
+  | 'auto'
+  | 'agsl'
+  | 'androidx'
+  | 'androidx-gradient'
+  | 'scaled';
 
 export interface FadeStore {
   x1: SharedValue<number>;

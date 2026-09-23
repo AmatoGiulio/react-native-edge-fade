@@ -68,6 +68,7 @@ function backendFrom(
   if (
     backend === 'agsl' ||
     backend === 'androidx' ||
+    backend === 'androidx-gradient' ||
     backend === 'scaled'
   ) {
     return backend;
