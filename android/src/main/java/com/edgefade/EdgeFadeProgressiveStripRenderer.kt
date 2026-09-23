@@ -81,8 +81,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     val horizontal by lazy { RuntimeShader(BlurLabShaders.pass(vertical = false)) }
     val vertical by lazy { RuntimeShader(BlurLabShaders.pass(vertical = true)) }
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
+    var blurEffect: RenderEffect? = null
 
     fun release() {
+      blurEffect = null
       node.setRenderEffect(null)
       node.discardDisplayList()
     }
@@ -400,38 +402,24 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
       }
 
-    val materialEffect =
-      if (key.materialEnabled && key.materialStrength > 0f) {
-        strip.material.setInputShader("mask", strip.mask)
-        strip.material.setFloatUniform("materialStrength", key.materialStrength)
-        setMaterialColor(
-          strip.material,
-          mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
-        )
-        strip.material.setFloatUniform("materialExposure", key.materialExposure)
-        strip.material.setFloatUniform("materialSurface", key.materialSurface)
-        strip.material.setFloatUniform(
-          "materialSurfaceProgression",
-          key.materialSurfaceProgression,
-        )
-        RenderEffect.createChainEffect(
-          RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
-          blurEffect,
-        )
-      } else {
-        blurEffect
-      }
+    strip.blurEffect = blurEffect
 
-    // Native FULL / CAP / GAUSS diagnostic badge.
-    val finalEffect =
-      when {
-        key.debugStage == "capture" -> null
-        key.debugStage == "gaussian" -> blurEffect
-        !key.materialEnabled || key.materialStrength <= 0f -> blurEffect
-        else -> materialEffect
-      }
+    if (key.materialEnabled && key.materialStrength > 0f) {
+      strip.material.setInputShader("mask", strip.mask)
+      strip.material.setFloatUniform("materialStrength", key.materialStrength)
+      setMaterialColor(
+        strip.material,
+        mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
+      )
+      strip.material.setFloatUniform("materialExposure", key.materialExposure)
+      strip.material.setFloatUniform("materialSurface", key.materialSurface)
+      strip.material.setFloatUniform(
+        "materialSurfaceProgression",
+        key.materialSurfaceProgression,
+      )
+    }
 
-    strip.node.setRenderEffect(finalEffect)
+    applyFinalEffect(strip, key)
   }
 
   private fun updateMaterialTheme(key: Key, progress: Float) {
@@ -442,7 +430,26 @@ internal class EdgeFadeProgressiveStripRenderer(
     val color = mixColor(key.materialColor, key.materialColorDark, progress)
     for (strip in strips) {
       setMaterialColor(strip.material, color)
+      // Guarantee the updated material shader state is committed to the
+      // rendered chain without rebuilding the expensive AndroidX blur.
+      applyFinalEffect(strip, key)
     }
+  }
+
+  private fun applyFinalEffect(strip: Strip, key: Key) {
+    val blurEffect = strip.blurEffect ?: return
+    val finalEffect =
+      when {
+        key.debugStage == "capture" -> null
+        key.debugStage == "gaussian" -> blurEffect
+        !key.materialEnabled || key.materialStrength <= 0f -> blurEffect
+        else ->
+          RenderEffect.createChainEffect(
+            RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
+            blurEffect,
+          )
+      }
+    strip.node.setRenderEffect(finalEffect)
   }
 
   private fun setMaterialColor(shader: RuntimeShader, color: Int) {

@@ -184,3 +184,15 @@ New reference-oriented geometry:
 
 This changes only the demo panel geometry; blur/material curves and motion
 timings remain unchanged.
+
+
+## 2026-09-23 — Material theme RenderEffect re-chain
+
+Dark mode still showed the light pearl halo after the animated theme prop and
+native invalidation were confirmed.
+
+The expensive AndroidX progressive Gaussian is now cached per strip. During
+theme animation, only the outer material RuntimeShader RenderEffect link is
+recreated after updating `materialColor`. This guarantees the light→dark
+material state is committed to the rendered chain while preserving the existing
+AndroidX gradient effect and avoiding a full progressive-blur rebuild each frame.
