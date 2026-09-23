@@ -36,6 +36,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val radius: Float,
     val progression: Float,
     val gradientSpan: Float,
+    val materialEnabled: Boolean,
     val strength: Float,
     val exposure: Float,
     val surface: Float,
@@ -156,6 +157,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
         host.tunerGradientSpanOverride = 1.00f
+        host.tunerMaterialEnabledOverride = true
         host.tunerMaterialStrengthOverride = 0.43f
         host.tunerMaterialExposureOverride = 0.68f
         host.tunerMaterialSurfaceOverride = 0.69f
@@ -187,6 +189,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     }
 
     addSection(body, "MATERIAL")
+    addSwitch(body, "material", host.effectiveMaterialEnabled()) {
+      host.tunerMaterialEnabledOverride = it
+      host.nativeTuneChanged()
+    }
     addSlider(body, "strength", 0f, 1f, host.effectiveMaterialStrength(), "") {
       host.tunerMaterialStrengthOverride = it
       host.nativeTuneChanged()
@@ -257,6 +263,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveBlurRadius(),
     host.effectiveFrostProgression(),
     host.effectiveGradientSpan(),
+    host.effectiveMaterialEnabled(),
     host.effectiveMaterialStrength(),
     host.effectiveMaterialExposure(),
     host.effectiveMaterialSurface(),
@@ -269,6 +276,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerBlurRadiusOverride = s.radius
     host.tunerProgressionOverride = s.progression
     host.tunerGradientSpanOverride = s.gradientSpan
+    host.tunerMaterialEnabledOverride = s.materialEnabled
     host.tunerMaterialStrengthOverride = s.strength
     host.tunerMaterialExposureOverride = s.exposure
     host.tunerMaterialSurfaceOverride = s.surface
@@ -282,7 +290,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val s = capture()
     val line =
       "backend=${s.backend} radius=${fmt(s.radius)} progression=${fmt(s.progression)} " +
-        "gradientSpan=${fmt(s.gradientSpan)} strength=${fmt(s.strength)} " +
+        "gradientSpan=${fmt(s.gradientSpan)} material=${s.materialEnabled} strength=${fmt(s.strength)} " +
         "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} " +
         "surfaceProg=${fmt(s.surfaceProgression)} bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

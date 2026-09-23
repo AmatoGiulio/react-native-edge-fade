@@ -46,6 +46,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val backend: String,
     val debugStage: String,
     val gradientSpan: Float,
+    val materialEnabled: Boolean,
     val materialStrength: Float,
     val materialColor: Int,
     val materialExposure: Float,
@@ -119,6 +120,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       debugStage = debugStage,
       gradientSpan =
         BlurLabGeometry.finite(host.effectiveGradientSpan(), 1f).coerceIn(0.05f, 1f),
+      materialEnabled = host.effectiveMaterialEnabled(),
       materialStrength =
         BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
@@ -137,7 +139,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       "EdgeFadeCleanConfig",
       "backend=${next.backend} stage=${next.debugStage} radius=${next.radius} " +
         "progression=${next.progression} gradientSpan=${next.gradientSpan} " +
-        "strength=${next.materialStrength} exposure=${next.materialExposure} " +
+        "material=${next.materialEnabled} strength=${next.materialStrength} exposure=${next.materialExposure} " +
         "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression}",
     )
 
@@ -364,7 +366,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
     val materialEffect =
-      if (key.materialStrength > 0f) {
+      if (key.materialEnabled && key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
         strip.material.setFloatUniform(
@@ -390,9 +392,9 @@ internal class EdgeFadeProgressiveStripRenderer(
     // Native FULL / CAP / GAUSS diagnostic badge.
     val finalEffect =
       when {
-        key.materialStrength <= 0f -> blurEffect
         key.debugStage == "capture" -> null
         key.debugStage == "gaussian" -> blurEffect
+        !key.materialEnabled || key.materialStrength <= 0f -> blurEffect
         else -> materialEffect
       }
 

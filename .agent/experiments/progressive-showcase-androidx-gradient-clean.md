@@ -109,3 +109,33 @@ Fixes and verification:
 - radius, progression, gradient span, material strength, exposure, surface and
   surface progression all participate in the native renderer key and trigger
   effect reconfiguration when active.
+
+
+## 2026-09-23 — Material bypass + progressive density entrance
+
+Requested test configuration exposing the issue:
+
+`backend=androidx-gradient radius=150 progression=1.00 gradientSpan=1.00 strength=0.32 exposure=0.52 surface=0.00 surfaceProg=0.15`.
+
+Two isolated changes:
+
+1. Native tuner now has a `material` ON/OFF switch. OFF bypasses only
+   `materialComposite`; it intentionally keeps the same blur radius, gradient,
+   half-resolution raster and strength value so ON/OFF is a fair material-only
+   A/B rather than a renderer change.
+2. The material density entrance no longer divides by
+   `materialSurfaceProgression`. At `surfaceProg=0.15` the old equation
+   saturated density almost immediately, which made the material boundary
+   visible even with low strength.
+
+New density response:
+
+- exponent varies smoothly from 1.80 at surfaceProg=0.15 to 0.75 at 1.0;
+- the shaped intensity passes through quintic smootherstep;
+- derivative is zero at intensity 0 and 1;
+- deep material still reaches exactly `materialStrength`;
+- lower surfaceProg now produces a slower, airier material build-up instead of
+  the previous early saturation.
+
+No AndroidX radius curve, BlurStop placement, panel overscan or material colour
+math changed.

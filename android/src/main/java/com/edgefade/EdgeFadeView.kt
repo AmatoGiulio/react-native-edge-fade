@@ -71,6 +71,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerBlurRadiusOverride: Float? = null
   internal var tunerProgressionOverride: Float? = null
   internal var tunerGradientSpanOverride: Float? = null
+  internal var tunerMaterialEnabledOverride: Boolean? = null
   internal var tunerMaterialStrengthOverride: Float? = null
   internal var tunerMaterialExposureOverride: Float? = null
   internal var tunerMaterialSurfaceOverride: Float? = null
@@ -196,6 +197,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal fun effectiveFrostProgression(): Float = tunerProgressionOverride ?: frostProgression
   internal fun effectiveGradientSpan(): Float =
     tunerGradientSpanOverride ?: effectiveFrostProgression()
+  internal fun effectiveMaterialEnabled(): Boolean =
+    tunerMaterialEnabledOverride ?: true
   internal fun effectiveMaterialStrength(): Float =
     tunerMaterialStrengthOverride ?: progressiveMaterialStrength
   internal fun effectiveMaterialExposure(): Float =
@@ -210,6 +213,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerBlurRadiusOverride = null
     tunerProgressionOverride = null
     tunerGradientSpanOverride = null
+    tunerMaterialEnabledOverride = null
     tunerMaterialStrengthOverride = null
     tunerMaterialExposureOverride = null
     tunerMaterialSurfaceOverride = null

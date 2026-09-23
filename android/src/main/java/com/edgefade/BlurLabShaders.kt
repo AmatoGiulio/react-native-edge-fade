@@ -269,10 +269,21 @@ internal object BlurLabShaders {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
 
-      // Scattering builds before fine detail disappears: density is not the
-      // blur radius squared. The demo cubic radius gives a soft entrance.
-      float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
-      float density = materialStrength * (1.0 - exp(-3.0 * depth));
+      // Material density must not jump at the optical entrance. The previous
+      // response divided by surfaceProgression; at the legal minimum (0.15)
+      // even tiny intensity values saturated very quickly and exposed a visible
+      // horizontal material boundary.
+      //
+      // Shape the mask first, then use smootherstep so both ends have zero
+      // slope. Lower surfaceProgression now means a later / airier build-up,
+      // while intensity=1 still reaches the requested materialStrength exactly.
+      float progression = clamp(materialSurfaceProgression, 0.15, 1.0);
+      float responseExponent = mix(1.80, 0.75, progression);
+      float shaped = pow(intensity, responseExponent);
+      float densityCurve =
+        shaped * shaped * shaped *
+        (shaped * (shaped * 6.0 - 15.0) + 10.0);
+      float density = materialStrength * densityCurve;
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
