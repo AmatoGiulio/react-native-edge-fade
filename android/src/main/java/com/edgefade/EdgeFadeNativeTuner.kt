@@ -125,10 +125,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     addChoice(body, "renderer",
       listOf(
         "JS/default",
-        "AndroidX gradient",
-        "AndroidX + 3f639 H",
-        "3f639 exact AGSL",
-        "AndroidX mask",
+        "AX gradient",
+        "AX + 3f639 H",
+        "3f639 AGSL",
+        "AX mask",
         "AGSL current",
         "scaled",
       ),
@@ -150,7 +150,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     ) { host.progressiveGradientProfile = it; host.nativeTuneChanged() }
     addSwitch(body, "panel bounds", host.tunerShowBounds) { host.tunerShowBounds = it; host.nativeTuneChanged() }
     addActions(body, listOf(
-      "3f639 EXACT" to {
+      "3f639 EXACT · AGSL" to {
         host.tunerBackendOverride = "agsl-3f639"
         host.progressiveMaterialProfile = "3f639cc"
         host.tunerBlurRadiusOverride = 150f
@@ -160,14 +160,18 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.nativeTuneChanged()
         rebuildExpanded()
       },
-      "3f639 HYBRID" to {
+    ))
+    addActions(body, listOf(
+      "3f639 HYBRID · AndroidX" to {
         host.tunerBackendOverride = "androidx-gradient-hybrid"
         host.progressiveGradientProfile = "3f639cc"
         host.progressiveMaterialProfile = "3f639cc"
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
         host.progressiveGradientOutsideFactor = 0f
-        host.progressiveGradientSpan = 1f
+        // Preserve the old 0.90 progression as the starting geometry while
+        // keeping gradient span fully independent and tunable at runtime.
+        host.progressiveGradientSpan = 0.90f
         host.progressiveBodyFusionEnabled = false
         host.nativeTuneChanged()
         rebuildExpanded()

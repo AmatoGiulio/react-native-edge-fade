@@ -794,6 +794,33 @@ No production/public path changes.
 
 ---
 
+### 23. Restore tuner independence after kernel comparator
+
+**Commit:** pending in this commit
+
+Regression found:
+
+- the `3f639cc` gradient profile silently replaced `gradient span` with
+  `progression`, so the native `gradient span` slider appeared broken;
+- exact/hybrid preset buttons shared one narrow row and renderer labels were
+  truncated enough that the active hybrid state was not visibly distinguishable;
+- backend diagnostics reported the JS prop instead of the active native override.
+
+Fix:
+
+- `gradient span` is again the single independent control for AndroidX
+  gradient geometry on every profile;
+- `progression` remains independent and only drives mask/material semantics;
+- hybrid preset starts with `progression=0.90` and `gradientSpan=0.90`,
+  matching the intended baseline without coupling the controls;
+- exact and hybrid presets are on separate full-width rows;
+- renderer labels are shortened so `AX + 3f639 H` is visible;
+- backend diagnostics now read `effectiveProgressiveBackend()`.
+
+No optical algorithm change in this fix.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:
