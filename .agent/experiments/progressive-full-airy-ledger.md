@@ -597,7 +597,7 @@ reflection/body additions.
 
 ### 18. Deep-body fusion over 3f639cc exact
 
-**Commit:** pending in this commit
+**Commits:** `c75e6bf5`, uniform-binding fix `bbc72645`
 
 Observed issue:
 
