@@ -49,3 +49,21 @@ material mask is zero. Therefore:
 
 No alpha-mask, body-uniformity, Astra-response, cross-panel-field or additional
 Gaussian experiment is included in this branch.
+
+
+## 2026-09-23 — AndroidX stop-budget correction
+
+The first port incorrectly sampled the accepted radius transfer into 65 points.
+The official multi-stop gradient API supports at most 16 `BlurStop` entries.
+
+The port now uses:
+
+- 14 adaptive transfer samples across the 6f4 radius function;
+- up to 2 outer structural stops for the identity / fully-blurred regions;
+- an explicit runtime assertion that the final list remains within 2..16 stops.
+
+The 14 transfer points approximate the 6f4 effective radius function with
+<~0.85 px worst-case radius error at the 150 px showcase maximum.
+
+No material, scene, progression, colour, half-resolution raster or border
+overscan value changed in this correction.

@@ -44,16 +44,37 @@ internal object AndroidxBlurAdapter {
   ): RenderEffect {
     val safeHeight = (height - 1).coerceAtLeast(1).toFloat()
     val increasing = maxY >= sharpY
-    val raw = ArrayList<Pair<Float, Float>>(67)
+    // AndroidX BlurStop has a hard 16-stop limit. The previous port created
+    // 65 curve samples (+ outer endpoints), which was outside the API contract.
+    //
+    // These 14 t positions are a greedy piecewise-linear fit of the accepted
+    // 6f4 effective radius transfer (LUT + 0.48→0.72 cbrt convergence). With
+    // radius=150 the maximum interpolation error stays below ~0.85 px while
+    // leaving two slots for the identity/max-radius regions outside the panel.
+    val transferT = floatArrayOf(
+      0.0000f,
+      0.1613f,
+      0.2581f,
+      0.3226f,
+      0.4193f,
+      0.4987f,
+      0.5238f,
+      0.5501f,
+      0.5806f,
+      0.6400f,
+      0.6627f,
+      0.6860f,
+      0.7127f,
+      1.0000f,
+    )
+    val raw = ArrayList<Pair<Float, Float>>(16)
 
     // Outside the nominal panel the effect is exactly identity. This lets the
     // renderer move the hard clip away from the optical boundary without
     // shifting the accepted 6f4 radius profile inside the panel.
     raw += 0f to if (increasing) 0f else maxRadiusPx
 
-    val stopCount = 65
-    for (i in 0 until stopCount) {
-      val t = i.toFloat() / (stopCount - 1).toFloat()
+    for (t in transferT) {
       val intensity = sampleLut(presenceLut, t)
       val radiusFraction =
         if (t <= 0.48f) {
@@ -83,6 +104,9 @@ internal object AndroidxBlurAdapter {
       }
     }
 
+    check(merged.size in 2..16) {
+      "AndroidX verticalGradient supports 2..16 stops; got ${merged.size}"
+    }
     val stops = merged.map { (fraction, radius) ->
       BlurStop(fraction, radius.dp)
     }
