@@ -36,6 +36,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val radius: Float,
     val progression: Float,
     val gradientSpan: Float,
+    val bottomScale: Float,
+    val bottomOffsetDp: Float,
     val curveProfile: String?,
     val curvePower: Float,
     val materialEnabled: Boolean,
@@ -43,6 +45,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val exposure: Float,
     val surface: Float,
     val surfaceProgression: Float,
+    val materialCurveSync: Boolean,
+    val materialCurveHeight: Float,
+    val materialCurveOffset: Float,
     val bounds: Boolean,
   )
 
@@ -62,7 +67,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val p = PopupWindow(
       content,
       if (expanded) panelWidth() else dp(88),
-      if (expanded) panelHeight() else ViewGroup.LayoutParams.WRAP_CONTENT,
+      if (expanded) constrainedPanelHeight() else dp(52),
       false,
     ).apply {
       isTouchable = true
@@ -75,8 +80,27 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
     host.post {
       if (!host.isAttachedToWindow || p.isShowing) return@post
-      p.showAtLocation(host.rootView, Gravity.TOP or Gravity.END, dp(10), dp(52))
+      p.showAtLocation(
+        host.rootView,
+        Gravity.TOP or Gravity.END,
+        dp(10),
+        edgeTopOnScreen(),
+      )
+      syncToEdgeBounds()
     }
+  }
+
+  fun syncToEdgeBounds() {
+    val p = popup ?: return
+    if (!p.isShowing || !host.isAttachedToWindow || host.height <= 0) return
+
+    val width = if (expanded) panelWidth() else dp(88)
+    val height = if (expanded) constrainedPanelHeight() else dp(52)
+    val hostLocation = IntArray(2)
+    host.getLocationOnScreen(hostLocation)
+    val x = (hostLocation[0] + host.width - width - dp(8)).coerceAtLeast(0)
+    val y = edgeTopOnScreen()
+    p.update(x, y, width, height)
   }
 
   fun dismiss() {
@@ -159,11 +183,16 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
         host.tunerGradientSpanOverride = 1.00f
+        host.tunerBottomScaleOverride = 1.00f
+        host.tunerBottomOffsetDpOverride = 0f
         host.tunerMaterialEnabledOverride = true
         host.tunerMaterialStrengthOverride = 0.43f
         host.tunerMaterialExposureOverride = 0.68f
         host.tunerMaterialSurfaceOverride = 0.69f
         host.tunerMaterialSurfaceProgressionOverride = 0.66f
+        host.tunerMaterialCurveSyncOverride = false
+        host.tunerMaterialCurveHeightOverride = 1f
+        host.tunerMaterialCurveOffsetOverride = 0f
         host.nativeTuneChanged()
         host.postDelayed({ rebuildExpanded() }, 40L)
       },
@@ -171,6 +200,16 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
     addSwitch(body, "panel bounds", host.tunerShowBounds) {
       host.tunerShowBounds = it
+      host.nativeTuneChanged()
+    }
+
+    addSection(body, "GEOMETRY")
+    addSlider(body, "bottom height ×", 0.35f, 1.35f, host.tunerBottomScaleOverride ?: 1f, "×") {
+      host.tunerBottomScaleOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "bottom offset", -120f, 120f, host.tunerBottomOffsetDpOverride ?: 0f, "dp") {
+      host.tunerBottomOffsetDpOverride = it
       host.nativeTuneChanged()
     }
 
@@ -183,14 +222,13 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerProgressionOverride = it
       host.nativeTuneChanged()
     }
+    addSection(body, "CURVE")
     if (host.effectiveProgressiveBackend() == "androidx-gradient") {
-      addSlider(body, "AX gradient span", 0.05f, 1f, host.effectiveGradientSpan(), "") {
+      addSlider(body, "blur curve height", 0.10f, 1f, host.effectiveGradientSpan(), "") {
         host.tunerGradientSpanOverride = it
         host.nativeTuneChanged()
       }
     }
-
-    addSection(body, "CURVE")
     addChoice(
       body,
       "curve profile",
@@ -260,6 +298,21 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerMaterialSurfaceProgressionOverride = it
       host.nativeTuneChanged()
     }
+    addSwitch(body, "sync blur curve height", host.effectiveMaterialCurveSync()) {
+      host.tunerMaterialCurveSyncOverride = it
+      host.nativeTuneChanged()
+      host.postDelayed({ rebuildExpanded() }, 40L)
+    }
+    if (!host.effectiveMaterialCurveSync()) {
+      addSlider(body, "material curve height", 0.25f, 1.5f, host.effectiveMaterialCurveHeight(), "") {
+        host.tunerMaterialCurveHeightOverride = it
+        host.nativeTuneChanged()
+      }
+    }
+    addSlider(body, "material curve offset", -0.35f, 0.35f, host.effectiveMaterialCurveOffset(), "") {
+      host.tunerMaterialCurveOffsetOverride = it
+      host.nativeTuneChanged()
+    }
 
     addSection(body, "A/B")
     addActions(body, listOf(
@@ -314,6 +367,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveBlurRadius(),
     host.effectiveFrostProgression(),
     host.effectiveGradientSpan(),
+    host.tunerBottomScaleOverride ?: 1f,
+    host.tunerBottomOffsetDpOverride ?: 0f,
     host.tunerCurveProfileOverride,
     host.tunerCurvePowerOverride ?: 3f,
     host.effectiveMaterialEnabled(),
@@ -321,6 +376,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialExposure(),
     host.effectiveMaterialSurface(),
     host.effectiveMaterialSurfaceProgression(),
+    host.effectiveMaterialCurveSync(),
+    host.effectiveMaterialCurveHeight(),
+    host.effectiveMaterialCurveOffset(),
     host.tunerShowBounds,
   )
 
@@ -329,6 +387,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerBlurRadiusOverride = s.radius
     host.tunerProgressionOverride = s.progression
     host.tunerGradientSpanOverride = s.gradientSpan
+    host.tunerBottomScaleOverride = s.bottomScale
+    host.tunerBottomOffsetDpOverride = s.bottomOffsetDp
     host.tunerCurveProfileOverride = s.curveProfile
     host.tunerCurvePowerOverride = s.curvePower
     host.tunerMaterialEnabledOverride = s.materialEnabled
@@ -336,6 +396,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerMaterialExposureOverride = s.exposure
     host.tunerMaterialSurfaceOverride = s.surface
     host.tunerMaterialSurfaceProgressionOverride = s.surfaceProgression
+    host.tunerMaterialCurveSyncOverride = s.materialCurveSync
+    host.tunerMaterialCurveHeightOverride = s.materialCurveHeight
+    host.tunerMaterialCurveOffsetOverride = s.materialCurveOffset
     host.tunerShowBounds = s.bounds
     host.nativeTuneChanged()
     rebuildExpanded()
@@ -345,10 +408,12 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val s = capture()
     val line =
       "backend=${s.backend} radius=${fmt(s.radius)} progression=${fmt(s.progression)} " +
-        "gradientSpan=${fmt(s.gradientSpan)} curve=${s.curveProfile ?: "js"} " +
+        "gradientSpan=${fmt(s.gradientSpan)} bottomScale=${fmt(s.bottomScale)} " +
+        "bottomOffsetDp=${fmt(s.bottomOffsetDp)} curve=${s.curveProfile ?: "js"} " +
         "curvePower=${fmt(s.curvePower)} material=${s.materialEnabled} strength=${fmt(s.strength)} " +
-        "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} " +
-        "surfaceProg=${fmt(s.surfaceProgression)} bounds=${s.bounds}"
+        "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} surfaceProg=${fmt(s.surfaceProgression)} " +
+        "materialCurveSync=${s.materialCurveSync} materialCurveHeight=${fmt(s.materialCurveHeight)} " +
+        "materialCurveOffset=${fmt(s.materialCurveOffset)} bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("EdgeFade clean tuner", line))
     Log.i(TAG, line)
@@ -536,8 +601,17 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private fun panelWidth() =
     minOf(dp(348), (host.resources.displayMetrics.widthPixels * 0.94f).roundToInt())
 
-  private fun panelHeight() =
-    minOf(dp(650), host.resources.displayMetrics.heightPixels - dp(110)).coerceAtLeast(dp(360))
+  private fun edgeTopOnScreen(): Int {
+    val hostLocation = IntArray(2)
+    host.getLocationOnScreen(hostLocation)
+    val edgeTopLocal = (host.height - host.effectiveFadeBottom()).roundToInt()
+    return hostLocation[1] + edgeTopLocal + dp(4)
+  }
+
+  private fun constrainedPanelHeight(): Int {
+    val available = (host.effectiveFadeBottom().roundToInt() - dp(8)).coerceAtLeast(dp(52))
+    return minOf(dp(650), available)
+  }
 
   private fun dp(value: Int) = (value * density).roundToInt()
   private fun fmt(value: Float) = "%.2f".format(java.util.Locale.US, value)

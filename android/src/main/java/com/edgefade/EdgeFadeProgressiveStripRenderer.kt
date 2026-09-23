@@ -63,6 +63,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialExposure: Float,
     val materialSurface: Float,
     val materialSurfaceProgression: Float,
+    val materialCurveHeight: Float,
+    val materialCurveOffset: Float,
   )
 
   private data class CurveSamples(
@@ -121,7 +123,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       width = width,
       height = height,
       top = BlurLabGeometry.edge(host.fadeTop, height),
-      bottom = BlurLabGeometry.edge(host.fadeBottom, height),
+      bottom = BlurLabGeometry.edge(host.effectiveFadeBottom(), height),
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
       radius = BlurLabGeometry.radius(host.effectiveBlurRadius()),
@@ -147,6 +149,12 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialSurfaceProgression =
         BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
           .coerceIn(0.15f, 1f),
+      materialCurveHeight =
+        BlurLabGeometry.finite(host.effectiveMaterialCurveHeight(), 1f)
+          .coerceIn(0.25f, 1.5f),
+      materialCurveOffset =
+        BlurLabGeometry.finite(host.effectiveMaterialCurveOffset(), 0f)
+          .coerceIn(-0.35f, 0.35f),
     )
 
     val nextThemeProgress =
@@ -165,7 +173,8 @@ internal class EdgeFadeProgressiveStripRenderer(
         "progression=${next.progression} gradientSpan=${next.gradientSpan} " +
         "material=${next.materialEnabled} strength=${next.materialStrength} exposure=${next.materialExposure} " +
         "kernelRadius=${if (next.backend == "androidx-gradient" && next.materialStrength > 0f) next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION else next.radius} " +
-        "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression}",
+        "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression} " +
+        "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset}",
     )
 
     if (next.radius <= 0f) {
@@ -417,6 +426,8 @@ internal class EdgeFadeProgressiveStripRenderer(
         "materialSurfaceProgression",
         key.materialSurfaceProgression,
       )
+      strip.material.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
+      strip.material.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
     }
 
     applyFinalEffect(strip, key)

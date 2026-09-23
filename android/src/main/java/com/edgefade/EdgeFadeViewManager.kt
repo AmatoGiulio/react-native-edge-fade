@@ -36,6 +36,7 @@ class EdgeFadeViewManager :
     super.onAfterUpdateTransaction(view)
     EdgeFadeProgressiveBlurEffect.apply(view)
     view.invalidate()
+    view.syncNativeTunerBounds()
   }
 
   override fun onDropViewInstance(view: EdgeFadeView) {
@@ -50,7 +51,10 @@ class EdgeFadeViewManager :
   override fun setFadeTop(view: EdgeFadeView, value: Float) { view.fadeTop = dp(view, value) }
 
   @ReactProp(name = "fadeBottom")
-  override fun setFadeBottom(view: EdgeFadeView, value: Float) { view.fadeBottom = dp(view, value) }
+  override fun setFadeBottom(view: EdgeFadeView, value: Float) {
+    view.fadeBottom = dp(view, value)
+    view.syncNativeTunerBounds()
+  }
 
   @ReactProp(name = "fadeLeft")
   override fun setFadeLeft(view: EdgeFadeView, value: Float) { view.fadeLeft = dp(view, value) }

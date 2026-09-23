@@ -73,6 +73,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerBlurRadiusOverride: Float? = null
   internal var tunerProgressionOverride: Float? = null
   internal var tunerGradientSpanOverride: Float? = null
+  internal var tunerBottomScaleOverride: Float? = null
+  internal var tunerBottomOffsetDpOverride: Float? = null
   internal var tunerCurveProfileOverride: String? = null
   internal var tunerCurvePowerOverride: Float? = null
   private var tunerCurvePowerCache = Float.NaN
@@ -82,6 +84,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerMaterialExposureOverride: Float? = null
   internal var tunerMaterialSurfaceOverride: Float? = null
   internal var tunerMaterialSurfaceProgressionOverride: Float? = null
+  internal var tunerMaterialCurveSyncOverride: Boolean? = null
+  internal var tunerMaterialCurveHeightOverride: Float? = null
+  internal var tunerMaterialCurveOffsetOverride: Float? = null
   internal var tunerShowBounds: Boolean = false
 
   // Kept temporarily for source compatibility with the 0.2.x public API.
@@ -204,6 +209,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal fun effectiveGradientSpan(): Float =
     tunerGradientSpanOverride ?: effectiveFrostProgression()
 
+  internal fun effectiveFadeBottom(): Float {
+    val scale = (tunerBottomScaleOverride ?: 1f).coerceIn(0.25f, 1.5f)
+    val offsetPx =
+      (tunerBottomOffsetDpOverride ?: 0f) * resources.displayMetrics.density
+    val maxHeight = if (height > 0) height.toFloat() else Float.MAX_VALUE
+    return (fadeBottom * scale + offsetPx).coerceIn(0f, maxHeight)
+  }
+
   internal fun effectiveCurve(base: String): String =
     when (val profile = tunerCurveProfileOverride) {
       null -> base
@@ -233,12 +246,24 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialSurfaceOverride ?: progressiveMaterialSurface
   internal fun effectiveMaterialSurfaceProgression(): Float =
     tunerMaterialSurfaceProgressionOverride ?: progressiveMaterialSurfaceProgression
+  internal fun effectiveMaterialCurveSync(): Boolean =
+    tunerMaterialCurveSyncOverride ?: false
+  internal fun effectiveMaterialCurveHeight(): Float =
+    if (effectiveMaterialCurveSync()) {
+      effectiveGradientSpan()
+    } else {
+      tunerMaterialCurveHeightOverride ?: 1f
+    }
+  internal fun effectiveMaterialCurveOffset(): Float =
+    tunerMaterialCurveOffsetOverride ?: 0f
 
   internal fun clearNativeTunerOverrides() {
     tunerBackendOverride = null
     tunerBlurRadiusOverride = null
     tunerProgressionOverride = null
     tunerGradientSpanOverride = null
+    tunerBottomScaleOverride = null
+    tunerBottomOffsetDpOverride = null
     tunerCurveProfileOverride = null
     tunerCurvePowerOverride = null
     tunerCurvePowerCache = Float.NaN
@@ -248,12 +273,20 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialExposureOverride = null
     tunerMaterialSurfaceOverride = null
     tunerMaterialSurfaceProgressionOverride = null
+    tunerMaterialCurveSyncOverride = null
+    tunerMaterialCurveHeightOverride = null
+    tunerMaterialCurveOffsetOverride = null
     tunerShowBounds = false
     nativeTuneChanged()
   }
 
+  internal fun syncNativeTunerBounds() {
+    nativeTuner?.syncToEdgeBounds()
+  }
+
   internal fun nativeTuneChanged() {
     postInvalidateOnAnimation()
+    syncNativeTunerBounds()
   }
 
   /**
@@ -343,10 +376,11 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     if (fadeTop > 0f) {
       canvas.drawRect(inset, inset, w - inset, fadeTop.coerceAtMost(h - inset), tunerBoundsPaint)
     }
-    if (fadeBottom > 0f) {
+    val effectiveBottom = effectiveFadeBottom()
+    if (effectiveBottom > 0f) {
       canvas.drawRect(
         inset,
-        (h - fadeBottom).coerceAtLeast(inset),
+        (h - effectiveBottom).coerceAtLeast(inset),
         w - inset,
         h - inset,
         tunerBoundsPaint,

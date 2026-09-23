@@ -217,3 +217,43 @@ The override is applied inside `EdgeFadeProgressiveStripRenderer.Key`, so a
 curve change immediately rebuilds only the active progressive effect. A/B
 snapshots and COPY now include curve profile/power. RESET returns to the JS
 reference curve.
+
+
+## 2026-09-23 — Edge-docked tuner + geometry/material curve controls
+
+### Tuner docking
+
+The native TUNE popup now anchors at the current top boundary of the bottom
+EdgeFade field and its height is capped to the field itself. It therefore never
+covers composition above the effect while tuning. The manager resynchronizes
+the popup after animated bottom-depth prop transactions, and native geometry
+controls also reposition it immediately.
+
+### Bottom geometry
+
+Runtime controls added:
+
+- `bottom height ×` (0.35..1.35): scales the animated JS bottom depth, so OPEN
+  and CLOSED keep their animation relationship instead of being frozen to one
+  absolute override;
+- `bottom offset` (-120..120dp): additive trim for final alignment.
+
+The progressive renderer uses `effectiveFadeBottom()`, while JS state remains
+untouched.
+
+### Blur/material curve height
+
+The existing AndroidX `gradientSpan` is surfaced explicitly as
+`blur curve height` in the CURVE section.
+
+Material already consumes the same blur-mask curve shape, but its density
+response has an independent spatial domain. New controls expose that domain:
+
+- `sync blur curve height` (off by default to preserve the current validated
+  material);
+- `material curve height` (0.25..1.5) when unsynced;
+- `material curve offset` (-0.35..0.35).
+
+The material shader transforms its mask intensity through that height/offset
+before the existing surface-progression response. Defaults (height=1,
+offset=0) are pixel-equivalent to the previous material curve.

@@ -263,6 +263,8 @@ internal object BlurLabShaders {
     uniform float materialExposure;
     uniform float materialSurface;
     uniform float materialSurfaceProgression;
+    uniform float materialCurveHeight;
+    uniform float materialCurveOffset;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
@@ -277,9 +279,12 @@ internal object BlurLabShaders {
       // Shape the mask first, then use smootherstep so both ends have zero
       // slope. Lower surfaceProgression now means a later / airier build-up,
       // while intensity=1 still reaches the requested materialStrength exactly.
+      float curveHeight = clamp(materialCurveHeight, 0.25, 1.5);
+      float materialIntensity =
+        clamp((intensity + materialCurveOffset) / curveHeight, 0.0, 1.0);
       float progression = clamp(materialSurfaceProgression, 0.15, 1.0);
       float responseExponent = mix(1.80, 0.75, progression);
-      float shaped = pow(intensity, responseExponent);
+      float shaped = pow(materialIntensity, responseExponent);
       float densityCurve =
         shaped * shaped * shaped *
         (shaped * (shaped * 6.0 - 15.0) + 10.0);
