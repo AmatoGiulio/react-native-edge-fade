@@ -303,7 +303,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
     actions.forEachIndexed { index, action ->
       val button = Button(context).apply {
-        text = action.first; isAllCaps = false; textSize = 10f
+        text = action.first; setAllCaps(false); textSize = 10f
         setTypeface(Typeface.MONOSPACE, Typeface.BOLD); setTextColor(Color.WHITE)
         background = rounded(0xff2d2d33.toInt(), 9f, 0x28ffffff)
         minHeight = 0; minWidth = 0; setPadding(dp(6), 0, dp(6), 0)

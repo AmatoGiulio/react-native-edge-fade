@@ -532,7 +532,7 @@ target blend.
 
 ### 16. Native runtime optical tuner
 
-**Commit:** pending in this commit
+**Commits:** `3f3c87d1`, follow-up binding fix
 
 Purpose:
 

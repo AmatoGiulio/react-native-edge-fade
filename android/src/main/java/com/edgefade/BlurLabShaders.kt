@@ -691,7 +691,7 @@ internal object BlurLabShaders {
 
       float localHighlight = smoothstep(0.44, 0.88, luma);
       float pearlReflection =
-        astraSurface *
+        astraSurface * clamp(materialReflectionGain, 0.0, 2.0) *
         (0.055 + 0.025 * localHighlight + 0.018 * darkContent);
       astraTarget = mix(astraTarget, materialColor, pearlReflection);
 
