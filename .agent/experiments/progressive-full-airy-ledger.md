@@ -821,6 +821,42 @@ No optical algorithm change in this fix.
 
 ---
 
+### 24. Pin the real 3f639cc runtime baseline
+
+**Commit:** pending in this commit
+
+Audit of the saved clean FULL capture against the current tuner found a major
+comparison error unrelated to AndroidX:
+
+The historical showcase at `3f639cc` used:
+
+- radius: 150;
+- progression: 0.90;
+- material strength: 0.96;
+- exposure: 0.98;
+- surface: 0.78;
+- surface progression: 0.62;
+- light material colour: #bfc0c4;
+- dark material colour: #595a60;
+- material raster scale: 0.5x.
+
+The current native tuner capture shown by the user had materially different
+values (for example strength 0.66, exposure 0.50, surface 1.00 and surface
+progression 1.00). Those values substantially weaken the old density response
+and preserve much more source geometry, so the comparison could not reproduce
+the clean saved 3f639cc body.
+
+Fix:
+
+- `3f639 EXACT · AGSL` now restores the four historical material values in
+  addition to radius/progression/backend;
+- `3f639 HYBRID · AndroidX` restores the same values, so the only intended
+  optical difference between the two presets is the upstream blur pipeline;
+- theme material colours remain supplied by the unchanged showcase constants,
+  which are identical to `3f639cc`.
+
+---
+
 ## Rejected / exhausted families
 
 Do not start another experiment whose only substantive change is one of these:

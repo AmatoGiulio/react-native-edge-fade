@@ -155,6 +155,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.progressiveMaterialProfile = "3f639cc"
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
+        host.tunerMaterialStrengthOverride = 0.96f
+        host.tunerMaterialExposureOverride = 0.98f
+        host.tunerMaterialSurfaceOverride = 0.78f
+        host.tunerMaterialSurfaceProgressionOverride = 0.62f
         host.progressiveGradientOutsideFactor = 0f
         host.progressiveBodyFusionEnabled = false
         host.nativeTuneChanged()
@@ -168,6 +172,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.progressiveMaterialProfile = "3f639cc"
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 0.90f
+        host.tunerMaterialStrengthOverride = 0.96f
+        host.tunerMaterialExposureOverride = 0.98f
+        host.tunerMaterialSurfaceOverride = 0.78f
+        host.tunerMaterialSurfaceProgressionOverride = 0.62f
         host.progressiveGradientOutsideFactor = 0f
         // Preserve the old 0.90 progression as the starting geometry while
         // keeping gradient span fully independent and tunable at runtime.
