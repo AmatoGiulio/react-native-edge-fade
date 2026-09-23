@@ -796,7 +796,7 @@ No production/public path changes.
 
 ### 23. Restore tuner independence after kernel comparator
 
-**Commit:** pending in this commit
+**Commit:** `7fce05af`
 
 Regression found:
 
