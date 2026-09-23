@@ -249,7 +249,7 @@ export default function ProgressiveShowcaseRoute() {
   const openMenuStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
       progress.value,
-      [0.12, 0.87],
+      [0.12, 0.935],
       [0, 1],
       Extrapolation.CLAMP
     ),

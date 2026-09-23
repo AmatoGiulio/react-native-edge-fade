@@ -80,3 +80,18 @@ No JS-frame animation loop is introduced.
 - the new material theme progress uses the same native animated-props path;
 - Android performs the material RGB mix;
 - AndroidX gradient/material optical algorithms are otherwise unchanged.
+
+
+## 2026-09-23 — Motion polish / no per-frame effect rebuild
+
+A follow-up moved animated material-theme colour out of the renderer configuration
+key. Theme frames now update only the existing RuntimeShader `materialColor`
+uniform when the static renderer key is unchanged.
+
+This avoids recreating AndroidX / RenderEffect state at 60 fps during the
+525 ms theme transition.
+
+The open-menu reveal end was also moved from field progress 0.87 to 0.935.
+With the extracted 600 ms emphasized easing this places visual completion at
+~400 ms after expansion starts, matching the dense reference frames more
+closely while keeping the first visible menu pixels at ~70–80 ms.
