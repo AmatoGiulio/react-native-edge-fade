@@ -196,3 +196,24 @@ theme animation, only the outer material RuntimeShader RenderEffect link is
 recreated after updating `materialColor`. This guarantees the light→dark
 material state is committed to the rendered chain while preserving the existing
 AndroidX gradient effect and avoiding a full progressive-blur rebuild each frame.
+
+
+## 2026-09-23 — Runtime blur-curve tuner
+
+The native TUNE panel can now change the progressive radius curve without a JS
+reload or Git round-trip.
+
+New CURVE section:
+
+- `JS / reference`: use the curve supplied by the showcase unchanged;
+- `Power`: live `alpha = 1 - t^p` curve with p=0.5..6.0;
+- `Smoother`, `Soft`, `Linear`, `Library smooth`, `Gentle`, `Sharp`
+  map directly to the existing native curve presets.
+
+For the current showcase, `Power 3.00` is the same analytical shape as the
+13-stop reference curve (`alpha = 1 - t^3`).
+
+The override is applied inside `EdgeFadeProgressiveStripRenderer.Key`, so a
+curve change immediately rebuilds only the active progressive effect. A/B
+snapshots and COPY now include curve profile/power. RESET returns to the JS
+reference curve.

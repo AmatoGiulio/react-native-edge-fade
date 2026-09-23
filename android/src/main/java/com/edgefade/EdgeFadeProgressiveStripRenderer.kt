@@ -127,10 +127,10 @@ internal class EdgeFadeProgressiveStripRenderer(
       radius = BlurLabGeometry.radius(host.effectiveBlurRadius()),
       progression =
         BlurLabGeometry.finite(host.effectiveFrostProgression(), 1f).coerceIn(0.05f, 1f),
-      curveTop = host.curveTop,
-      curveBottom = host.curveBottom,
-      curveLeft = host.curveLeft,
-      curveRight = host.curveRight,
+      curveTop = host.effectiveCurve(host.curveTop),
+      curveBottom = host.effectiveCurve(host.curveBottom),
+      curveLeft = host.effectiveCurve(host.curveLeft),
+      curveRight = host.effectiveCurve(host.curveRight),
       backend = exactBackend,
       debugStage = debugStage,
       gradientSpan =

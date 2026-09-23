@@ -73,6 +73,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerBlurRadiusOverride: Float? = null
   internal var tunerProgressionOverride: Float? = null
   internal var tunerGradientSpanOverride: Float? = null
+  internal var tunerCurveProfileOverride: String? = null
+  internal var tunerCurvePowerOverride: Float? = null
+  private var tunerCurvePowerCache = Float.NaN
+  private var tunerCurveSerializedCache = ""
   internal var tunerMaterialEnabledOverride: Boolean? = null
   internal var tunerMaterialStrengthOverride: Float? = null
   internal var tunerMaterialExposureOverride: Float? = null
@@ -199,6 +203,26 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal fun effectiveFrostProgression(): Float = tunerProgressionOverride ?: frostProgression
   internal fun effectiveGradientSpan(): Float =
     tunerGradientSpanOverride ?: effectiveFrostProgression()
+
+  internal fun effectiveCurve(base: String): String =
+    when (val profile = tunerCurveProfileOverride) {
+      null -> base
+      "power" -> {
+        val power = (tunerCurvePowerOverride ?: 3f).coerceIn(0.5f, 6f)
+        if (power != tunerCurvePowerCache || tunerCurveSerializedCache.isEmpty()) {
+          tunerCurvePowerCache = power
+          tunerCurveSerializedCache =
+            (0..12).joinToString(",") { index ->
+              val t = index / 12f
+              val alpha = 1f - Math.pow(t.toDouble(), power.toDouble()).toFloat()
+              String.format(java.util.Locale.US, "%.6f", alpha.coerceIn(0f, 1f))
+            }
+        }
+        tunerCurveSerializedCache
+      }
+      else -> profile
+    }
+
   internal fun effectiveMaterialEnabled(): Boolean =
     tunerMaterialEnabledOverride ?: true
   internal fun effectiveMaterialStrength(): Float =
@@ -215,6 +239,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerBlurRadiusOverride = null
     tunerProgressionOverride = null
     tunerGradientSpanOverride = null
+    tunerCurveProfileOverride = null
+    tunerCurvePowerOverride = null
+    tunerCurvePowerCache = Float.NaN
+    tunerCurveSerializedCache = ""
     tunerMaterialEnabledOverride = null
     tunerMaterialStrengthOverride = null
     tunerMaterialExposureOverride = null

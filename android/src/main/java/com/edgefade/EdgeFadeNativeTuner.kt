@@ -36,6 +36,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val radius: Float,
     val progression: Float,
     val gradientSpan: Float,
+    val curveProfile: String?,
+    val curvePower: Float,
     val materialEnabled: Boolean,
     val strength: Float,
     val exposure: Float,
@@ -188,6 +190,55 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       }
     }
 
+    addSection(body, "CURVE")
+    addChoice(
+      body,
+      "curve profile",
+      listOf(
+        "JS / reference",
+        "Power",
+        "Smoother",
+        "Soft",
+        "Linear",
+        "Library smooth",
+        "Gentle",
+        "Sharp",
+      ),
+      listOf<String?>(
+        null,
+        "power",
+        "smoother",
+        "soft",
+        "linear",
+        "smooth",
+        "gentle",
+        "sharp",
+      ),
+      host.tunerCurveProfileOverride,
+    ) {
+      host.tunerCurveProfileOverride = it
+      if (it == "power" && host.tunerCurvePowerOverride == null) {
+        // p=3 is byte-for-byte equivalent in shape to the showcase reference
+        // alpha = 1 - t^3 curve (sampled at the same 13 positions).
+        host.tunerCurvePowerOverride = 3f
+      }
+      host.nativeTuneChanged()
+      host.postDelayed({ rebuildExpanded() }, 40L)
+    }
+    if (host.tunerCurveProfileOverride == "power") {
+      addSlider(
+        body,
+        "curve power",
+        0.5f,
+        6f,
+        host.tunerCurvePowerOverride ?: 3f,
+        "×",
+      ) {
+        host.tunerCurvePowerOverride = it
+        host.nativeTuneChanged()
+      }
+    }
+
     addSection(body, "MATERIAL")
     addSwitch(body, "material", host.effectiveMaterialEnabled()) {
       host.tunerMaterialEnabledOverride = it
@@ -263,6 +314,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveBlurRadius(),
     host.effectiveFrostProgression(),
     host.effectiveGradientSpan(),
+    host.tunerCurveProfileOverride,
+    host.tunerCurvePowerOverride ?: 3f,
     host.effectiveMaterialEnabled(),
     host.effectiveMaterialStrength(),
     host.effectiveMaterialExposure(),
@@ -276,6 +329,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerBlurRadiusOverride = s.radius
     host.tunerProgressionOverride = s.progression
     host.tunerGradientSpanOverride = s.gradientSpan
+    host.tunerCurveProfileOverride = s.curveProfile
+    host.tunerCurvePowerOverride = s.curvePower
     host.tunerMaterialEnabledOverride = s.materialEnabled
     host.tunerMaterialStrengthOverride = s.strength
     host.tunerMaterialExposureOverride = s.exposure
@@ -290,7 +345,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val s = capture()
     val line =
       "backend=${s.backend} radius=${fmt(s.radius)} progression=${fmt(s.progression)} " +
-        "gradientSpan=${fmt(s.gradientSpan)} material=${s.materialEnabled} strength=${fmt(s.strength)} " +
+        "gradientSpan=${fmt(s.gradientSpan)} curve=${s.curveProfile ?: "js"} " +
+        "curvePower=${fmt(s.curvePower)} material=${s.materialEnabled} strength=${fmt(s.strength)} " +
         "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} " +
         "surfaceProg=${fmt(s.surfaceProgression)} bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
