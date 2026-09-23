@@ -633,6 +633,43 @@ Initial runtime defaults:
 The native tuner exposes all five values plus an on/off switch. Turning body
 fusion off restores the unmodified 3f639cc material/compositor response.
 
+**Observed result:** tonal/chroma compression alone did not remove the large
+soft card silhouettes. It reduced their contrast but preserved their spatial
+footprint, because every pixel was still transformed independently.
+
+---
+
+### 19. Spatial deep-body diffusion
+
+**Commit:** pending in this commit
+
+Root cause:
+
+The remaining orange/blue blobs are low-frequency spatial structure already
+present in the AndroidX-blurred scene. A per-pixel luma/chroma transform cannot
+erase their geometry.
+
+Change:
+
+- keep AndroidX `verticalGradient` as the primary Gaussian;
+- keep the 3f639cc material equations after it;
+- before material grading, only in the deep-body gate, sample the already
+  blurred child through a 13-tap two-ring spatial kernel;
+- blend that low-frequency field into the scene progressively with panel depth;
+- preserve the shoulder exactly before `bodyFusionStart`;
+- clamp samples to the captured raster so the wider kernel cannot introduce
+  transparent/black edge halos.
+
+Runtime knobs:
+
+- `spatial diffusion`: default 0.88;
+- `diffusion radius`: default 64 screen px;
+- existing body start/end still control where the diffusion develops.
+
+This is deliberately not another global Gaussian-radius increase: the official
+AndroidX blur field is untouched, and the extra spatial averaging exists only
+inside the deep body where the card-shaped blobs were visible.
+
 ---
 
 ## Rejected / exhausted families

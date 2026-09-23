@@ -35,6 +35,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val bodyFusion: Boolean, val bodyUniformity: Float,
     val deepChroma: Float, val deepLuma: Float,
     val bodyStart: Float, val bodyEnd: Float,
+    val diffusion: Float, val diffusionRadius: Float,
     val bounds: Boolean,
   )
 
@@ -181,6 +182,14 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.progressiveBodyFusionEnd = it
       host.nativeTuneChanged()
     }
+    addSlider(body, "spatial diffusion", 0f, 1f, host.progressiveBodyDiffusion, "") {
+      host.progressiveBodyDiffusion = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "diffusion radius", 0f, 160f, host.progressiveBodyDiffusionRadius, "px") {
+      host.progressiveBodyDiffusionRadius = it
+      host.nativeTuneChanged()
+    }
 
     addSection(body, "CURRENT BODY · inactive on 3f639cc")
     addSlider(body, "Astra mix", 0f, 1f, host.progressiveAstraMix, "") { host.progressiveAstraMix = it; host.nativeTuneChanged() }
@@ -229,6 +238,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.progressiveBodyFusionEnabled, host.progressiveBodyUniformity,
     host.progressiveDeepChromaGain, host.progressiveDeepLumaCompression,
     host.progressiveBodyFusionStart, host.progressiveBodyFusionEnd,
+    host.progressiveBodyDiffusion, host.progressiveBodyDiffusionRadius,
     host.tunerShowBounds,
   )
 
@@ -254,6 +264,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.progressiveDeepLumaCompression = s.deepLuma
     host.progressiveBodyFusionStart = s.bodyStart
     host.progressiveBodyFusionEnd = s.bodyEnd
+    host.progressiveBodyDiffusion = s.diffusion
+    host.progressiveBodyDiffusionRadius = s.diffusionRadius
     host.tunerShowBounds = s.bounds
     host.nativeTuneChanged()
     rebuildExpanded()
@@ -270,7 +282,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         "reflection=${fmt(s.reflection)} body=${fmt(s.body)} chroma=${fmt(s.chroma)} " +
         "bodyFusion=${s.bodyFusion} uniformity=${fmt(s.bodyUniformity)} " +
         "deepChroma=${fmt(s.deepChroma)} deepLuma=${fmt(s.deepLuma)} " +
-        "bodyStart=${fmt(s.bodyStart)} bodyEnd=${fmt(s.bodyEnd)} bounds=${s.bounds}"
+        "bodyStart=${fmt(s.bodyStart)} bodyEnd=${fmt(s.bodyEnd)} " +
+        "diffusion=${fmt(s.diffusion)} diffusionRadius=${fmt(s.diffusionRadius)} bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText("EdgeFade tuner", line))
     Log.i(TAG, line)

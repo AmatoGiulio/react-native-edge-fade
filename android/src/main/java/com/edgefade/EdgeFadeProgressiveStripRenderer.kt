@@ -93,6 +93,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val deepLumaCompression: Float,
     val bodyFusionStart: Float,
     val bodyFusionEnd: Float,
+    val bodyDiffusion: Float,
+    val bodyDiffusionRadius: Float,
   )
 
   private data class CurveSamples(
@@ -198,6 +200,10 @@ internal class EdgeFadeProgressiveStripRenderer(
         BlurLabGeometry.finite(host.progressiveBodyFusionStart, 0.16f).coerceIn(0f, 0.95f),
       bodyFusionEnd =
         BlurLabGeometry.finite(host.progressiveBodyFusionEnd, 0.68f).coerceIn(0.05f, 1f),
+      bodyDiffusion =
+        BlurLabGeometry.finite(host.progressiveBodyDiffusion, 0.88f).coerceIn(0f, 1f),
+      bodyDiffusionRadius =
+        BlurLabGeometry.finite(host.progressiveBodyDiffusionRadius, 64f).coerceIn(0f, 160f),
     )
 
     if (key == next) return true
@@ -599,6 +605,9 @@ internal class EdgeFadeProgressiveStripRenderer(
         shader.setFloatUniform("deepLumaCompression", key.deepLumaCompression)
         shader.setFloatUniform("bodyFusionStart", key.bodyFusionStart)
         shader.setFloatUniform("bodyFusionEnd", key.bodyFusionEnd)
+        shader.setFloatUniform("bodyDiffusion", key.bodyDiffusion)
+        shader.setFloatUniform("bodyDiffusionRadius", key.bodyDiffusionRadius * scale)
+        shader.setFloatUniform("materialExtent", rasterWidth.toFloat(), rasterHeight.toFloat())
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(shader, "content"),
           blurEffect,

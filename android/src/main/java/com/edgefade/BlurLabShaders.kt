@@ -610,6 +610,9 @@ internal object BlurLabShaders {
     uniform float deepLumaCompression;
     uniform float bodyFusionStart;
     uniform float bodyFusionEnd;
+    uniform float bodyDiffusion;
+    uniform float bodyDiffusionRadius;
+    uniform float2 materialExtent;
 
     float materialDistanceInside(float2 coord) {
       if (materialEdge < 0.5) return materialBoundary - coord.y;
@@ -618,9 +621,58 @@ internal object BlurLabShaders {
       return coord.x - materialBoundary;
     }
 
+    float4 sampleContentSafe(float2 p) {
+      float2 hi = float2(max(materialExtent.x - 1.0, 0.0), max(materialExtent.y - 1.0, 0.0));
+      return float4(content.eval(clamp(p, float2(0.0), hi)));
+    }
+
+    float4 diffuseBody(float2 coord, float radius) {
+      if (radius <= 0.5) return sampleContentSafe(coord);
+
+      float d = radius * 0.70710678;
+      float4 sum = sampleContentSafe(coord) * 0.20;
+
+      // Ring 1: isotropic 8 taps.
+      sum += sampleContentSafe(coord + float2( radius, 0.0)) * 0.07;
+      sum += sampleContentSafe(coord + float2(-radius, 0.0)) * 0.07;
+      sum += sampleContentSafe(coord + float2(0.0,  radius)) * 0.07;
+      sum += sampleContentSafe(coord + float2(0.0, -radius)) * 0.07;
+      sum += sampleContentSafe(coord + float2( d,  d)) * 0.07;
+      sum += sampleContentSafe(coord + float2(-d,  d)) * 0.07;
+      sum += sampleContentSafe(coord + float2( d, -d)) * 0.07;
+      sum += sampleContentSafe(coord + float2(-d, -d)) * 0.07;
+
+      // Ring 2: wider cardinal taps erase card-sized low-frequency islands.
+      float far = radius * 2.0;
+      sum += sampleContentSafe(coord + float2( far, 0.0)) * 0.06;
+      sum += sampleContentSafe(coord + float2(-far, 0.0)) * 0.06;
+      sum += sampleContentSafe(coord + float2(0.0,  far)) * 0.06;
+      sum += sampleContentSafe(coord + float2(0.0, -far)) * 0.06;
+      return sum;
+    }
+
     half4 main(float2 coord) {
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       float4 sampled = float4(content.eval(coord));
+
+      float insideBody = max(materialDistanceInside(coord), 0.0);
+      float bodyDepth = clamp(insideBody / max(materialPanelDepth, 1.0), 0.0, 1.0);
+      float bodyStart = clamp(min(bodyFusionStart, bodyFusionEnd - 0.01), 0.0, 0.99);
+      float bodyEnd = clamp(max(bodyFusionEnd, bodyStart + 0.01), bodyStart + 0.01, 1.0);
+      float bodyShape = smoothstep(bodyStart, bodyEnd, bodyDepth);
+
+      // The previous pass only compressed each pixel independently, so large
+      // orange/blue source regions remained visible as equally large soft blobs.
+      // Diffuse the *already AndroidX-blurred* scene spatially in the deep body.
+      if (
+        bodyFusionEnabled > 0.5 &&
+        bodyDiffusion > 0.0 &&
+        bodyDiffusionRadius > 0.5 &&
+        materialPanelDepth > 0.0
+      ) {
+        float4 diffuse = diffuseBody(coord, bodyDiffusionRadius);
+        sampled = mix(sampled, diffuse, bodyShape * clamp(bodyDiffusion, 0.0, 1.0));
+      }
 
       if (intensity > 0.0 && materialStrength > 0.0) {
         float depth = pow(intensity, 0.65) / max(materialSurfaceProgression, 0.15);
@@ -646,12 +698,8 @@ internal object BlurLabShaders {
         // reduce local scene contrast/chroma deeper in the panel. This removes
         // card-shaped colour islands without increasing Gaussian radius.
         if (bodyFusionEnabled > 0.5 && bodyUniformity > 0.0 && materialPanelDepth > 0.0) {
-          float insideBody = max(materialDistanceInside(coord), 0.0);
-          float bodyDepth = clamp(insideBody / max(materialPanelDepth, 1.0), 0.0, 1.0);
-          float start = clamp(min(bodyFusionStart, bodyFusionEnd - 0.01), 0.0, 0.99);
-          float end = clamp(max(bodyFusionEnd, start + 0.01), start + 0.01, 1.0);
           float bodyGate =
-            smoothstep(start, end, bodyDepth) * clamp(bodyUniformity, 0.0, 1.0);
+            bodyShape * clamp(bodyUniformity, 0.0, 1.0);
 
           float gradedLuma = dot(graded, float3(0.2126, 0.7152, 0.0722));
           float3 gradedChroma = graded - float3(gradedLuma);
