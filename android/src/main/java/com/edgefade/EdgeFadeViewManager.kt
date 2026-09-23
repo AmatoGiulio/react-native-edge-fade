@@ -104,12 +104,20 @@ class EdgeFadeViewManager :
   @ReactProp(name = "blurRadius")
   override fun setBlurRadius(view: EdgeFadeView, value: Float) { view.blurRadius = dp(view, value) }
 
+  @ReactProp(name = "progressiveNativeTuner")
+  override fun setProgressiveNativeTuner(view: EdgeFadeView, value: Boolean) {
+    view.updateProgressiveNativeTunerEnabled(value)
+  }
+
   @ReactProp(name = "progressiveBackend")
   override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
     view.progressiveBackend = when (value) {
       "exact" -> "exact"
       "agsl" -> "agsl"
+      "agsl-debug-capture" -> "agsl-debug-capture"
+      "agsl-debug-gaussian" -> "agsl-debug-gaussian"
       "androidx" -> "androidx"
+      "androidx-gradient" -> "androidx-gradient"
       "scaled" -> "scaled"
       else -> "auto"
     }

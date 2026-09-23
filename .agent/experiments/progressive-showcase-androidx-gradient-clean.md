@@ -67,3 +67,26 @@ The 14 transfer points approximate the 6f4 effective radius function with
 
 No material, scene, progression, colour, half-resolution raster or border
 overscan value changed in this correction.
+
+
+## 2026-09-23 — Restore diagnostics on clean AndroidX branch
+
+The branch had accidentally lost the diagnostic surface while being recreated
+from `demo/progressive-showcase`.
+
+Restored without importing later optical experiments:
+
+- native Android `TUNE` PopupWindow;
+- renderer selector: JS/default, AndroidX gradient, AGSL baseline, AndroidX shader;
+- radius, progression and independent AndroidX gradient-span controls;
+- material strength/exposure/surface/surface-progression controls;
+- native panel-bounds toggle;
+- A/B save/load, copy and reset;
+- FULL/CAP/GAUSS badge in the showcase.
+
+Important bug fixed at the same time:
+
+`EdgeFadeViewManager` did not recognize the string `androidx-gradient`; it
+normalized it to `auto`. Therefore the showcase could silently run the normal
+auto backend instead of the new official vertical-gradient backend. The manager
+now preserves `androidx-gradient` explicitly.

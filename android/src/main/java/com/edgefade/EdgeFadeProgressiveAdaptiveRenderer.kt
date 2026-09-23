@@ -35,18 +35,20 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val radius =
-      if (host.blurRadius.isFinite()) {
-        host.blurRadius.coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
+      if (host.effectiveBlurRadius().isFinite()) {
+        host.effectiveBlurRadius().coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX)
       } else {
         0f
       }
 
-    val override = when (host.progressiveBackend) {
-      "exact" -> "exact"
-      "agsl" -> "agsl"
-      "androidx" -> "androidx"
-      "androidx-gradient" -> "androidx-gradient"
-      "scaled" -> "scaled"
+    val requestedBackend = host.effectiveProgressiveBackend()
+    val override = when {
+      requestedBackend.startsWith("agsl-debug-") -> "agsl"
+      requestedBackend == "exact" -> "exact"
+      requestedBackend == "agsl" -> "agsl"
+      requestedBackend == "androidx" -> "androidx"
+      requestedBackend == "androidx-gradient" -> "androidx-gradient"
+      requestedBackend == "scaled" -> "scaled"
       else -> "auto"
     }
 
@@ -123,7 +125,7 @@ internal class EdgeFadeProgressiveAdaptiveRenderer(
   }
 
   fun backendName(): String {
-    val requested = hostRef.get()?.progressiveBackend
+    val requested = hostRef.get()?.effectiveProgressiveBackend()
     return when (mode) {
       Mode.SCALED -> "hwui-scaled33"
       Mode.EXACT -> when (requested) {

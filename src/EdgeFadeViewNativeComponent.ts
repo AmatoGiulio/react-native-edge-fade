@@ -27,6 +27,8 @@ interface NativeProps extends ViewProps {
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveBackend?: string;
+  /** Android showcase-only native runtime tuner; not part of public JS props. */
+  progressiveNativeTuner?: boolean;
   /**
    * Internal showcase material grading. 0 keeps public progressive blur pure.
    * Deliberately not exposed by the public JS prop types.

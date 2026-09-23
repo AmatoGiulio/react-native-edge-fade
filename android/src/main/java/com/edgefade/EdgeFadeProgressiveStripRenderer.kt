@@ -43,6 +43,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val curveLeft: String,
     val curveRight: String,
     val backend: String,
+    val debugStage: String,
+    val gradientSpan: Float,
     val materialStrength: Float,
     val materialColor: Int,
     val materialExposure: Float,
@@ -83,10 +85,17 @@ internal class EdgeFadeProgressiveStripRenderer(
     val height = host.height
     if (width <= 0 || height <= 0) return false
 
-    val exactBackend = when (host.progressiveBackend) {
-      "agsl" -> "agsl"
-      "androidx" -> "androidx"
-      "androidx-gradient" -> "androidx-gradient"
+    val requestedBackend = host.effectiveProgressiveBackend()
+    val debugStage =
+      when (requestedBackend) {
+        "agsl-debug-capture" -> "capture"
+        "agsl-debug-gaussian" -> "gaussian"
+        else -> "material"
+      }
+    val exactBackend = when {
+      requestedBackend.startsWith("agsl") -> "agsl"
+      requestedBackend == "androidx" -> "androidx"
+      requestedBackend == "androidx-gradient" -> "androidx-gradient"
       else -> if (AndroidxBlurAdapter.available) "androidx" else "agsl"
     }
     if (exactBackend.startsWith("androidx") && !AndroidxBlurAdapter.available) return false
@@ -98,23 +107,26 @@ internal class EdgeFadeProgressiveStripRenderer(
       bottom = BlurLabGeometry.edge(host.fadeBottom, height),
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
-      radius = BlurLabGeometry.radius(host.blurRadius),
+      radius = BlurLabGeometry.radius(host.effectiveBlurRadius()),
       progression =
-        BlurLabGeometry.finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
+        BlurLabGeometry.finite(host.effectiveFrostProgression(), 1f).coerceIn(0.05f, 1f),
       curveTop = host.curveTop,
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
       backend = exactBackend,
+      debugStage = debugStage,
+      gradientSpan =
+        BlurLabGeometry.finite(host.effectiveGradientSpan(), 1f).coerceIn(0.05f, 1f),
       materialStrength =
-        BlurLabGeometry.finite(host.progressiveMaterialStrength).coerceIn(0f, 1f),
+        BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
       materialColor = host.progressiveMaterialColor,
       materialExposure =
-        BlurLabGeometry.finite(host.progressiveMaterialExposure, 1f).coerceIn(0.5f, 1.2f),
+        BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
       materialSurface =
-        BlurLabGeometry.finite(host.progressiveMaterialSurface).coerceIn(0f, 1f),
+        BlurLabGeometry.finite(host.effectiveMaterialSurface()).coerceIn(0f, 1f),
       materialSurfaceProgression =
-        BlurLabGeometry.finite(host.progressiveMaterialSurfaceProgression, 0.7f)
+        BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
           .coerceIn(0.15f, 1f),
     )
 
@@ -300,9 +312,9 @@ internal class EdgeFadeProgressiveStripRenderer(
           else strip.band.visible.height.toFloat()
         val maxY =
           if (strip.band.edge == 0) {
-            sharpY - depth * key.progression * scale
+            sharpY - depth * key.gradientSpan * scale
           } else {
-            sharpY + depth * key.progression * scale
+            sharpY + depth * key.gradientSpan * scale
           }
         val presence =
           if (strip.band.edge == 0) curves.top else curves.bottom
@@ -342,7 +354,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
       }
 
-    val finalEffect =
+    val materialEffect =
       if (key.materialStrength > 0f) {
         strip.material.setInputShader("mask", strip.mask)
         strip.material.setFloatUniform("materialStrength", key.materialStrength)
@@ -364,6 +376,15 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
       } else {
         blurEffect
+      }
+
+    // Native FULL / CAP / GAUSS diagnostic badge.
+    val finalEffect =
+      when {
+        key.materialStrength <= 0f -> blurEffect
+        key.debugStage == "capture" -> null
+        key.debugStage == "gaussian" -> blurEffect
+        else -> materialEffect
       }
 
     strip.node.setRenderEffect(finalEffect)

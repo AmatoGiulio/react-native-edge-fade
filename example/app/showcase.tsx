@@ -174,6 +174,9 @@ export default function ProgressiveShowcaseRoute() {
 
   const [open, setOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [debugStage, setDebugStage] = useState<
+    'material' | 'capture' | 'gaussian'
+  >('material');
   const progress = useSharedValue(0);
   const themeProgress = useSharedValue(0);
 
@@ -346,6 +349,21 @@ export default function ProgressiveShowcaseRoute() {
     });
   };
 
+  const cycleDebugStage = () => {
+    setDebugStage((current) =>
+      current === 'material'
+        ? 'capture'
+        : current === 'capture'
+          ? 'gaussian'
+          : 'material'
+    );
+  };
+
+  const debugBackend =
+    debugStage === 'material'
+      ? 'androidx-gradient'
+      : `agsl-debug-${debugStage}`;
+
   return (
     <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -364,7 +382,8 @@ export default function ProgressiveShowcaseRoute() {
         curve={REFERENCE_BLUR_CURVE}
         blurRadius={blurRadiusDp}
         blurProgression={blurProgression}
-        progressiveBackend="androidx-gradient"
+        progressiveBackend={debugBackend}
+        progressiveNativeTuner={true}
         progressiveMaterialStrength={materialStrength}
         progressiveMaterialColor={
           darkMode ? DARK_MATERIAL_COLOR : LIGHT_MATERIAL_COLOR
@@ -484,6 +503,21 @@ export default function ProgressiveShowcaseRoute() {
           />
         </Animated.View>
       </ProgressiveFade>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Cycle progressive debug stage"
+        onPress={cycleDebugStage}
+        style={[s.debugProbe, { top: insets.top + 6 }]}
+      >
+        <Text style={s.debugProbeText}>
+          {debugStage === 'material'
+            ? 'FULL'
+            : debugStage === 'capture'
+              ? 'CAP'
+              : 'GAUSS'}
+        </Text>
+      </Pressable>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
@@ -623,6 +657,25 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: '#efeeec',
     overflow: 'hidden',
+  },
+
+  debugProbe: {
+    position: 'absolute',
+    left: 8,
+    zIndex: 100,
+    minWidth: 48,
+    height: 26,
+    paddingHorizontal: 8,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.64)',
+  },
+  debugProbeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 
   previousCard: {
