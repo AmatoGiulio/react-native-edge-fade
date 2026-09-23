@@ -118,3 +118,30 @@ For the official `androidx-gradient` material path only:
 - public/tuner radius values and the radius-stop curve remain unchanged.
 
 This is a topology/quality fix, not another alpha-mask or material-curve test.
+
+
+## 2026-09-23 — Direction-specific bottom chrome timing
+
+The latest device recording confirmed that the field open/close timing already
+matches well, but the avatar/menu exit lingered too long.
+
+Dense reference close frames show:
+
+- menu/avatar still full at ~5.75 s;
+- clearly fading at 5.80 s;
+- nearly gone by 5.85 s;
+- gone by 5.90 s;
+- View/Perfection begin returning around 5.95 s and settle by ~6.10 s.
+
+Therefore bottom chrome is no longer derived from the 540/600 ms field progress.
+
+OPEN:
+- View/Perfection hide after 40 ms over 110 ms;
+- expanded menu starts after 90 ms and resolves over 220 ms.
+
+CLOSE:
+- expanded menu starts leaving after 45 ms and is gone over 145 ms;
+- View/Perfection wait until 235 ms, then return over 160 ms.
+
+The material field timing/easing is untouched. `Settings` remains permanently
+pinned as in the reference.

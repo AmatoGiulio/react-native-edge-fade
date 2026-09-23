@@ -12,6 +12,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  cancelAnimation,
   Easing,
   Extrapolation,
   interpolate,
@@ -20,6 +21,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -51,6 +53,20 @@ const FIELD_CLOSE_MS = 540;
 const THEME_SURFACE_MS = 525;
 const THEME_CONTROL_MS = 420;
 const REFERENCE_MOTION_EASE = Easing.bezier(0.24, 0, 0.15, 1);
+
+// Bottom-chrome timing measured separately from the material field.
+// OPEN reference: closed nav 0.45→0.55, menu 0.50→0.70.
+// CLOSE reference: menu 5.75→5.90, closed nav 5.95→6.10.
+const CLOSED_NAV_HIDE_DELAY_MS = 40;
+const CLOSED_NAV_HIDE_MS = 110;
+const MENU_SHOW_DELAY_MS = 90;
+const MENU_SHOW_MS = 220;
+const MENU_HIDE_DELAY_MS = 45;
+const MENU_HIDE_MS = 145;
+const CLOSED_NAV_SHOW_DELAY_MS = 235;
+const CLOSED_NAV_SHOW_MS = 160;
+const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
+const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -189,6 +205,8 @@ export default function ProgressiveShowcaseRoute() {
     'material' | 'capture' | 'gaussian'
   >('material');
   const progress = useSharedValue(0);
+  const closedNavOpacity = useSharedValue(1);
+  const openMenuOpacity = useSharedValue(0);
   const themeSurfaceProgress = useSharedValue(0);
   const themeControlProgress = useSharedValue(0);
 
@@ -235,24 +253,15 @@ export default function ProgressiveShowcaseRoute() {
     mediaWidth * 0.9
   );
 
-  // Chrome stays spatially pinned in the reference. View/Perfection leave
-  // early; the expanded menu resolves continuously with the material field.
+  // The reference chrome is not a simple remap of field progress. It has
+  // direction-specific delays/durations, especially on CLOSE where the menu
+  // disappears in ~145 ms while the material field keeps collapsing for 540 ms.
   const closedNavStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.value,
-      [0.05, 0.42],
-      [1, 0],
-      Extrapolation.CLAMP
-    ),
+    opacity: closedNavOpacity.value,
   }));
 
   const openMenuStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      progress.value,
-      [0.12, 0.935],
-      [0, 1],
-      Extrapolation.CLAMP
-    ),
+    opacity: openMenuOpacity.value,
   }));
 
   const menuLinkTextStyle = useAnimatedStyle(() => ({
@@ -378,10 +387,46 @@ export default function ProgressiveShowcaseRoute() {
     const next = !open;
     setOpen(next);
 
+    cancelAnimation(progress);
+    cancelAnimation(closedNavOpacity);
+    cancelAnimation(openMenuOpacity);
+
     progress.value = withTiming(next ? 1 : 0, {
       duration: next ? FIELD_OPEN_MS : FIELD_CLOSE_MS,
       easing: REFERENCE_MOTION_EASE,
     });
+
+    if (next) {
+      closedNavOpacity.value = withDelay(
+        CLOSED_NAV_HIDE_DELAY_MS,
+        withTiming(0, {
+          duration: CLOSED_NAV_HIDE_MS,
+          easing: CHROME_OUT_EASE,
+        })
+      );
+      openMenuOpacity.value = withDelay(
+        MENU_SHOW_DELAY_MS,
+        withTiming(1, {
+          duration: MENU_SHOW_MS,
+          easing: CHROME_IN_EASE,
+        })
+      );
+    } else {
+      openMenuOpacity.value = withDelay(
+        MENU_HIDE_DELAY_MS,
+        withTiming(0, {
+          duration: MENU_HIDE_MS,
+          easing: CHROME_OUT_EASE,
+        })
+      );
+      closedNavOpacity.value = withDelay(
+        CLOSED_NAV_SHOW_DELAY_MS,
+        withTiming(1, {
+          duration: CLOSED_NAV_SHOW_MS,
+          easing: CHROME_IN_EASE,
+        })
+      );
+    }
   };
 
   const cycleDebugStage = () => {
