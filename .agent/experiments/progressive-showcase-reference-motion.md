@@ -375,3 +375,44 @@ Runtime COLOR FIELD controls:
 The old shader-side virtual-grid/spread implementation is removed so this test
 isolates the real multi-scale hypothesis. AndroidX gradient geometry and blur
 radius remain untouched.
+
+
+## 2026-09-24 — Colour field v4: weighted chroma diffusion
+
+The true low-res pass removed the synthetic grid, but device validation at
+maximum field mix/resolution/blur still preserved the rectangular identity of
+the source card. A Gaussian alone was therefore still diffusing image structure
+rather than only the colour information we want from the reference.
+
+v4 adds a preprocess shader before the low-resolution Gaussian:
+
+- compute source luminance and chroma;
+- derive a weight from chroma magnitude, suppressing near-neutral page/card
+  backgrounds;
+- retain only a small amount of source luminance;
+- preserve/amplify hue chroma;
+- output premultiplied RGB with chroma weight as alpha.
+
+The subsequent Gaussian now performs a weighted colour average. When the
+blurred result is unpremultiplied by the material shader, nearby saturated
+sources mix by colour contribution instead of carrying their full rectangular
+luminance silhouette.
+
+Pipeline:
+
+scene -> low-res chroma extractor -> wide Gaussian -> pearl/smoke material ->
+transparent overlay above the validated AndroidX material.
+
+Initial values:
+
+- field mix 0.68
+- field resolution 0.08
+- field blur 160 px
+- chroma gate 0.035
+- chroma gain 1.35
+- luma carry 0.10
+
+Runtime TUNE exposes chroma gate, chroma gain and luma carry. LOAD CHROMA TEST
+restores the user's latest preferred blur/material geometry together with these
+field values. Public progressive blur remains unchanged because the colour field
+is still an internal showcase-only opt-in.
