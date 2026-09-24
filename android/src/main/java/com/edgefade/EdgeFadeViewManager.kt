@@ -181,9 +181,14 @@ class EdgeFadeViewManager :
     view.progressiveMaterialColorFieldMix = value.coerceIn(0f, 1f)
   }
 
-  @ReactProp(name = "progressiveMaterialColorFieldRadiusScale", defaultFloat = 1f)
-  override fun setProgressiveMaterialColorFieldRadiusScale(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldRadiusScale = value.coerceIn(0.5f, 3f)
+  @ReactProp(name = "progressiveMaterialColorFieldScale", defaultFloat = 0.10f)
+  override fun setProgressiveMaterialColorFieldScale(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldScale = value.coerceIn(0.05f, 0.25f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColorFieldBlurRadiusPx", defaultFloat = 96f)
+  override fun setProgressiveMaterialColorFieldBlurRadiusPx(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 220f)
   }
 
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
