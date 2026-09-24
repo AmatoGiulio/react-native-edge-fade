@@ -23,7 +23,6 @@ import Animated, {
   useDerivedValue,
   useSharedValue,
   withDelay,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -156,43 +155,59 @@ const DEFAULT_EXPANDED_SCALE = 1.3;
 const MAX_EXPANDED_DEPTH = 620;
 
 // Motion measured frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
-// OPEN: immediate attack (veil almost fully up within ~17-50ms), then a long
-// slow tail until ~500ms where blur keeps creeping up the photo pair.
-// CLOSE: fast collapse, ~100ms of real motion.
-const FIELD_OPEN_MS = 560;
-const FIELD_CLOSE_MS = 220;
-const REFERENCE_OPEN_EASE = Easing.bezier(0.05, 0.7, 0.1, 1);
-const REFERENCE_CLOSE_EASE = Easing.bezier(0.25, 0, 0.1, 1);
-const THEME_SURFACE_MS = 525;
-const THEME_CONTROL_MS = 420;
-const REFERENCE_MOTION_EASE = Easing.bezier(0.24, 0, 0.15, 1);
-
-// Theme-change "breath": tapping Dark/Light while open rises the panel to full
-// height using the OPEN easing/duration, holds briefly, then exhales back to
-// the normal open height. Set THEME_BREATH_RETURN = false to keep the panel
-// at full height instead of returning (skips the exhale step entirely).
-const THEME_BREATH_HOLD_MS = 140;
-const THEME_BREATH_RETURN_MS = 620;
-const THEME_BREATH_RETURN_EASE = Easing.bezier(0.3, 0, 0.2, 1);
-const THEME_BREATH_RETURN = true;
+// OPEN: rising sweep — lower area veils 0-150ms, upper photo pair sweeps in
+// 170-450ms. CLOSE mirrors it: gentle start so the blur visibly recedes
+// downward, soft landing (not the old fast 220ms collapse).
+const FIELD_OPEN_MS = 600;
+const FIELD_CLOSE_MS = 520;
+const REFERENCE_OPEN_EASE = Easing.bezier(0.24, 0, 0.15, 1);
+const REFERENCE_CLOSE_EASE = Easing.bezier(0.45, 0, 0.2, 1);
 
 // Bottom-chrome timing measured separately from the material field (opacity
 // only, no translate). Theme segment shows first, then avatar + links.
 // OPEN: closed nav hide 0→50ms; theme segment show 15→105ms; avatar+links
-// show 70→150ms.
-// CLOSE: menu (incl. segment) hide 0→90ms; closed nav show 90→170ms.
+// show 120→280ms (arrives while the sweep passes them).
+// CLOSE: menu (incl. segment) hide 0→140ms; closed nav show 300→500ms
+// (arrives as the field settles into the closed bar).
 const CLOSED_NAV_HIDE_DELAY_MS = 0;
 const CLOSED_NAV_HIDE_MS = 50;
 const SEGMENT_SHOW_DELAY_MS = 15;
 const SEGMENT_SHOW_MS = 90;
-const MENU_SHOW_DELAY_MS = 70;
-const MENU_SHOW_MS = 80;
+const MENU_SHOW_DELAY_MS = 120;
+const MENU_SHOW_MS = 160;
 const MENU_HIDE_DELAY_MS = 0;
-const MENU_HIDE_MS = 90;
-const CLOSED_NAV_SHOW_DELAY_MS = 90;
-const CLOSED_NAV_SHOW_MS = 80;
+const MENU_HIDE_MS = 140;
+const CLOSED_NAV_SHOW_DELAY_MS = 300;
+const CLOSED_NAV_SHOW_MS = 200;
 const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
+
+// Theme-change "single driver": one shared value (themeMotion, 0→1 linear,
+// 900ms) phase-locks everything a Dark/Light tap touches. Each channel reads
+// its own eased window of that same 0→1 sweep inside a worklet, so colour,
+// pill and panel-lift can never drift out of sync with each other:
+//  - colour c(t): reference luma curve, ~500ms ease-out, over t in [0, 0.56].
+//  - pill p(t): reaches its destination first, ~200ms, over t in [0, 0.22].
+//  - lift L(t) = sin(pi * e(t)): one smooth bell over the full sweep, no
+//    hold, returns to exactly 0 at t=1 (the "breath" idea, without the old
+//    withSequence hold/return discontinuity).
+const THEME_MOTION_MS = 900;
+const THEME_COLOUR_WINDOW = 0.56;
+const THEME_PILL_WINDOW = 0.22;
+const THEME_COLOUR_EASE = Easing.bezierFn(0.3, 0.05, 0.15, 1);
+const THEME_PILL_EASE = Easing.bezierFn(0.3, 0, 0.1, 1);
+const THEME_LIFT_EASE = Easing.bezierFn(0.33, 0, 0.2, 1);
+const THEME_LIFT = 1;
+
+function themeColourCurve(t: number) {
+  'worklet';
+  return THEME_COLOUR_EASE(Math.min(t / THEME_COLOUR_WINDOW, 1));
+}
+
+function themePillCurve(t: number) {
+  'worklet';
+  return THEME_PILL_EASE(Math.min(t / THEME_PILL_WINDOW, 1));
+}
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -396,18 +411,34 @@ export default function ProgressiveShowcaseRoute() {
   const closedNavOpacity = useSharedValue(1);
   const openMenuOpacity = useSharedValue(0);
   const openSegmentOpacity = useSharedValue(0);
-  const themeSurfaceProgress = useSharedValue(0);
-  const themeControlProgress = useSharedValue(0);
+  // Single theme driver: themeFrom/themeTo bracket the tap, themeMotion
+  // sweeps 0→1, everything else is derived from it (see constants above).
+  const themeMotion = useSharedValue(0);
+  const themeFrom = useSharedValue(0);
+  const themeTo = useSharedValue(0);
 
   const expandedDepth = Math.max(
     closedDepth + 150,
     Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
   );
-  // progress runs [0,1] for closed→open and extends to 2 for the theme
-  // "breath" (panel rising to full height and back).
+  // Theme lift bell L(t), gated to 0 unless the panel is fully open — a tap
+  // while closed still animates colours/pill but must not lift the panel.
+  const liftValue = useDerivedValue(() => {
+    'worklet';
+    const eased = THEME_LIFT_EASE(themeMotion.value);
+    return Math.sin(Math.PI * eased);
+  });
+  const themeLift = useDerivedValue(() =>
+    progress.value >= 0.999 ? liftValue.value : 0
+  );
+  // progress runs [0,1] for closed→open; the theme lift bell adds on top of
+  // the open height (single smooth rise/return, no discontinuity).
+  const panelProgress = useDerivedValue(
+    () => progress.value + THEME_LIFT * themeLift.value
+  );
   const bottomDepth = useDerivedValue(() =>
     interpolate(
-      progress.value,
+      panelProgress.value,
       [0, 1, 2],
       [closedDepth, expandedDepth, height],
       Extrapolation.CLAMP
@@ -415,26 +446,36 @@ export default function ProgressiveShowcaseRoute() {
   );
   const blurProgression = useDerivedValue(() =>
     interpolate(
-      progress.value,
+      panelProgress.value,
       [0, 1, 2],
       [1, openProgression, openProgression],
       Extrapolation.CLAMP
     )
   );
-  // Opening "light flash": the veil is brighter in its first ~80ms then
-  // settles. Zero outside the open pass (progress > 1, i.e. mid-breath).
+  // Opening "light flash": the veil is brighter in its first half then
+  // settles, following the rising sweep. Zero outside the open pass.
   const flash = useDerivedValue(() =>
-    interpolate(progress.value, [0, 0.35, 1], [0, 1, 0], Extrapolation.CLAMP)
-  );
-  // breath: 0 at open height, 1 at full-height breath peak.
-  const breath = useDerivedValue(() =>
-    interpolate(progress.value, [1, 2], [0, 1], Extrapolation.CLAMP)
+    interpolate(progress.value, [0, 0.5, 1], [0, 1, 0], Extrapolation.CLAMP)
   );
   const materialStrengthValue = useDerivedValue(
-    () => materialStrength - 0.18 * breath.value
+    () => materialStrength - 0.18 * themeLift.value
   );
   const materialExposureValue = useDerivedValue(
-    () => DEFAULT_MATERIAL_EXPOSURE + 0.16 * breath.value + 0.1 * flash.value
+    () =>
+      DEFAULT_MATERIAL_EXPOSURE + 0.16 * themeLift.value + 0.08 * flash.value
+  );
+  // Colour and pill channels of the theme driver — both read themeMotion
+  // through their own eased window, so a tap moves shape first, colour last.
+  const themeSurfaceProgress = useDerivedValue(
+    () =>
+      themeFrom.value +
+      (themeTo.value - themeFrom.value) * themeColourCurve(themeMotion.value)
+  );
+  const themeControlProgress = themeSurfaceProgress;
+  const themePillProgress = useDerivedValue(
+    () =>
+      themeFrom.value +
+      (themeTo.value - themeFrom.value) * themePillCurve(themeMotion.value)
   );
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
@@ -567,7 +608,7 @@ export default function ProgressiveShowcaseRoute() {
     transform: [
       {
         translateX: interpolate(
-          themeControlProgress.value,
+          themePillProgress.value,
           [0, 1],
           [segmentHalf, 0]
         ),
@@ -614,33 +655,20 @@ export default function ProgressiveShowcaseRoute() {
     setDarkMode(nextDark);
     const target = nextDark ? 1 : 0;
 
-    themeControlProgress.value = withTiming(target, {
-      duration: THEME_CONTROL_MS,
-      easing: REFERENCE_MOTION_EASE,
+    // Capture where the colour channel actually is right now (mid-tap-safe),
+    // fold it into themeFrom, then sweep themeMotion 0→1 again. Pill and lift
+    // read the same sweep through their own windows, so everything a tap
+    // touches stays phase-locked with no separate timers to drift apart.
+    cancelAnimation(themeMotion);
+    const currentColour = themeColourCurve(themeMotion.value);
+    themeFrom.value =
+      themeFrom.value + (themeTo.value - themeFrom.value) * currentColour;
+    themeTo.value = target;
+    themeMotion.value = 0;
+    themeMotion.value = withTiming(1, {
+      duration: THEME_MOTION_MS,
+      easing: Easing.linear,
     });
-    themeSurfaceProgress.value = withTiming(target, {
-      duration: THEME_SURFACE_MS,
-      easing: REFERENCE_MOTION_EASE,
-    });
-
-    // "Breath" experiment: rise to full height on the OPEN curve, hold, then
-    // (optionally) exhale back to the normal open height.
-    cancelAnimation(progress);
-    progress.value = THEME_BREATH_RETURN
-      ? withSequence(
-          withTiming(2, {
-            duration: FIELD_OPEN_MS,
-            easing: REFERENCE_OPEN_EASE,
-          }),
-          withDelay(
-            THEME_BREATH_HOLD_MS,
-            withTiming(1, {
-              duration: THEME_BREATH_RETURN_MS,
-              easing: THEME_BREATH_RETURN_EASE,
-            })
-          )
-        )
-      : withTiming(2, { duration: FIELD_OPEN_MS, easing: REFERENCE_OPEN_EASE });
   };
 
   const togglePanel = () => {
