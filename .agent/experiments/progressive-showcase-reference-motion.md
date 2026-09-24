@@ -344,3 +344,34 @@ of each image.
 This is intentionally a shader-side virtual low-res pass for the first optical
 validation. It avoids introducing another framebuffer/render-target topology
 until the visual hypothesis is confirmed on device.
+
+
+## 2026-09-24 — Colour field v3: true low-resolution pre-pass
+
+Device validation of v2 showed the expected failure mode: the virtual lattice
+produced visible square colour regions that were merely softened. It did not
+reproduce the organic colour fusion in the reference.
+
+v3 replaces that approximation with a real secondary render path:
+
+1. keep the validated AndroidX progressive Gaussian at full resolution;
+2. capture the same scene into a separate RenderNode at 5–25% resolution;
+3. apply a wide Gaussian to that low-resolution render target;
+4. upscale it through the GPU;
+5. run it through the same pearl/smoke material response;
+6. composite it transparently over the normal full-resolution material.
+
+The field overlay follows the material density curve, so it becomes transparent
+at the optical entrance instead of leaking above the sheet. The capture source
+extends about 2.5 field-blur radii beyond the visible sheet to reduce CLAMP
+halos.
+
+Runtime COLOR FIELD controls:
+
+- field mix: 0..1;
+- field resolution: 0.05..0.25, default 0.10;
+- field blur: 16..220 px screen-space, default 96 px.
+
+The old shader-side virtual-grid/spread implementation is removed so this test
+isolates the real multi-scale hypothesis. AndroidX gradient geometry and blur
+radius remain untouched.
