@@ -253,6 +253,43 @@ internal object BlurLabShaders {
   """.trimIndent()
 
 
+  // Demo-only chroma extractor for the low-resolution colour field.
+  // It suppresses neutral/luminance structure before the wide Gaussian so the
+  // field behaves like weighted colour diffusion instead of a blurred copy of
+  // rectangular thumbnails.
+  val colorFieldSource = """
+    uniform shader content;
+    uniform float chromaGate;
+    uniform float chromaGain;
+    uniform float lumaMix;
+
+    half4 main(float2 coord) {
+      half4 source = content.eval(coord);
+      float sourceAlpha = max(float(source.a), 0.0001);
+      float3 rgb = clamp(float3(source.rgb) / sourceAlpha, 0.0, 1.0);
+
+      float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+      float maxChannel = max(rgb.r, max(rgb.g, rgb.b));
+      float minChannel = min(rgb.r, min(rgb.g, rgb.b));
+      float chromaAmount = maxChannel - minChannel;
+
+      float gate = clamp(chromaGate, 0.0, 0.25);
+      float weight = smoothstep(gate, gate + 0.18, chromaAmount);
+      weight = pow(weight, 0.72);
+
+      // Remove most local luminance geometry while preserving hue direction.
+      // Neutral page/card backgrounds therefore contribute almost no weight,
+      // while saturated image colours mix together through the later Gaussian.
+      float carriedLuma = mix(0.5, luma, clamp(lumaMix, 0.0, 0.5));
+      float3 chroma = rgb - float3(luma);
+      float3 fieldRgb =
+        clamp(float3(carriedLuma) + chroma * clamp(chromaGain, 0.5, 2.5), 0.0, 1.0);
+
+      float coverage = weight * float(source.a);
+      return half4(fieldRgb * coverage, coverage);
+    }
+  """.trimIndent()
+
   // Demo-only optical response after ONE continuously varying Gaussian.
   // No screen-space shape: the apparent contour must come from source colour.
   val materialComposite = """
