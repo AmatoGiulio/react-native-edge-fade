@@ -57,10 +57,12 @@ interface NativeProps extends ViewProps {
   progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
   /** Internal low-frequency RGB field before the material tone response. */
   progressiveMaterialColorFieldEnabled?: boolean;
-  /** 0 = blurred source only, 1 = low-frequency colour field only. */
+  /** 0 = normal material only, 1 = full low-frequency colour-field influence. */
   progressiveMaterialColorFieldMix?: CodegenTypes.Float;
-  /** Relative sampling radius for the low-frequency colour field. */
-  progressiveMaterialColorFieldRadiusScale?: CodegenTypes.Float;
+  /** Internal render scale for the dedicated colour-field capture (0.05..0.25). */
+  progressiveMaterialColorFieldScale?: CodegenTypes.Float;
+  /** Screen-space blur radius, in px, applied after the low-res capture. */
+  progressiveMaterialColorFieldBlurRadiusPx?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
