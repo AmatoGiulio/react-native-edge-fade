@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  type ImageSourcePropType,
   PixelRatio,
   Pressable,
   StatusBar,
@@ -25,39 +26,109 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
-import { STILLS_ITEMS } from '@/data/catalog';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
-const ITEMS = STILLS_ITEMS;
+
+const SHOWCASE_IMAGES = {
+  beachBand: {
+    source: require('../assets/showcase/beach-band.jpg'),
+    ratio: 1600 / 950,
+  },
+  balloonSword: {
+    source: require('../assets/showcase/balloon-sword.jpg'),
+    ratio: 1,
+  },
+  spectrum: { source: require('../assets/showcase/spectrum.jpg'), ratio: 1 },
+  skyHorses: { source: require('../assets/showcase/sky-horses.jpg'), ratio: 1 },
+};
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Reference-oriented opalescent substrate. Blur remains a single Gaussian;
 // these values only tune the post-blur material response.
-const DEFAULT_MATERIAL_STRENGTH = 0.96;
+const DEFAULT_MATERIAL_STRENGTH = 1;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
-const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.62;
+const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.95;
 const LIGHT_MATERIAL_COLOR = '#d4d4d4';
 // Near-black smoke anchor: colour shapes come from the source field, not from
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
-const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 0.68;
+const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 1;
 const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.08;
-const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 160;
+const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 320;
 const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE = 0.035;
-const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.35;
-const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.10;
-// CLOSED in the reference is essentially the bottom navigation bar plus a
-// small optical shoulder, not a 200+ px material panel.
-const CLOSED_BAR_HEIGHT = 54;
-const CLOSED_BAR_BOTTOM_OFFSET = 18;
-const CLOSED_FIELD_SHOULDER = 14;
+const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.2;
+const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.8;
+const DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT = 1;
+const DEFAULT_MATERIAL_CURVE_OFFSET = 0;
+// Field-only render: the body reads like a smoke/milk wash with no residual
+// card structure, so the curve sits low and the color field is fully mixed.
+const DEFAULT_MATERIAL_CURVE_HEIGHT = 0.5;
 
-// OPEN is also substantially shorter than the previous 70% viewport field.
-// The reference keeps the field concentrated around the lower menu/content.
+// Geometry measured frame-by-frame from reference_demo_edge_fade.mp4,
+// normalized to screen width; vertical values are distances from the screen
+// bottom (the reference crops the top of the phone, so anchoring to the
+// bottom is what stays stable across device sizes).
+const REF_LAYOUT = {
+  media: { left: 0.182, width: 0.765 },
+  contentLeft: 0.049,
+  mediaRightMargin: 0.053,
+  previousCard: { bottomFromBottom: 1.241, minHeightScale: 0.3 },
+  accountRow1: { centerFromBottom: 1.127, height: 0.13 },
+  photoPair: {
+    topFromBottom: 1.046,
+    height: 0.46,
+    primaryWidth: 0.478,
+    gap: 0.027,
+    secondaryWidth: 0.478,
+  },
+  accountRow2: { centerFromBottom: 0.476, height: 0.13 },
+  lowerCard: { topFromBottom: 0.392, extraHeight: 0.08 },
+  accountRowSizing: {
+    avatar: 0.104,
+    badge: 0.036,
+    textGap: 0.029,
+    nameFontSize: 0.041,
+    dateFontSize: 0.031,
+    lineHeightScale: 1.25,
+  },
+  closedNav: {
+    labelFontSize: 0.036,
+    labelCenterFromBottom: 0.104,
+    viewLeft: 0.089,
+    settingsRight: 0.068,
+    fieldDepthScale: 0.29,
+    icon: {
+      width: 0.092,
+      height: 0.059,
+      borderRadius: 0.012,
+      innerWidthScale: 0.62,
+      innerHeightScale: 0.55,
+      centerFromBottom: 0.176,
+    },
+  },
+  openMenu: {
+    avatarLeft: 0.049,
+    avatarDiameter: 0.107,
+    avatarTopFromBottom: 0.651,
+    linkLeft: 0.049,
+    linkFontSize: 0.047,
+    linkCentersFromBottom: [0.456, 0.357, 0.257],
+    settingsCenterFromBottom: 0.105,
+    theme: {
+      left: 0.049,
+      width: 0.4,
+      height: 0.1,
+      centerFromBottom: 0.109,
+      labelFontSize: 0.036,
+    },
+  },
+} as const;
+
+// OPEN field depth is width-based like REF_LAYOUT: ~1.05W from the bottom reaches mid photo-pair, as in the reference.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
-const DEFAULT_EXPANDED_SCALE = 0.38;
-const MAX_EXPANDED_DEPTH = 380;
+const DEFAULT_EXPANDED_SCALE = 1.05;
+const MAX_EXPANDED_DEPTH = 620;
 
 // Motion extracted frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
 // One emphasized curve explains panel open/close and both theme directions:
@@ -84,11 +155,11 @@ const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
-  // Cubic radius: preserve detail through the spacious upper shoulder,
-  // then diffuse broadly in the body. Material density grows independently.
+  // Quadratic radius: the upper shoulder already softens (reference veils the
+  // lower half of the photo pair), then diffuses broadly in the body.
   values: [
-    1, 0.9994, 0.9954, 0.9844, 0.963, 0.9277, 0.875, 0.8015, 0.7037, 0.5781,
-    0.4213, 0.2297, 0,
+    1, 0.9931, 0.9722, 0.9375, 0.8889, 0.8264, 0.75, 0.6597, 0.5556, 0.4375,
+    0.3056, 0.1597, 0,
   ],
 };
 
@@ -110,13 +181,23 @@ function AccountRow({
   subtitle,
   date,
   themeProgress,
+  width,
 }: {
-  avatar: (typeof ITEMS)[number];
+  avatar: { source: ImageSourcePropType };
   name: string;
   subtitle: string;
   date: string;
   themeProgress: SharedValue<number>;
+  width: number;
 }) {
+  const sizing = REF_LAYOUT.accountRowSizing;
+  const avatarSize = width * sizing.avatar;
+  const badgeSize = width * sizing.badge;
+  const nameFontSize = Math.round(width * sizing.nameFontSize);
+  const textLineHeight = Math.round(nameFontSize * sizing.lineHeightScale);
+  const dateFontSize = Math.round(width * sizing.dateFontSize);
+  const textGap = width * sizing.textGap;
+
   const primaryTextStyle = useAnimatedStyle(() => ({
     color: interpolateColor(
       themeProgress.value,
@@ -156,25 +237,78 @@ function AccountRow({
 
   return (
     <View style={s.accountRow}>
-      <View style={s.accountIdentity}>
-        <View style={s.avatarWrap}>
-          <Image source={avatar.source} style={s.avatar} contentFit="cover" />
-          <Animated.View style={[s.badge, badgeStyle]}>
-            <View style={s.badgeDot} />
+      <View style={[s.accountIdentity, { gap: textGap }]}>
+        <View style={{ width: avatarSize, height: avatarSize }}>
+          <Image
+            source={avatar.source}
+            style={[
+              s.avatar,
+              {
+                width: avatarSize,
+                height: avatarSize,
+                borderRadius: avatarSize / 2,
+              },
+            ]}
+            contentFit="cover"
+          />
+          <Animated.View
+            style={[
+              s.badge,
+              {
+                width: badgeSize,
+                height: badgeSize,
+                borderRadius: badgeSize * 0.3,
+              },
+              badgeStyle,
+            ]}
+          >
+            <View
+              style={[
+                s.badgeDot,
+                {
+                  width: badgeSize * 0.38,
+                  height: badgeSize * 0.38,
+                  borderRadius: badgeSize * 0.19,
+                },
+              ]}
+            />
           </Animated.View>
         </View>
 
         <View>
-          <Animated.Text style={[s.accountName, primaryTextStyle]}>
+          <Animated.Text
+            style={[
+              s.accountName,
+              { fontSize: nameFontSize, lineHeight: textLineHeight },
+              primaryTextStyle,
+            ]}
+          >
             {name}
           </Animated.Text>
-          <Animated.Text style={[s.accountSubtitle, secondaryTextStyle]}>
+          <Animated.Text
+            style={[
+              s.accountSubtitle,
+              { fontSize: nameFontSize, lineHeight: textLineHeight },
+              secondaryTextStyle,
+            ]}
+          >
             {subtitle}
           </Animated.Text>
         </View>
       </View>
 
-      <Animated.Text style={[s.accountDate, dateStyle]}>{date}</Animated.Text>
+      <Animated.Text
+        style={[
+          s.accountDate,
+          {
+            fontSize: dateFontSize,
+            lineHeight: Math.round(dateFontSize * 1.2),
+          },
+          dateStyle,
+        ]}
+      >
+        {date}
+      </Animated.Text>
     </View>
   );
 }
@@ -204,24 +338,18 @@ export default function ProgressiveShowcaseRoute() {
     1
   );
   const blurRadiusPx = clampNumber(radiusRaw, DEFAULT_BLUR_RADIUS_PX, 1, 150);
-  const defaultClosedDepth =
-    insets.bottom +
-    CLOSED_BAR_BOTTOM_OFFSET +
-    CLOSED_BAR_HEIGHT +
-    CLOSED_FIELD_SHOULDER;
-  const closedDepth = clampNumber(depthRaw, defaultClosedDepth, 72, 180);
-  const expandedScale = clampNumber(
-    scaleRaw,
-    DEFAULT_EXPANDED_SCALE,
-    0.28,
-    0.65
+  const defaultClosedDepth = Math.min(
+    180,
+    Math.max(72, width * REF_LAYOUT.closedNav.fieldDepthScale)
   );
+  const closedDepth = clampNumber(depthRaw, defaultClosedDepth, 72, 180);
+  const expandedScale = clampNumber(scaleRaw, DEFAULT_EXPANDED_SCALE, 0.6, 1.6);
   const blurRadiusDp = blurRadiusPx / PixelRatio.get();
 
   const [open, setOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [debugStage, setDebugStage] = useState<
-    'material' | 'capture' | 'gaussian'
+    'material' | 'field' | 'capture' | 'gaussian'
   >('material');
   const progress = useSharedValue(0);
   const closedNavOpacity = useSharedValue(1);
@@ -231,7 +359,7 @@ export default function ProgressiveShowcaseRoute() {
 
   const expandedDepth = Math.max(
     closedDepth + 150,
-    Math.min(height * expandedScale, MAX_EXPANDED_DEPTH)
+    Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
   );
   const bottomDepth = useDerivedValue(() =>
     interpolate(progress.value, [0, 1], [closedDepth, expandedDepth])
@@ -242,38 +370,48 @@ export default function ProgressiveShowcaseRoute() {
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
   // document. The native blur is the only thing changing during the transition.
-  const sceneLeft = width * 0.075;
-  const sceneWidth = width * 0.85;
-  const mediaInset = width * 0.085;
-  const mediaLeft = sceneLeft + mediaInset;
-  const mediaWidth = sceneWidth - mediaInset;
+  // Vertical positions are anchored to the screen bottom (H - W*k) because the
+  // reference crops the top of the phone.
+  const W = width;
+  const H = height;
+  const mediaLeft = W * REF_LAYOUT.media.left;
+  const mediaWidth = W * REF_LAYOUT.media.width;
+  const contentLeft = W * REF_LAYOUT.contentLeft;
+  const contentRight = W * (1 - REF_LAYOUT.mediaRightMargin);
 
   // The reference movie itself is cropped above the phone. Do not reproduce
   // that crop in the demo: keep the preceding media fully visible and aligned
   // to the same media column as the rest of the feed.
-  const previousItem = ITEMS[41]!;
-  const lowerItem = ITEMS[27]!;
-  const previousTop = insets.top + width * 0.015;
-  const previousHeight = mediaWidth / previousItem.ratio;
-
-  const firstAccountTop = previousTop + previousHeight + width * 0.04;
-  const accountHeight = Math.max(52, width * 0.132);
-
-  const pairTop = firstAccountTop + accountHeight + width * 0.018;
-  const pairHeight = width * 0.44;
-  const pairGap = Math.max(9, width * 0.022);
-  const primaryWidth = (mediaWidth - pairGap) * 0.61;
-  const secondaryWidth = mediaWidth - pairGap - primaryWidth;
-
-  const secondAccountTop = pairTop + pairHeight + width * 0.045;
-  const lowerTop = secondAccountTop + accountHeight + width * 0.018;
-  // The feed continues underneath the fixed bottom chrome in the reference.
-  // Overscan the last media beyond the viewport so the progressive field always
-  // has real image content to diffuse all the way to the home-indicator edge.
-  const lowerHeight = Math.max(
-    height - lowerTop + insets.bottom + width * 0.06,
-    mediaWidth * 0.9
+  const previousItem = SHOWCASE_IMAGES.beachBand;
+  const lowerItem = SHOWCASE_IMAGES.skyHorses;
+  const previousTop = insets.top + W * 0.015;
+  const previousBottomEdge = H - W * REF_LAYOUT.previousCard.bottomFromBottom;
+  const previousHeight = Math.max(
+    previousBottomEdge - previousTop,
+    W * REF_LAYOUT.previousCard.minHeightScale
   );
+
+  const accountHeight = W * REF_LAYOUT.accountRow1.height;
+  const accountRow1Center = H - W * REF_LAYOUT.accountRow1.centerFromBottom;
+  const firstAccountTop = accountRow1Center - accountHeight / 2;
+
+  const pairTop = H - W * REF_LAYOUT.photoPair.topFromBottom;
+  const pairHeight = W * REF_LAYOUT.photoPair.height;
+  const pairGap = W * REF_LAYOUT.photoPair.gap;
+  const primaryWidth = W * REF_LAYOUT.photoPair.primaryWidth;
+  // Same width as the primary tile: it runs past the right screen edge and is
+  // clipped, matching the reference's horizontally-cut carousel. The page's
+  // overflow: hidden clips it — the pair container itself must not.
+  const secondaryWidth = W * REF_LAYOUT.photoPair.secondaryWidth;
+
+  const accountRow2Center = H - W * REF_LAYOUT.accountRow2.centerFromBottom;
+  const secondAccountTop = accountRow2Center - accountHeight / 2;
+
+  const lowerTop = H - W * REF_LAYOUT.lowerCard.topFromBottom;
+  // The reference extends past the screen bottom and is cut there.
+  const lowerHeight =
+    W * REF_LAYOUT.lowerCard.topFromBottom +
+    W * REF_LAYOUT.lowerCard.extraHeight;
 
   // The reference chrome is not a simple remap of field progress. It has
   // direction-specific delays/durations, especially on CLOSE where the menu
@@ -320,8 +458,8 @@ export default function ProgressiveShowcaseRoute() {
   // Match the reference pill geometry: compact height, wider track and an
   // exact 2 px optical inset. The previous half-width used the OUTER width,
   // which made the selected pill overrun the track and get clipped on the right.
-  const segmentWidth = Math.min(154, width * 0.32);
-  const segmentHeight = 32;
+  const segmentWidth = W * REF_LAYOUT.openMenu.theme.width;
+  const segmentHeight = W * REF_LAYOUT.openMenu.theme.height;
   const segmentInset = 2;
   const segmentInnerWidth = segmentWidth - segmentInset * 2;
   const segmentHalf = segmentInnerWidth / 2;
@@ -454,10 +592,12 @@ export default function ProgressiveShowcaseRoute() {
   const cycleDebugStage = () => {
     setDebugStage((current) =>
       current === 'material'
-        ? 'capture'
-        : current === 'capture'
-          ? 'gaussian'
-          : 'material'
+        ? 'field'
+        : current === 'field'
+          ? 'capture'
+          : current === 'capture'
+            ? 'gaussian'
+            : 'material'
     );
   };
 
@@ -465,6 +605,39 @@ export default function ProgressiveShowcaseRoute() {
     debugStage === 'material'
       ? 'androidx-gradient'
       : `agsl-debug-${debugStage}`;
+
+  // Closed nav geometry.
+  const closedNavLabelFontSize = Math.round(
+    W * REF_LAYOUT.closedNav.labelFontSize
+  );
+  const closedNavLabelLineHeight = Math.round(closedNavLabelFontSize * 1.2);
+  const closedNavLabelCenterY =
+    H - W * REF_LAYOUT.closedNav.labelCenterFromBottom;
+  const closedNavLabelTop =
+    closedNavLabelCenterY - closedNavLabelLineHeight / 2;
+  const icon = REF_LAYOUT.closedNav.icon;
+  const iconWidth = W * icon.width;
+  const iconHeight = W * icon.height;
+  const iconBorderRadius = W * icon.borderRadius;
+  const iconCenterY = H - W * icon.centerFromBottom;
+  const iconTop = iconCenterY - iconHeight / 2;
+  const closedNavCenterBottom =
+    closedNavLabelCenterY + closedNavLabelLineHeight / 2;
+  const closedNavCenterHeight = closedNavCenterBottom - iconTop;
+
+  // Open menu geometry.
+  const om = REF_LAYOUT.openMenu;
+  const menuAvatarSize = W * om.avatarDiameter;
+  const menuAvatarTop = H - W * om.avatarTopFromBottom;
+  const menuLinkFontSize = Math.round(W * om.linkFontSize);
+  const menuLinkLineHeight = Math.round(menuLinkFontSize * 1.2);
+  const menuLinkCenters = om.linkCentersFromBottom.map((k) => H - W * k);
+  const themeSegmentCenterY = H - W * om.theme.centerFromBottom;
+  const themeSegmentTop = themeSegmentCenterY - segmentHeight / 2;
+  const themeSegmentLabelFontSize = Math.round(W * om.theme.labelFontSize);
+  const persistentSettingsCenterY = H - W * om.settingsCenterFromBottom;
+  const persistentSettingsTop =
+    persistentSettingsCenterY - closedNavLabelLineHeight / 2;
 
   return (
     <View style={s.page}>
@@ -510,6 +683,14 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialColorFieldLumaMix={
           DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX
         }
+        // The reference fuses cards and page into one wash, so the low-res
+        // field carries neutrals + luminance; curve offset veils the photo
+        // pair before detail loss.
+        progressiveMaterialColorFieldNeutralWeight={
+          DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT
+        }
+        progressiveMaterialCurveOffset={DEFAULT_MATERIAL_CURVE_OFFSET}
+        progressiveMaterialCurveHeight={DEFAULT_MATERIAL_CURVE_HEIGHT}
         style={StyleSheet.absoluteFill}
       >
         <Animated.View
@@ -527,26 +708,27 @@ export default function ProgressiveShowcaseRoute() {
                 height: previousHeight,
               },
             ]}
-            contentFit="contain"
+            contentFit="cover"
           />
 
           <View
             style={[
               s.accountSlot,
               {
-                left: sceneLeft,
+                left: contentLeft,
                 top: firstAccountTop,
-                width: sceneWidth,
+                width: contentRight - contentLeft,
                 height: accountHeight,
               },
             ]}
           >
             <AccountRow
-              avatar={ITEMS[25]!}
+              avatar={SHOWCASE_IMAGES.balloonSword}
               name="roma.daily"
               subtitle="by Studio 19"
               date="Today"
               themeProgress={themeSurfaceProgress}
+              width={W}
             />
           </View>
 
@@ -562,18 +744,19 @@ export default function ProgressiveShowcaseRoute() {
             ]}
           >
             <Image
-              source={ITEMS[23]!.source}
+              source={SHOWCASE_IMAGES.balloonSword.source}
               style={[
                 s.photo,
                 {
                   width: primaryWidth,
                   height: pairHeight,
+                  marginRight: pairGap,
                 },
               ]}
               contentFit="cover"
             />
             <Image
-              source={ITEMS[25]!.source}
+              source={SHOWCASE_IMAGES.spectrum.source}
               style={[
                 s.photo,
                 {
@@ -589,9 +772,9 @@ export default function ProgressiveShowcaseRoute() {
             style={[
               s.accountSlot,
               {
-                left: sceneLeft,
+                left: contentLeft,
                 top: secondAccountTop,
-                width: sceneWidth,
+                width: contentRight - contentLeft,
                 height: accountHeight,
               },
             ]}
@@ -602,6 +785,7 @@ export default function ProgressiveShowcaseRoute() {
               subtitle="A visual diary from Rome"
               date="May 12"
               themeProgress={themeSurfaceProgress}
+              width={W}
             />
           </View>
 
@@ -630,9 +814,11 @@ export default function ProgressiveShowcaseRoute() {
         <Text style={s.debugProbeText}>
           {debugStage === 'material'
             ? 'FULL'
-            : debugStage === 'capture'
-              ? 'CAP'
-              : 'GAUSS'}
+            : debugStage === 'field'
+              ? 'FIELD'
+              : debugStage === 'capture'
+                ? 'CAP'
+                : 'GAUSS'}
         </Text>
       </Pressable>
 
@@ -650,31 +836,66 @@ export default function ProgressiveShowcaseRoute() {
 
       <Animated.View
         pointerEvents={open ? 'none' : 'auto'}
-        style={[
-          s.closedNav,
-          {
-            left: sceneLeft,
-            right: sceneLeft,
-            bottom: insets.bottom + 18,
-          },
-          closedNavStyle,
-        ]}
+        style={[StyleSheet.absoluteFill, s.chromeLayer, closedNavStyle]}
       >
-        <Text style={[s.closedNavLabel, s.closedNavView]}>View</Text>
+        <Text
+          style={[
+            s.closedNavLabel,
+            {
+              position: 'absolute',
+              left: W * REF_LAYOUT.closedNav.viewLeft,
+              top: closedNavLabelTop,
+              fontSize: closedNavLabelFontSize,
+              lineHeight: closedNavLabelLineHeight,
+            },
+          ]}
+        >
+          View
+        </Text>
 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open perfection menu"
           onPress={togglePanel}
           hitSlop={18}
-          style={s.closedNavCenter}
+          style={[
+            s.closedNavCenter,
+            { top: iconTop, height: closedNavCenterHeight },
+          ]}
         >
-          <View style={s.perfectionIcon}>
-            <View style={s.perfectionInner} />
+          <View
+            style={[
+              s.perfectionIcon,
+              {
+                width: iconWidth,
+                height: iconHeight,
+                borderRadius: iconBorderRadius,
+              },
+            ]}
+          >
+            <View
+              style={[
+                s.perfectionInner,
+                {
+                  width: iconWidth * icon.innerWidthScale,
+                  height: iconHeight * icon.innerHeightScale,
+                  borderRadius: iconBorderRadius * 0.5,
+                },
+              ]}
+            />
           </View>
-          <Text style={s.closedNavLabel}>Perfection</Text>
+          <Text
+            style={[
+              s.closedNavLabel,
+              {
+                fontSize: closedNavLabelFontSize,
+                lineHeight: closedNavLabelLineHeight,
+              },
+            ]}
+          >
+            Perfection
+          </Text>
         </Pressable>
-
       </Animated.View>
 
       <Text
@@ -683,8 +904,10 @@ export default function ProgressiveShowcaseRoute() {
           s.closedNavLabel,
           s.persistentSettings,
           {
-            right: sceneLeft,
-            bottom: insets.bottom + 18,
+            right: W * REF_LAYOUT.closedNav.settingsRight,
+            top: persistentSettingsTop,
+            fontSize: closedNavLabelFontSize,
+            lineHeight: closedNavLabelLineHeight,
           },
         ]}
       >
@@ -693,88 +916,128 @@ export default function ProgressiveShowcaseRoute() {
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
-        style={[
-          s.openMenu,
-          {
-            left: sceneLeft,
-            right: sceneLeft,
-            bottom: insets.bottom + 18,
-          },
-          openMenuStyle,
-        ]}
+        style={[StyleSheet.absoluteFill, s.chromeLayer, openMenuStyle]}
       >
         <Image
-          source={ITEMS[25]!.source}
-          style={s.menuAvatar}
+          source={SHOWCASE_IMAGES.spectrum.source}
+          style={[
+            s.menuAvatar,
+            {
+              left: W * om.avatarLeft,
+              top: menuAvatarTop,
+              width: menuAvatarSize,
+              height: menuAvatarSize,
+              borderRadius: menuAvatarSize / 2,
+            },
+          ]}
           contentFit="cover"
         />
 
-        <View style={s.menuLinks}>
-          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
-            Subscription
-          </Animated.Text>
-          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
-            Extension
-          </Animated.Text>
-          <Animated.Text style={[s.menuLink, menuLinkTextStyle]}>
-            About
-          </Animated.Text>
-        </View>
+        <Animated.Text
+          style={[
+            s.menuLink,
+            menuLinkTextStyle,
+            {
+              left: W * om.linkLeft,
+              top: menuLinkCenters[0] - menuLinkLineHeight / 2,
+              fontSize: menuLinkFontSize,
+              lineHeight: menuLinkLineHeight,
+            },
+          ]}
+        >
+          Subscription
+        </Animated.Text>
+        <Animated.Text
+          style={[
+            s.menuLink,
+            menuLinkTextStyle,
+            {
+              left: W * om.linkLeft,
+              top: menuLinkCenters[1] - menuLinkLineHeight / 2,
+              fontSize: menuLinkFontSize,
+              lineHeight: menuLinkLineHeight,
+            },
+          ]}
+        >
+          Extension
+        </Animated.Text>
+        <Animated.Text
+          style={[
+            s.menuLink,
+            menuLinkTextStyle,
+            {
+              left: W * om.linkLeft,
+              top: menuLinkCenters[2] - menuLinkLineHeight / 2,
+              fontSize: menuLinkFontSize,
+              lineHeight: menuLinkLineHeight,
+            },
+          ]}
+        >
+          About
+        </Animated.Text>
 
-        <View style={s.menuBottomRow}>
+        <Animated.View
+          style={[
+            s.themeSegment,
+            {
+              left: W * om.theme.left,
+              top: themeSegmentTop,
+              width: segmentWidth,
+              height: segmentHeight,
+              borderRadius: segmentHeight / 2,
+              padding: segmentInset,
+            },
+            segmentTrackStyle,
+          ]}
+        >
           <Animated.View
+            pointerEvents="none"
             style={[
-              s.themeSegment,
+              s.themeSegmentPill,
               {
-                width: segmentWidth,
-                height: segmentHeight,
-                borderRadius: segmentHeight / 2,
-                padding: segmentInset,
+                left: segmentInset,
+                top: segmentInset,
+                height: segmentHeight - segmentInset * 2,
+                borderRadius: (segmentHeight - segmentInset * 2) / 2,
               },
-              segmentTrackStyle,
+              segmentPillStyle,
             ]}
+          />
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: darkMode }}
+            onPress={() => setTheme(true)}
+            style={s.themeSegmentHit}
           >
-            <Animated.View
-              pointerEvents="none"
+            <Animated.Text
               style={[
-                s.themeSegmentPill,
-                {
-                  left: segmentInset,
-                  top: segmentInset,
-                  height: segmentHeight - segmentInset * 2,
-                  borderRadius: (segmentHeight - segmentInset * 2) / 2,
-                },
-                segmentPillStyle,
+                s.themeSegmentLabel,
+                { fontSize: themeSegmentLabelFontSize },
+                darkSegmentTextStyle,
               ]}
-            />
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: darkMode }}
-              onPress={() => setTheme(true)}
-              style={s.themeSegmentHit}
             >
-              <Animated.Text
-                style={[s.themeSegmentLabel, darkSegmentTextStyle]}
-              >
-                Dark
-              </Animated.Text>
-            </Pressable>
+              Dark
+            </Animated.Text>
+          </Pressable>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: !darkMode }}
-              onPress={() => setTheme(false)}
-              style={s.themeSegmentHit}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: !darkMode }}
+            onPress={() => setTheme(false)}
+            style={s.themeSegmentHit}
+          >
+            <Animated.Text
+              style={[
+                s.themeSegmentLabel,
+                { fontSize: themeSegmentLabelFontSize },
+                lightSegmentTextStyle,
+              ]}
             >
-              <Animated.Text
-                style={[s.themeSegmentLabel, lightSegmentTextStyle]}
-              >
-                Light
-              </Animated.Text>
-            </Pressable>
-          </Animated.View>
-        </View>
+              Light
+            </Animated.Text>
+          </Pressable>
+        </Animated.View>
       </Animated.View>
     </View>
   );
@@ -789,7 +1052,7 @@ const s = StyleSheet.create({
 
   debugProbe: {
     position: 'absolute',
-    left: 8,
+    right: 8,
     zIndex: 100,
     minWidth: 48,
     height: 26,
@@ -879,7 +1142,6 @@ const s = StyleSheet.create({
   photoPair: {
     position: 'absolute',
     flexDirection: 'row',
-    gap: 10,
   },
   photo: {
     borderRadius: 8,
@@ -891,33 +1153,19 @@ const s = StyleSheet.create({
     backgroundColor: '#d7d3ce',
   },
 
-  closedNav: {
-    position: 'absolute',
-    zIndex: 30,
-    height: 54,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  closedNavView: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-  },
   persistentSettings: {
     position: 'absolute',
     zIndex: 31,
   },
   closedNavCenter: {
-    minWidth: 96,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
+    justifyContent: 'space-between',
   },
   closedNavLabel: {
     color: 'rgba(255,255,255,0.93)',
-    fontSize: 11,
-    lineHeight: 13,
     fontWeight: '500',
   },
   perfectionIcon: {
@@ -946,36 +1194,22 @@ const s = StyleSheet.create({
     zIndex: 20,
     backgroundColor: 'transparent',
   },
-  openMenu: {
-    position: 'absolute',
+  chromeLayer: {
     zIndex: 30,
   },
   menuAvatar: {
-    width: 31,
-    height: 31,
-    borderRadius: 15.5,
+    position: 'absolute',
     backgroundColor: '#d6d2cd',
-    marginBottom: 19,
-  },
-  menuLinks: {
-    gap: 15,
   },
   menuLink: {
-    fontSize: 12,
-    lineHeight: 15,
+    position: 'absolute',
     fontWeight: '600',
     textShadowColor: 'rgba(0,0,0,0.18)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
   },
-  menuBottomRow: {
-    marginTop: 25,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
   themeSegment: {
-    position: 'relative',
+    position: 'absolute',
     flexDirection: 'row',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
@@ -996,8 +1230,6 @@ const s = StyleSheet.create({
     zIndex: 2,
   },
   themeSegmentLabel: {
-    fontSize: 11,
-    lineHeight: 13,
     fontWeight: '600',
     letterSpacing: -0.08,
   },
