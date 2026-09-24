@@ -42,7 +42,8 @@ const LIGHT_MATERIAL_COLOR = '#d4d4d4';
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
 const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 0.42;
-const DEFAULT_MATERIAL_COLOR_FIELD_RADIUS_SCALE = 1.85;
+const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.10;
+const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 96;
 // CLOSED in the reference is essentially the bottom navigation bar plus a
 // small optical shoulder, not a 200+ px material panel.
 const CLOSED_BAR_HEIGHT = 54;
@@ -493,8 +494,9 @@ export default function ProgressiveShowcaseRoute() {
         }
         progressiveMaterialColorFieldEnabled={true}
         progressiveMaterialColorFieldMix={DEFAULT_MATERIAL_COLOR_FIELD_MIX}
-        progressiveMaterialColorFieldRadiusScale={
-          DEFAULT_MATERIAL_COLOR_FIELD_RADIUS_SCALE
+        progressiveMaterialColorFieldScale={DEFAULT_MATERIAL_COLOR_FIELD_SCALE}
+        progressiveMaterialColorFieldBlurRadiusPx={
+          DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX
         }
         style={StyleSheet.absoluteFill}
       >
