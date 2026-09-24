@@ -63,6 +63,12 @@ interface NativeProps extends ViewProps {
   progressiveMaterialColorFieldScale?: CodegenTypes.Float;
   /** Screen-space blur radius, in px, applied after the low-res capture. */
   progressiveMaterialColorFieldBlurRadiusPx?: CodegenTypes.Float;
+  /** Neutral pixels below this chroma amount are suppressed from the field. */
+  progressiveMaterialColorFieldChromaGate?: CodegenTypes.Float;
+  /** Multiplier applied to extracted source chroma before diffusion. */
+  progressiveMaterialColorFieldChromaGain?: CodegenTypes.Float;
+  /** Fraction of source luminance retained in the colour field. */
+  progressiveMaterialColorFieldLumaMix?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
