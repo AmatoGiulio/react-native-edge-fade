@@ -54,7 +54,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val materialCurveOffset: Float,
     val colorFieldEnabled: Boolean,
     val colorFieldMix: Float,
-    val colorFieldRadiusScale: Float,
+    val colorFieldScale: Float,
+    val colorFieldBlurRadiusPx: Float,
     val materialLightColor: Int,
     val materialDarkColor: Int,
     val bounds: Boolean,
@@ -224,7 +225,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.tunerMaterialCurveOffsetOverride = 0.07f
         host.tunerMaterialColorFieldEnabledOverride = true
         host.tunerMaterialColorFieldMixOverride = 0.42f
-        host.tunerMaterialColorFieldRadiusScaleOverride = 1.85f
+        host.tunerMaterialColorFieldScaleOverride = 0.10f
+        host.tunerMaterialColorFieldBlurRadiusPxOverride = 96f
         host.tunerMaterialColorLightOverride = Color.rgb(0xD4, 0xD4, 0xD4)
         host.tunerMaterialColorDarkOverride = Color.rgb(0x01, 0x01, 0x01)
         host.nativeTuneChanged()
@@ -359,13 +361,24 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     }
     addSlider(
       body,
-      "field spread ×",
-      0.5f,
-      3f,
-      host.effectiveMaterialColorFieldRadiusScale(),
+      "field resolution",
+      0.05f,
+      0.25f,
+      host.effectiveMaterialColorFieldScale(),
       "×",
     ) {
-      host.tunerMaterialColorFieldRadiusScaleOverride = it
+      host.tunerMaterialColorFieldScaleOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(
+      body,
+      "field blur",
+      16f,
+      220f,
+      host.effectiveMaterialColorFieldBlurRadiusPx(),
+      "px",
+    ) {
+      host.tunerMaterialColorFieldBlurRadiusPxOverride = it
       host.nativeTuneChanged()
     }
     addHexColor(body, "light anchor", host.effectiveMaterialColorLight()) {
@@ -444,7 +457,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialCurveOffset(),
     host.effectiveMaterialColorFieldEnabled(),
     host.effectiveMaterialColorFieldMix(),
-    host.effectiveMaterialColorFieldRadiusScale(),
+    host.effectiveMaterialColorFieldScale(),
+    host.effectiveMaterialColorFieldBlurRadiusPx(),
     host.effectiveMaterialColorLight(),
     host.effectiveMaterialColorDark(),
     host.tunerShowBounds,
@@ -469,7 +483,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerMaterialCurveOffsetOverride = s.materialCurveOffset
     host.tunerMaterialColorFieldEnabledOverride = s.colorFieldEnabled
     host.tunerMaterialColorFieldMixOverride = s.colorFieldMix
-    host.tunerMaterialColorFieldRadiusScaleOverride = s.colorFieldRadiusScale
+    host.tunerMaterialColorFieldScaleOverride = s.colorFieldScale
+    host.tunerMaterialColorFieldBlurRadiusPxOverride = s.colorFieldBlurRadiusPx
     host.tunerMaterialColorLightOverride = s.materialLightColor
     host.tunerMaterialColorDarkOverride = s.materialDarkColor
     host.tunerShowBounds = s.bounds
@@ -487,7 +502,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         "exposure=${fmt(s.exposure)} surface=${fmt(s.surface)} surfaceProg=${fmt(s.surfaceProgression)} " +
         "materialCurveSync=${s.materialCurveSync} materialCurveHeight=${fmt(s.materialCurveHeight)} " +
         "materialCurveOffset=${fmt(s.materialCurveOffset)} colorField=${s.colorFieldEnabled} " +
-        "colorFieldMix=${fmt(s.colorFieldMix)} colorFieldRadiusScale=${fmt(s.colorFieldRadiusScale)} " +
+        "colorFieldMix=${fmt(s.colorFieldMix)} colorFieldScale=${fmt(s.colorFieldScale)} " +
+        "colorFieldBlurPx=${fmt(s.colorFieldBlurRadiusPx)} " +
         "lightAnchor=${hexColor(s.materialLightColor)} darkAnchor=${hexColor(s.materialDarkColor)} " +
         "bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
