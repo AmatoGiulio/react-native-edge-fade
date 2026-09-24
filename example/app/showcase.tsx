@@ -34,12 +34,30 @@ const SHOWCASE_IMAGES = {
     source: require('../assets/showcase/beach-band.jpg'),
     ratio: 1600 / 950,
   },
-  balloonSword: {
-    source: require('../assets/showcase/balloon-sword.jpg'),
+  skyPortrait: {
+    source: require('../assets/showcase/sky-portrait.jpg'),
     ratio: 1,
   },
-  spectrum: { source: require('../assets/showcase/spectrum.jpg'), ratio: 1 },
-  skyHorses: { source: require('../assets/showcase/sky-horses.jpg'), ratio: 1 },
+  cassettes: {
+    source: require('../assets/showcase/cassettes.jpg'),
+    ratio: 1,
+  },
+  halftoneCircles: {
+    source: require('../assets/showcase/halftone-circles.jpg'),
+    ratio: 1600 / 850,
+  },
+  amberSkyline: {
+    source: require('../assets/showcase/amber-skyline.jpg'),
+    ratio: 1,
+  },
+  windswept: {
+    source: require('../assets/showcase/windswept.jpg'),
+    ratio: 819 / 1024,
+  },
+  profile: {
+    source: require('../assets/showcase/profile.jpg'),
+    ratio: 1,
+  },
 };
 
 const DEFAULT_BLUR_RADIUS_PX = 150;
@@ -49,7 +67,7 @@ const DEFAULT_MATERIAL_STRENGTH = 1;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.95;
-const LIGHT_MATERIAL_COLOR = '#d4d4d4';
+const LIGHT_MATERIAL_COLOR = '#c6c2c4';
 // Near-black smoke anchor: colour shapes come from the source field, not from
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
@@ -61,9 +79,8 @@ const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.2;
 const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.8;
 const DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT = 1;
 const DEFAULT_MATERIAL_CURVE_OFFSET = 0;
-// Field-only render: the body reads like a smoke/milk wash with no residual
-// card structure, so the curve sits low and the color field is fully mixed.
-const DEFAULT_MATERIAL_CURVE_HEIGHT = 0.5;
+// Field-only render: the body reads like a pure smoke/milk wash, no card structure.
+const DEFAULT_MATERIAL_CURVE_HEIGHT = 0.4;
 
 // Geometry measured frame-by-frame from reference_demo_edge_fade.mp4,
 // normalized to screen width; vertical values are distances from the screen
@@ -73,7 +90,13 @@ const REF_LAYOUT = {
   media: { left: 0.182, width: 0.765 },
   contentLeft: 0.049,
   mediaRightMargin: 0.053,
-  previousCard: { bottomFromBottom: 1.241, minHeightScale: 0.3 },
+  feed: {
+    cardBBottomFromBottom: 1.241,
+    // row center -> top of the card immediately below it.
+    rowCenterToCardTopAbove: 0.084,
+    // bottom of a card -> center of the row immediately below it.
+    cardBottomToRowCenterAbove: 0.114,
+  },
   accountRow1: { centerFromBottom: 1.127, height: 0.13 },
   photoPair: {
     topFromBottom: 1.046,
@@ -379,21 +402,27 @@ export default function ProgressiveShowcaseRoute() {
   const contentLeft = W * REF_LAYOUT.contentLeft;
   const contentRight = W * (1 - REF_LAYOUT.mediaRightMargin);
 
-  // The reference movie itself is cropped above the phone. Do not reproduce
-  // that crop in the demo: keep the preceding media fully visible and aligned
-  // to the same media column as the rest of the feed.
-  const previousItem = SHOWCASE_IMAGES.beachBand;
-  const lowerItem = SHOWCASE_IMAGES.skyHorses;
-  const previousTop = insets.top + W * 0.015;
-  const previousBottomEdge = H - W * REF_LAYOUT.previousCard.bottomFromBottom;
-  const previousHeight = Math.max(
-    previousBottomEdge - previousTop,
-    W * REF_LAYOUT.previousCard.minHeightScale
-  );
+  // The reference is a continuous feed with no giant top card: card A runs
+  // past the top of the screen and is clipped there, matching the reference.
+  const lowerItem = SHOWCASE_IMAGES.beachBand;
 
   const accountHeight = W * REF_LAYOUT.accountRow1.height;
   const accountRow1Center = H - W * REF_LAYOUT.accountRow1.centerFromBottom;
   const firstAccountTop = accountRow1Center - accountHeight / 2;
+
+  // Card B sits directly above account row 1; row 0 sits above card B; card A
+  // sits above row 0 and is clipped by the page's overflow: hidden.
+  const cardBHeight = mediaWidth / SHOWCASE_IMAGES.halftoneCircles.ratio;
+  const cardBBottom = H - W * REF_LAYOUT.feed.cardBBottomFromBottom;
+  const cardBTop = cardBBottom - cardBHeight;
+
+  const feedRow0Center = cardBTop - W * REF_LAYOUT.feed.rowCenterToCardTopAbove;
+  const feedRow0Top = feedRow0Center - accountHeight / 2;
+
+  const cardAHeight = mediaWidth;
+  const cardABottom =
+    feedRow0Center - W * REF_LAYOUT.feed.cardBottomToRowCenterAbove;
+  const cardATop = cardABottom - cardAHeight;
 
   const pairTop = H - W * REF_LAYOUT.photoPair.topFromBottom;
   const pairHeight = W * REF_LAYOUT.photoPair.height;
@@ -698,14 +727,49 @@ export default function ProgressiveShowcaseRoute() {
           style={[StyleSheet.absoluteFill, surfaceStyle]}
         >
           <Image
-            source={previousItem.source}
+            source={SHOWCASE_IMAGES.amberSkyline.source}
             style={[
               s.previousCard,
               {
                 left: mediaLeft,
-                top: previousTop,
+                top: cardATop,
                 width: mediaWidth,
-                height: previousHeight,
+                height: cardAHeight,
+              },
+            ]}
+            contentFit="cover"
+          />
+
+          <View
+            style={[
+              s.accountSlot,
+              {
+                left: contentLeft,
+                top: feedRow0Top,
+                width: contentRight - contentLeft,
+                height: accountHeight,
+              },
+            ]}
+          >
+            <AccountRow
+              avatar={SHOWCASE_IMAGES.skyPortrait}
+              name="tape.archive"
+              subtitle="Field notes on cassette"
+              date="Mon"
+              themeProgress={themeSurfaceProgress}
+              width={W}
+            />
+          </View>
+
+          <Image
+            source={SHOWCASE_IMAGES.halftoneCircles.source}
+            style={[
+              s.previousCard,
+              {
+                left: mediaLeft,
+                top: cardBTop,
+                width: mediaWidth,
+                height: cardBHeight,
               },
             ]}
             contentFit="cover"
@@ -723,7 +787,7 @@ export default function ProgressiveShowcaseRoute() {
             ]}
           >
             <AccountRow
-              avatar={SHOWCASE_IMAGES.balloonSword}
+              avatar={SHOWCASE_IMAGES.windswept}
               name="roma.daily"
               subtitle="by Studio 19"
               date="Today"
@@ -744,7 +808,7 @@ export default function ProgressiveShowcaseRoute() {
             ]}
           >
             <Image
-              source={SHOWCASE_IMAGES.balloonSword.source}
+              source={SHOWCASE_IMAGES.windswept.source}
               style={[
                 s.photo,
                 {
@@ -756,7 +820,7 @@ export default function ProgressiveShowcaseRoute() {
               contentFit="cover"
             />
             <Image
-              source={SHOWCASE_IMAGES.spectrum.source}
+              source={SHOWCASE_IMAGES.cassettes.source}
               style={[
                 s.photo,
                 {
@@ -919,7 +983,7 @@ export default function ProgressiveShowcaseRoute() {
         style={[StyleSheet.absoluteFill, s.chromeLayer, openMenuStyle]}
       >
         <Image
-          source={SHOWCASE_IMAGES.spectrum.source}
+          source={SHOWCASE_IMAGES.profile.source}
           style={[
             s.menuAvatar,
             {
