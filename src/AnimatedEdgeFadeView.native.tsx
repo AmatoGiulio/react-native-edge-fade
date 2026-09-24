@@ -69,6 +69,7 @@ function useEdgeFadeAnimatedProps(
   blurProgressionSV: SharedValueLike<number> | null,
   materialThemeProgressSV: SharedValueLike<number> | null,
   materialStrengthSV: SharedValueLike<number> | null,
+  materialSurfaceProgressionSV: SharedValueLike<number> | null,
   materialExposureSV: SharedValueLike<number> | null,
   materialColorFieldMixSV: SharedValueLike<number> | null,
   waveAmplitudeSV: SharedValueLike<number> | null,
@@ -96,6 +97,10 @@ function useEdgeFadeAnimatedProps(
     }
     if (materialStrengthSV) {
       out.progressiveMaterialStrength = materialStrengthSV.value;
+    }
+    if (materialSurfaceProgressionSV) {
+      out.progressiveMaterialSurfaceProgression =
+        materialSurfaceProgressionSV.value;
     }
     if (materialExposureSV) {
       out.progressiveMaterialExposure = materialExposureSV.value;
@@ -160,6 +165,13 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const materialStrengthProp = (props as any).progressiveMaterialStrength;
   const materialStrengthSV = isSharedValue(materialStrengthProp)
     ? (materialStrengthProp as SharedValueLike<number>)
+    : null;
+  const materialSurfaceProgressionProp = (props as any)
+    .progressiveMaterialSurfaceProgression;
+  const materialSurfaceProgressionSV = isSharedValue(
+    materialSurfaceProgressionProp
+  )
+    ? (materialSurfaceProgressionProp as SharedValueLike<number>)
     : null;
   const materialExposureProp = (props as any).progressiveMaterialExposure;
   const materialExposureSV = isSharedValue(materialExposureProp)
@@ -233,6 +245,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     radius: _radius,
     progressiveMaterialThemeProgress: _materialThemeProgress,
     progressiveMaterialStrength: _materialStrength,
+    progressiveMaterialSurfaceProgression: _materialSurfaceProgression,
     progressiveMaterialExposure: _materialExposure,
     progressiveMaterialColorFieldMix: _materialColorFieldMix,
     progressiveWaveAmplitude: _waveAmplitude,
@@ -246,6 +259,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     children?: React.ReactNode;
     progressiveMaterialThemeProgress?: number | SharedValueLike<number>;
     progressiveMaterialStrength?: number | SharedValueLike<number>;
+    progressiveMaterialSurfaceProgression?: number | SharedValueLike<number>;
     progressiveMaterialExposure?: number | SharedValueLike<number>;
     progressiveMaterialColorFieldMix?: number | SharedValueLike<number>;
     progressiveWaveAmplitude?: number | SharedValueLike<number>;
@@ -273,6 +287,7 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     blurProgressionSV,
     materialThemeProgressSV,
     materialStrengthSV,
+    materialSurfaceProgressionSV,
     materialExposureSV,
     materialColorFieldMixSV,
     waveAmplitudeSV,
@@ -302,6 +317,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
         materialThemeProgressSV ? 0 : _materialThemeProgress
       }
       progressiveMaterialStrength={materialStrengthSV ? 0 : _materialStrength}
+      progressiveMaterialSurfaceProgression={
+        materialSurfaceProgressionSV ? 0 : _materialSurfaceProgression
+      }
       progressiveMaterialExposure={materialExposureSV ? 0 : _materialExposure}
       progressiveMaterialColorFieldMix={
         materialColorFieldMixSV ? 0 : _materialColorFieldMix

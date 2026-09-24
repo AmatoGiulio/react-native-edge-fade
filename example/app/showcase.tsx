@@ -154,31 +154,24 @@ const DEFAULT_OPEN_PROGRESSION = 0.9;
 const DEFAULT_EXPANDED_SCALE = 1.3;
 const MAX_EXPANDED_DEPTH = 620;
 
-// Motion measured frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
-// OPEN: rising sweep — lower area veils 0-150ms, upper photo pair sweeps in
-// 170-450ms. CLOSE mirrors it: gentle start so the blur visibly recedes
-// downward, soft landing (not the old fast 220ms collapse).
+// Motion extracted frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
+// One emphasized curve explains panel open/close: near-zero launch velocity,
+// fast middle section, then a long deceleration tail.
 const FIELD_OPEN_MS = 600;
-const FIELD_CLOSE_MS = 520;
-const REFERENCE_OPEN_EASE = Easing.bezier(0.24, 0, 0.15, 1);
-const REFERENCE_CLOSE_EASE = Easing.bezier(0.45, 0, 0.2, 1);
+const FIELD_CLOSE_MS = 540;
+const REFERENCE_MOTION_EASE = Easing.bezier(0.24, 0, 0.15, 1);
 
-// Bottom-chrome timing measured separately from the material field (opacity
-// only, no translate). Theme segment shows first, then avatar + links.
-// OPEN: closed nav hide 0→50ms; theme segment show 15→105ms; avatar+links
-// show 120→280ms (arrives while the sweep passes them).
-// CLOSE: menu (incl. segment) hide 0→140ms; closed nav show 300→500ms
-// (arrives as the field settles into the closed bar).
-const CLOSED_NAV_HIDE_DELAY_MS = 0;
-const CLOSED_NAV_HIDE_MS = 50;
-const SEGMENT_SHOW_DELAY_MS = 15;
-const SEGMENT_SHOW_MS = 90;
-const MENU_SHOW_DELAY_MS = 120;
-const MENU_SHOW_MS = 160;
-const MENU_HIDE_DELAY_MS = 0;
-const MENU_HIDE_MS = 140;
-const CLOSED_NAV_SHOW_DELAY_MS = 300;
-const CLOSED_NAV_SHOW_MS = 200;
+// Bottom-chrome timing measured separately from the material field.
+// OPEN reference: closed nav 0.45→0.55, menu (incl. theme segment) 0.50→0.70.
+// CLOSE reference: menu (incl. theme segment) 5.75→5.90, closed nav 5.95→6.10.
+const CLOSED_NAV_HIDE_DELAY_MS = 40;
+const CLOSED_NAV_HIDE_MS = 110;
+const MENU_SHOW_DELAY_MS = 90;
+const MENU_SHOW_MS = 220;
+const MENU_HIDE_DELAY_MS = 45;
+const MENU_HIDE_MS = 145;
+const CLOSED_NAV_SHOW_DELAY_MS = 235;
+const CLOSED_NAV_SHOW_MS = 160;
 const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
@@ -219,17 +212,23 @@ function smoothstep01(x: number) {
   return c * c * (3 - 2 * c);
 }
 
-// Living front: dome + noise + bloom band, only alive during motion; open/close
-// envelope sin(πp); theme wave follows the lift bell; colour swaps under cover.
-const OPEN_WAVE_AMP_SCALE = 0.07; // * W, at envelope peak
-const OPEN_WAVE_DOME_SCALE = 0.16; // * W, at envelope peak
-const OPEN_FRONT_GLOW = 0.7;
+// Living front: dome + noise + bloom band, only alive during theme motion —
+// the wave follows the theme lift bell; colour swaps under cover.
 const THEME_WAVE_AMP_SCALE = 0.1; // * W, at lift peak
 const THEME_WAVE_DOME_SCALE = 0.22; // * W, at lift peak
 const THEME_FRONT_GLOW = 1.0;
 const WAVE_SPEED = 1.6;
-const FIELD_MIX_BLOOM_START = 0.55;
-const FIELD_MIX_BLOOM_END = 1.0;
+
+// Material motion: strength loops 0.13–0.71 and surface progression rises/
+// falls while anything moves (open, close or theme); rest values untouched.
+const STRENGTH_LOOP_MIN = 0.13;
+const STRENGTH_LOOP_MAX = 0.71;
+const STRENGTH_LOOP_MID = (STRENGTH_LOOP_MIN + STRENGTH_LOOP_MAX) / 2;
+const STRENGTH_LOOP_AMP = (STRENGTH_LOOP_MAX - STRENGTH_LOOP_MIN) / 2;
+const STRENGTH_LOOP_PERIOD_S = 1.4;
+const SURFACE_PROG_MOTION_FROM = 0.35;
+const SURFACE_PROG_MOTION_TO = 1.0;
+const MATERIAL_MOTION_WEIGHT_EDGE = 0.2;
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -439,9 +438,12 @@ export default function ProgressiveShowcaseRoute() {
   const themeMotion = useSharedValue(0);
   const themeFrom = useSharedValue(0);
   const themeTo = useSharedValue(0);
-  // Advances only while something is moving (open/close/theme), so the field
-  // has no idle per-frame native work.
+  // Advances only while theme motion is running, so the field has no idle
+  // per-frame native work.
   const waveClock = useSharedValue(0);
+  // Advances during open/close AND theme motion — drives the material's
+  // strength loop and surface-progression rise/fall while anything moves.
+  const materialClock = useSharedValue(0);
 
   const expandedDepth = Math.max(
     closedDepth + 150,
@@ -481,40 +483,47 @@ export default function ProgressiveShowcaseRoute() {
   const materialExposureValue = useDerivedValue(
     () => DEFAULT_MATERIAL_EXPOSURE + 0.1 * themeLift.value
   );
-  // Colour field blooms only at the end of the open sweep (or fully once the
-  // theme lift takes over past panelProgress 1) — the pure progressive blur
-  // dominates the rising "triangles" until then.
-  const fieldMixValue = useDerivedValue(
-    () =>
-      DEFAULT_MATERIAL_COLOR_FIELD_MIX *
-      smoothstep01(
-        (panelProgress.value - FIELD_MIX_BLOOM_START) /
-          (FIELD_MIX_BLOOM_END - FIELD_MIX_BLOOM_START)
-      )
-  );
-  // Living front envelope: 0 at rest, peaks mid-transition on open/close.
-  const openEnvelope = useDerivedValue(() =>
-    Math.sin(Math.PI * Math.min(Math.max(progress.value, 0), 1))
-  );
+  // Living wave: alive only during theme motion, follows the theme lift bell.
   const waveAmplitude = useDerivedValue(
-    () =>
-      Math.max(
-        OPEN_WAVE_AMP_SCALE * width * openEnvelope.value,
-        THEME_WAVE_AMP_SCALE * width * themeLift.value
-      ) * pixelRatio
+    () => THEME_WAVE_AMP_SCALE * width * themeLift.value * pixelRatio
   );
   const waveDome = useDerivedValue(
-    () =>
-      Math.max(
-        OPEN_WAVE_DOME_SCALE * width * openEnvelope.value,
-        THEME_WAVE_DOME_SCALE * width * themeLift.value
-      ) * pixelRatio
+    () => THEME_WAVE_DOME_SCALE * width * themeLift.value * pixelRatio
   );
-  const frontGlow = useDerivedValue(() =>
-    Math.max(
-      OPEN_FRONT_GLOW * openEnvelope.value,
-      THEME_FRONT_GLOW * themeLift.value
-    )
+  const frontGlow = useDerivedValue(() => THEME_FRONT_GLOW * themeLift.value);
+  // Motion envelope for the material: 0 at rest, 1 mid open/close or mid
+  // theme lift. `a` is the soft entry/exit weight applied to the strength
+  // loop and the surface-progression rise/fall (see constants above).
+  const mOpen = useDerivedValue(() =>
+    Math.sin(Math.PI * Math.min(Math.max(progress.value, 0), 1))
+  );
+  const materialMotion = useDerivedValue(() =>
+    Math.max(mOpen.value, themeLift.value)
+  );
+  const materialMotionWeight = useDerivedValue(() =>
+    smoothstep01(materialMotion.value / MATERIAL_MOTION_WEIGHT_EDGE)
+  );
+  const strengthLoop = useDerivedValue(
+    () =>
+      STRENGTH_LOOP_MID +
+      STRENGTH_LOOP_AMP *
+        Math.sin((2 * Math.PI * materialClock.value) / STRENGTH_LOOP_PERIOD_S)
+  );
+  const strengthValue = useDerivedValue(
+    () =>
+      materialStrength +
+      (strengthLoop.value - materialStrength) * materialMotionWeight.value
+  );
+  const surfaceProgressionMotion = useDerivedValue(
+    () =>
+      SURFACE_PROG_MOTION_FROM +
+      (SURFACE_PROG_MOTION_TO - SURFACE_PROG_MOTION_FROM) * materialMotion.value
+  );
+  const surfaceProgressionValue = useDerivedValue(
+    () =>
+      DEFAULT_MATERIAL_SURFACE_PROGRESSION +
+      (surfaceProgressionMotion.value - DEFAULT_MATERIAL_SURFACE_PROGRESSION) *
+        materialMotionWeight.value
   );
   // Colour and pill channels of the theme driver — both read themeMotion
   // through their own eased window, so a tap moves shape first, colour last.
@@ -727,6 +736,15 @@ export default function ProgressiveShowcaseRoute() {
       waveClock.value + (THEME_MOTION_MS / 1000) * WAVE_SPEED,
       { duration: THEME_MOTION_MS, easing: Easing.linear }
     );
+
+    cancelAnimation(materialClock);
+    materialClock.value = withTiming(
+      materialClock.value + THEME_MOTION_MS / 1000,
+      {
+        duration: THEME_MOTION_MS,
+        easing: Easing.linear,
+      }
+    );
   };
 
   const togglePanel = () => {
@@ -737,16 +755,19 @@ export default function ProgressiveShowcaseRoute() {
     cancelAnimation(closedNavOpacity);
     cancelAnimation(openMenuOpacity);
     cancelAnimation(openSegmentOpacity);
-    cancelAnimation(waveClock);
+    cancelAnimation(materialClock);
 
     const fieldDurationMs = next ? FIELD_OPEN_MS : FIELD_CLOSE_MS;
     progress.value = withTiming(next ? 1 : 0, {
       duration: fieldDurationMs,
-      easing: next ? REFERENCE_OPEN_EASE : REFERENCE_CLOSE_EASE,
+      easing: REFERENCE_MOTION_EASE,
     });
-    waveClock.value = withTiming(
-      waveClock.value + (fieldDurationMs / 1000) * WAVE_SPEED,
-      { duration: fieldDurationMs, easing: Easing.linear }
+    materialClock.value = withTiming(
+      materialClock.value + fieldDurationMs / 1000,
+      {
+        duration: fieldDurationMs,
+        easing: Easing.linear,
+      }
     );
 
     if (next) {
@@ -758,9 +779,9 @@ export default function ProgressiveShowcaseRoute() {
         })
       );
       openSegmentOpacity.value = withDelay(
-        SEGMENT_SHOW_DELAY_MS,
+        MENU_SHOW_DELAY_MS,
         withTiming(1, {
-          duration: SEGMENT_SHOW_MS,
+          duration: MENU_SHOW_MS,
           easing: CHROME_IN_EASE,
         })
       );
@@ -866,7 +887,7 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend={debugBackend}
         progressiveNativeTuner={true}
-        progressiveMaterialStrength={materialStrength}
+        progressiveMaterialStrength={strengthValue}
         progressiveWaveAmplitude={waveAmplitude}
         progressiveWaveDome={waveDome}
         progressiveWaveTime={waveClock}
@@ -876,11 +897,9 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialThemeProgress={themeSurfaceProgress}
         progressiveMaterialExposure={materialExposureValue}
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
-        progressiveMaterialSurfaceProgression={
-          DEFAULT_MATERIAL_SURFACE_PROGRESSION
-        }
+        progressiveMaterialSurfaceProgression={surfaceProgressionValue}
         progressiveMaterialColorFieldEnabled={true}
-        progressiveMaterialColorFieldMix={fieldMixValue}
+        progressiveMaterialColorFieldMix={DEFAULT_MATERIAL_COLOR_FIELD_MIX}
         progressiveMaterialColorFieldScale={DEFAULT_MATERIAL_COLOR_FIELD_SCALE}
         progressiveMaterialColorFieldBlurRadiusPx={
           DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX
