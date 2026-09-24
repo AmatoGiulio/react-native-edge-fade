@@ -256,12 +256,15 @@ internal object BlurLabShaders {
   // Demo-only chroma extractor for the low-resolution colour field.
   // It suppresses neutral/luminance structure before the wide Gaussian so the
   // field behaves like weighted colour diffusion instead of a blurred copy of
-  // rectangular thumbnails.
+  // rectangular thumbnails. neutralWeight raises the floor so low-chroma
+  // page/card backgrounds diffuse too, letting the reference fuse blurred
+  // cards and the page into one wash; default 0 keeps chroma-only behaviour.
   val colorFieldSource = """
     uniform shader content;
     uniform float chromaGate;
     uniform float chromaGain;
     uniform float lumaMix;
+    uniform float neutralWeight;
 
     half4 main(float2 coord) {
       half4 source = content.eval(coord);
@@ -276,11 +279,12 @@ internal object BlurLabShaders {
       float gate = clamp(chromaGate, 0.0, 0.25);
       float weight = smoothstep(gate, gate + 0.18, chromaAmount);
       weight = pow(weight, 0.72);
+      weight = max(weight, clamp(neutralWeight, 0.0, 1.0));
 
       // Remove most local luminance geometry while preserving hue direction.
       // Neutral page/card backgrounds therefore contribute almost no weight,
       // while saturated image colours mix together through the later Gaussian.
-      float carriedLuma = mix(0.5, luma, clamp(lumaMix, 0.0, 0.5));
+      float carriedLuma = mix(0.5, luma, clamp(lumaMix, 0.0, 1.0));
       float3 chroma = rgb - float3(luma);
       float3 fieldRgb =
         clamp(float3(carriedLuma) + chroma * clamp(chromaGain, 0.5, 2.5), 0.0, 1.0);

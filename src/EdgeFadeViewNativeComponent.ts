@@ -69,6 +69,17 @@ interface NativeProps extends ViewProps {
   progressiveMaterialColorFieldChromaGain?: CodegenTypes.Float;
   /** Fraction of source luminance retained in the colour field. */
   progressiveMaterialColorFieldLumaMix?: CodegenTypes.Float;
+  /**
+   * Neutral-tone weight floor for the colour field (0..1). Lets low-chroma
+   * page/card backgrounds diffuse too, so blurred cards fuse with the page
+   * instead of only saturated image colours mixing. 0 = previous
+   * chroma-only behaviour.
+   */
+  progressiveMaterialColorFieldNeutralWeight?: CodegenTypes.Float;
+  /** Curve offset applied to the material response band (-0.35..0.35). */
+  progressiveMaterialCurveOffset?: CodegenTypes.Float;
+  /** Curve height applied to the material response band (0.25..1.5). */
+  progressiveMaterialCurveHeight?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

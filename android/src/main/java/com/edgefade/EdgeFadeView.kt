@@ -75,6 +75,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveMaterialColorFieldChromaGate: Float = 0.035f
   internal var progressiveMaterialColorFieldChromaGain: Float = 1.35f
   internal var progressiveMaterialColorFieldLumaMix: Float = 0.10f
+  internal var progressiveMaterialColorFieldNeutralWeight: Float = 0f
+  internal var progressiveMaterialCurveOffset: Float = 0f
+  internal var progressiveMaterialCurveHeight: Float = 1f
 
   // Showcase-only native runtime tuner. These values are not public API and
   // default to the JS props so the clean optical baseline stays unchanged.
@@ -104,6 +107,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerMaterialColorFieldChromaGateOverride: Float? = null
   internal var tunerMaterialColorFieldChromaGainOverride: Float? = null
   internal var tunerMaterialColorFieldLumaMixOverride: Float? = null
+  internal var tunerMaterialColorFieldNeutralWeightOverride: Float? = null
   internal var tunerMaterialColorLightOverride: Int? = null
   internal var tunerMaterialColorDarkOverride: Int? = null
   internal var tunerShowBounds: Boolean = false
@@ -271,10 +275,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     if (effectiveMaterialCurveSync()) {
       effectiveGradientSpan()
     } else {
-      tunerMaterialCurveHeightOverride ?: 1f
+      tunerMaterialCurveHeightOverride ?: progressiveMaterialCurveHeight
     }
   internal fun effectiveMaterialCurveOffset(): Float =
-    tunerMaterialCurveOffsetOverride ?: 0f
+    tunerMaterialCurveOffsetOverride ?: progressiveMaterialCurveOffset
   internal fun effectiveMaterialColorFieldEnabled(): Boolean =
     tunerMaterialColorFieldEnabledOverride ?: progressiveMaterialColorFieldEnabled
   internal fun effectiveMaterialColorFieldMix(): Float =
@@ -289,6 +293,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialColorFieldChromaGainOverride ?: progressiveMaterialColorFieldChromaGain
   internal fun effectiveMaterialColorFieldLumaMix(): Float =
     tunerMaterialColorFieldLumaMixOverride ?: progressiveMaterialColorFieldLumaMix
+  internal fun effectiveMaterialColorFieldNeutralWeight(): Float =
+    tunerMaterialColorFieldNeutralWeightOverride ?: progressiveMaterialColorFieldNeutralWeight
   internal fun effectiveMaterialColorLight(): Int =
     tunerMaterialColorLightOverride ?: progressiveMaterialColor
   internal fun effectiveMaterialColorDark(): Int =
@@ -320,6 +326,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialColorFieldChromaGateOverride = null
     tunerMaterialColorFieldChromaGainOverride = null
     tunerMaterialColorFieldLumaMixOverride = null
+    tunerMaterialColorFieldNeutralWeightOverride = null
     tunerMaterialColorLightOverride = null
     tunerMaterialColorDarkOverride = null
     tunerShowBounds = false

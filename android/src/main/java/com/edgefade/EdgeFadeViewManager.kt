@@ -120,6 +120,7 @@ class EdgeFadeViewManager :
       "agsl" -> "agsl"
       "agsl-debug-capture" -> "agsl-debug-capture"
       "agsl-debug-gaussian" -> "agsl-debug-gaussian"
+      "agsl-debug-field" -> "agsl-debug-field"
       "androidx" -> "androidx"
       "androidx-gradient" -> "androidx-gradient"
       "scaled" -> "scaled"
@@ -188,7 +189,7 @@ class EdgeFadeViewManager :
 
   @ReactProp(name = "progressiveMaterialColorFieldBlurRadiusPx", defaultFloat = 160f)
   override fun setProgressiveMaterialColorFieldBlurRadiusPx(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 260f)
+    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 900f)
   }
 
   @ReactProp(name = "progressiveMaterialColorFieldChromaGate", defaultFloat = 0.035f)
@@ -203,7 +204,22 @@ class EdgeFadeViewManager :
 
   @ReactProp(name = "progressiveMaterialColorFieldLumaMix", defaultFloat = 0.10f)
   override fun setProgressiveMaterialColorFieldLumaMix(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldLumaMix = value.coerceIn(0f, 0.5f)
+    view.progressiveMaterialColorFieldLumaMix = value.coerceIn(0f, 1f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColorFieldNeutralWeight", defaultFloat = 0f)
+  override fun setProgressiveMaterialColorFieldNeutralWeight(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldNeutralWeight = value.coerceIn(0f, 1f)
+  }
+
+  @ReactProp(name = "progressiveMaterialCurveOffset", defaultFloat = 0f)
+  override fun setProgressiveMaterialCurveOffset(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialCurveOffset = value.coerceIn(-0.35f, 0.35f)
+  }
+
+  @ReactProp(name = "progressiveMaterialCurveHeight", defaultFloat = 1f)
+  override fun setProgressiveMaterialCurveHeight(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialCurveHeight = value.coerceIn(0.25f, 1.5f)
   }
 
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
