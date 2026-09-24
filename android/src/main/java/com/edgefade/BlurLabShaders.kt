@@ -265,46 +265,15 @@ internal object BlurLabShaders {
     uniform float materialSurfaceProgression;
     uniform float materialCurveHeight;
     uniform float materialCurveOffset;
-    uniform float materialColorFieldEnabled;
-    uniform float materialColorFieldMix;
-    uniform float materialColorFieldRadius;
-    uniform float2 materialExtent;
-    uniform float2 materialOrigin;
-
-    float3 sampleMaterialRgb(float2 coord) {
-      float2 maxCoord = max(materialExtent - float2(0.5), float2(0.5));
-      float2 p = clamp(coord, float2(0.5), maxCoord);
-      half4 sample = content.eval(p);
-      float alpha = max(float(sample.a), 0.0001);
-      return clamp(float3(sample.rgb) / alpha, 0.0, 1.0);
-    }
-
-    // Reconstruct a coarse, screen-anchored colour texture directly from the
-    // already-blurred content. Four samples represent the neighbouring
-    // low-resolution texels; smooth interpolation creates broad colour masses
-    // without expanding every source edge radially around each output pixel.
-    float3 sampleLowFrequencyField(float2 localCoord, float cellSize) {
-      float2 globalCoord = localCoord + materialOrigin;
-      float2 grid = globalCoord / cellSize - float2(0.5);
-      float2 cell = floor(grid);
-      float2 f = fract(grid);
-      // Quintic smootherstep keeps cell transitions invisible.
-      float2 w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-
-      float2 p00 = (cell + float2(0.5, 0.5)) * cellSize - materialOrigin;
-      float2 p10 = (cell + float2(1.5, 0.5)) * cellSize - materialOrigin;
-      float2 p01 = (cell + float2(0.5, 1.5)) * cellSize - materialOrigin;
-      float2 p11 = (cell + float2(1.5, 1.5)) * cellSize - materialOrigin;
-
-      float3 a = mix(sampleMaterialRgb(p00), sampleMaterialRgb(p10), w.x);
-      float3 b = mix(sampleMaterialRgb(p01), sampleMaterialRgb(p11), w.x);
-      return mix(a, b, w.y);
-    }
+    uniform float materialOverlayMode;
+    uniform float materialOverlayMix;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
-      if (intensity <= 0.0 || materialStrength <= 0.0) return blurred;
+      if (intensity <= 0.0 || materialStrength <= 0.0) {
+        return materialOverlayMode > 0.5 ? half4(0.0) : blurred;
+      }
 
       // Material density must not jump at the optical entrance. The previous
       // response divided by surfaceProgression; at the legal minimum (0.15)
@@ -327,20 +296,6 @@ internal object BlurLabShaders {
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Virtual low-resolution colour texture. Unlike the previous radial
-      // neighbourhood average, increasing the spread no longer "grows" each
-      // thumbnail in every direction. It lowers colour frequency instead:
-      // nearby cards contribute to the same broad reconstructed colour field.
-      if (
-        materialColorFieldEnabled > 0.5 &&
-        materialColorFieldMix > 0.0001 &&
-        materialColorFieldRadius > 1.0
-      ) {
-        float3 field =
-          sampleLowFrequencyField(coord, max(materialColorFieldRadius, 1.0));
-        rgb = mix(rgb, field, clamp(materialColorFieldMix, 0.0, 1.0));
-      }
-
       float luma = dot(rgb, float3(0.2126, 0.7152, 0.0722));
       float3 chroma = rgb - float3(luma);
       float anchor = dot(materialColor, float3(0.2126, 0.7152, 0.0722));
@@ -357,8 +312,15 @@ internal object BlurLabShaders {
       float magnitude = max(abs(chroma.r), max(abs(chroma.g), abs(chroma.b)));
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
-      float3 result = float3(outputLuma) + chroma * transmission;
-      return half4(clamp(result, 0.0, 1.0) * float(blurred.a), blurred.a);
+      float3 result = clamp(float3(outputLuma) + chroma * transmission, 0.0, 1.0);
+      if (materialOverlayMode > 0.5) {
+        float coverage =
+          clamp(materialOverlayMix, 0.0, 1.0) *
+          clamp(densityCurve, 0.0, 1.0) *
+          float(blurred.a);
+        return half4(result * coverage, coverage);
+      }
+      return half4(result * float(blurred.a), blurred.a);
     }
   """.trimIndent()
 
