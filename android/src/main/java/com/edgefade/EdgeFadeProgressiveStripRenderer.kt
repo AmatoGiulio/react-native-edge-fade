@@ -74,6 +74,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialColorFieldChromaGain: Float,
     val materialColorFieldLumaMix: Float,
     val materialColorFieldNeutralWeight: Float,
+    // Geometry-affecting: amplitude/dome change the bottom band's raster
+    // extent, so (unlike waveTime/frontGlow) they go through full configure().
+    val waveAmplitude: Float,
+    val waveDome: Float,
   )
 
   private data class CurveSamples(
@@ -117,6 +121,11 @@ internal class EdgeFadeProgressiveStripRenderer(
   private var key: Key? = null
   private var strips = emptyList<Strip>()
   private var materialThemeProgress = Float.NaN
+
+  // Cheap per-frame uniforms, excluded from Key so animating them never
+  // triggers a full configure() — mirrors materialThemeProgress above.
+  private var livingWaveTime = Float.NaN
+  private var livingFrontGlow = Float.NaN
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -198,17 +207,24 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialColorFieldNeutralWeight =
         BlurLabGeometry.finite(host.effectiveMaterialColorFieldNeutralWeight(), 0f)
           .coerceIn(0f, 1f),
+      waveAmplitude = BlurLabGeometry.finite(host.progressiveWaveAmplitude).coerceIn(0f, 400f),
+      waveDome = BlurLabGeometry.finite(host.progressiveWaveDome).coerceIn(-600f, 600f),
     )
 
     val nextThemeProgress =
       BlurLabGeometry.finite(host.progressiveMaterialThemeProgress).coerceIn(0f, 1f)
+    val nextWaveTime = BlurLabGeometry.finite(host.progressiveWaveTime)
+    val nextFrontGlow = BlurLabGeometry.finite(host.progressiveFrontGlow).coerceIn(0f, 1.5f)
 
     if (key == next) {
       updateMaterialTheme(next, nextThemeProgress)
+      updateLivingUniforms(next, nextWaveTime, nextFrontGlow)
       return true
     }
 
     materialThemeProgress = nextThemeProgress
+    livingWaveTime = nextWaveTime
+    livingFrontGlow = nextFrontGlow
 
     Log.i(
       "EdgeFadeCleanConfig",
@@ -224,7 +240,9 @@ internal class EdgeFadeProgressiveStripRenderer(
         "chromaGate=${next.materialColorFieldChromaGate} " +
         "chromaGain=${next.materialColorFieldChromaGain} " +
         "lumaMix=${next.materialColorFieldLumaMix} " +
-        "neutralWeight=${next.materialColorFieldNeutralWeight}",
+        "neutralWeight=${next.materialColorFieldNeutralWeight} " +
+        "waveAmplitude=${next.waveAmplitude} waveDome=${next.waveDome} " +
+        "waveTime=$livingWaveTime frontGlow=$livingFrontGlow",
     )
 
     if (next.radius <= 0f) {
@@ -366,11 +384,18 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private fun configure(next: Key) {
+    // The warped front can reach past the nominal bottom depth by up to
+    // (dome + amplitude) px; grow the band/source/raster geometry by that
+    // much so it is never clipped. 0/0 keeps this identical to next.bottom.
+    val waveExtra = (maxOf(next.waveDome, 0f) + next.waveAmplitude)
+      .coerceIn(0f, next.height.toFloat())
+    val geometryBottom = (next.bottom + waveExtra).coerceAtMost(next.height.toFloat())
+
     val bands =
       BlurLabGeometry.bands(
         next.width,
         next.height,
-        floatArrayOf(next.top, next.bottom, next.left, next.right),
+        floatArrayOf(next.top, geometryBottom, next.left, next.right),
         next.radius,
       )
 
@@ -468,6 +493,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
     )
     strip.mask.setFloatUniform("progression", key.progression)
+    strip.mask.setFloatUniform("waveAmp", key.waveAmplitude * scale)
+    strip.mask.setFloatUniform("waveDome", key.waveDome * scale)
+    strip.mask.setFloatUniform("waveTime", livingWaveTime)
     strip.mask.setFloatUniform("curveTop", curves.top)
     strip.mask.setFloatUniform("curveBottom", curves.bottom)
     strip.mask.setFloatUniform("curveLeft", curves.left)
@@ -547,6 +575,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       strip.material.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
       strip.material.setFloatUniform("materialOverlayMode", 0f)
       strip.material.setFloatUniform("materialOverlayMix", 0f)
+      strip.material.setFloatUniform("frontGlow", livingFrontGlow)
     }
 
     configureColorField(strip, key, curves)
@@ -589,6 +618,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
     )
     strip.fieldMask.setFloatUniform("progression", key.progression)
+    strip.fieldMask.setFloatUniform("waveAmp", key.waveAmplitude * scale)
+    strip.fieldMask.setFloatUniform("waveDome", key.waveDome * scale)
+    strip.fieldMask.setFloatUniform("waveTime", livingWaveTime)
     strip.fieldMask.setFloatUniform("curveTop", curves.top)
     strip.fieldMask.setFloatUniform("curveBottom", curves.bottom)
     strip.fieldMask.setFloatUniform("curveLeft", curves.left)
@@ -627,6 +659,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.fieldMaterial.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
     strip.fieldMaterial.setFloatUniform("materialOverlayMode", 1f)
     strip.fieldMaterial.setFloatUniform("materialOverlayMix", key.materialColorFieldMix)
+    strip.fieldMaterial.setFloatUniform("frontGlow", livingFrontGlow)
 
     val lowResBlur =
       (key.materialColorFieldBlurRadiusPx * scale).coerceAtLeast(0.5f)
@@ -654,6 +687,31 @@ internal class EdgeFadeProgressiveStripRenderer(
     for (strip in strips) {
       setMaterialColor(strip.material, color)
       setMaterialColor(strip.fieldMaterial, color)
+      applyFinalEffect(strip, key)
+    }
+  }
+
+  /**
+   * Cheap per-frame update for the living bottom-front noise phase and bloom
+   * intensity. Neither affects band/raster geometry (unlike waveAmplitude and
+   * waveDome), so this only re-sets shader uniforms and re-applies the
+   * already-built RenderEffect chain — no configure()/reconfigure.
+   */
+  private fun updateLivingUniforms(key: Key, time: Float, glow: Float) {
+    if (time == livingWaveTime && glow == livingFrontGlow) return
+    livingWaveTime = time
+    livingFrontGlow = glow
+    if (strips.isEmpty()) return
+
+    for (strip in strips) {
+      strip.mask.setFloatUniform("waveTime", time)
+      strip.fieldMask.setFloatUniform("waveTime", time)
+      if (key.materialEnabled && key.materialStrength > 0f) {
+        strip.material.setFloatUniform("frontGlow", glow)
+        if (key.materialColorFieldEnabled && key.materialColorFieldMix > 0f) {
+          strip.fieldMaterial.setFloatUniform("frontGlow", glow)
+        }
+      }
       applyFinalEffect(strip, key)
     }
   }
@@ -763,6 +821,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     content.discardDisplayList()
     key = null
     materialThemeProgress = Float.NaN
+    livingWaveTime = Float.NaN
+    livingFrontGlow = Float.NaN
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {

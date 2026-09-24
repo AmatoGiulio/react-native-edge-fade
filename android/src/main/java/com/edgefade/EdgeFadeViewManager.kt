@@ -222,6 +222,30 @@ class EdgeFadeViewManager :
     view.progressiveMaterialCurveHeight = value.coerceIn(0.25f, 1.5f)
   }
 
+  @ReactProp(name = "progressiveWaveAmplitude", defaultFloat = 0f)
+  override fun setProgressiveWaveAmplitude(view: EdgeFadeView, value: Float) {
+    view.progressiveWaveAmplitude = value.coerceIn(0f, 400f)
+  }
+
+  @ReactProp(name = "progressiveWaveDome", defaultFloat = 0f)
+  override fun setProgressiveWaveDome(view: EdgeFadeView, value: Float) {
+    view.progressiveWaveDome = value.coerceIn(-600f, 600f)
+  }
+
+  @ReactProp(name = "progressiveWaveTime", defaultFloat = 0f)
+  override fun setProgressiveWaveTime(view: EdgeFadeView, value: Float) {
+    view.progressiveWaveTime = value
+    // Animated on the UI thread like progressiveMaterialThemeProgress; the
+    // cheap updateLivingUniforms() path needs a scheduled frame to pick it up.
+    view.postInvalidateOnAnimation()
+  }
+
+  @ReactProp(name = "progressiveFrontGlow", defaultFloat = 0f)
+  override fun setProgressiveFrontGlow(view: EdgeFadeView, value: Float) {
+    view.progressiveFrontGlow = value.coerceIn(0f, 1.5f)
+    view.postInvalidateOnAnimation()
+  }
+
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) { view.frostSaturation = value }
 

@@ -198,6 +198,11 @@ internal object BlurLabShaders {
     uniform float curveBottom[32];
     uniform float curveLeft[32];
     uniform float curveRight[32];
+    // Living bottom-front warp. All default to 0, which makes depthB
+    // collapse back to edges.y exactly (byte-identical to the pre-wave mask).
+    uniform float waveAmp;
+    uniform float waveDome;
+    uniform float waveTime;
 
     float sampleTop(float t) {
       float x = clamp(t, 0.0, 1.0) * 31.0;
@@ -239,7 +244,19 @@ internal object BlurLabShaders {
     half4 main(float2 local) {
       float2 p = local + origin;
       float topPos = position(p.y, edges.x);
-      float bottomPos = position(viewSize.y - p.y, edges.y);
+
+      // Organic bottom front: a parabolic dome (centre higher than sides)
+      // plus a three-octave noise displacement, both in depth px. depthB
+      // collapses to edges.y when waveDome/waveAmp are 0, so the identity
+      // mask is pixel-unchanged.
+      float xn = p.x / max(viewSize.x, 1.0);
+      float dome = waveDome * (1.0 - (2.0 * xn - 1.0) * (2.0 * xn - 1.0));
+      float n = 0.55 * sin(xn * 6.2831 * 1.15 + waveTime * 1.3) +
+        0.30 * sin(xn * 6.2831 * 2.35 - waveTime * 0.9 + 1.7) +
+        0.15 * sin(xn * 6.2831 * 4.1 + waveTime * 2.1 + 0.4);
+      float depthB = edges.y <= 0.0 ? edges.y : max(edges.y + dome + waveAmp * n, 0.0);
+      float bottomPos = position(viewSize.y - p.y, depthB);
+
       float leftPos = position(p.x, edges.z);
       float rightPos = position(viewSize.x - p.x, edges.w);
 
@@ -308,6 +325,8 @@ internal object BlurLabShaders {
     uniform float materialCurveOffset;
     uniform float materialOverlayMode;
     uniform float materialOverlayMix;
+    // Light "bloom" band at the front of the mask. 0 is a no-op.
+    uniform float frontGlow;
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
@@ -354,11 +373,19 @@ internal object BlurLabShaders {
       float transmission = exp(-density * mix(0.65, 1.0, light));
       transmission /= 1.0 + density * 2.0 * magnitude;
       float3 result = clamp(float3(outputLuma) + chroma * transmission, 0.0, 1.0);
+
+      // Front bloom: a band centred just past the optical entrance, lifting
+      // light and boosting colour. frontGlow=0 leaves result untouched.
+      float band = smoothstep(0.02, 0.22, intensity) * (1.0 - smoothstep(0.30, 0.75, intensity));
+      float g = clamp(frontGlow, 0.0, 1.5) * band;
+      result = clamp(result + g * (0.22 * (1.0 - result) + 0.35 * chroma), 0.0, 1.0);
+
       if (materialOverlayMode > 0.5) {
         float coverage =
           clamp(materialOverlayMix, 0.0, 1.0) *
           clamp(densityCurve, 0.0, 1.0) *
           float(blurred.a);
+        coverage = clamp(coverage + g * 0.35 * float(blurred.a), 0.0, 1.0);
         return half4(result * coverage, coverage);
       }
       return half4(result * float(blurred.a), blurred.a);

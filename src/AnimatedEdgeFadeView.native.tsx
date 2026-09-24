@@ -69,7 +69,12 @@ function useEdgeFadeAnimatedProps(
   blurProgressionSV: SharedValueLike<number> | null,
   materialThemeProgressSV: SharedValueLike<number> | null,
   materialStrengthSV: SharedValueLike<number> | null,
-  materialExposureSV: SharedValueLike<number> | null
+  materialExposureSV: SharedValueLike<number> | null,
+  materialColorFieldMixSV: SharedValueLike<number> | null,
+  waveAmplitudeSV: SharedValueLike<number> | null,
+  waveDomeSV: SharedValueLike<number> | null,
+  waveTimeSV: SharedValueLike<number> | null,
+  frontGlowSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -95,6 +100,13 @@ function useEdgeFadeAnimatedProps(
     if (materialExposureSV) {
       out.progressiveMaterialExposure = materialExposureSV.value;
     }
+    if (materialColorFieldMixSV) {
+      out.progressiveMaterialColorFieldMix = materialColorFieldMixSV.value;
+    }
+    if (waveAmplitudeSV) out.progressiveWaveAmplitude = waveAmplitudeSV.value;
+    if (waveDomeSV) out.progressiveWaveDome = waveDomeSV.value;
+    if (waveTimeSV) out.progressiveWaveTime = waveTimeSV.value;
+    if (frontGlowSV) out.progressiveFrontGlow = frontGlowSV.value;
     return out;
   });
 }
@@ -153,6 +165,27 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const materialExposureSV = isSharedValue(materialExposureProp)
     ? (materialExposureProp as SharedValueLike<number>)
     : null;
+  const materialColorFieldMixProp = (props as any)
+    .progressiveMaterialColorFieldMix;
+  const materialColorFieldMixSV = isSharedValue(materialColorFieldMixProp)
+    ? (materialColorFieldMixProp as SharedValueLike<number>)
+    : null;
+  const waveAmplitudeProp = (props as any).progressiveWaveAmplitude;
+  const waveAmplitudeSV = isSharedValue(waveAmplitudeProp)
+    ? (waveAmplitudeProp as SharedValueLike<number>)
+    : null;
+  const waveDomeProp = (props as any).progressiveWaveDome;
+  const waveDomeSV = isSharedValue(waveDomeProp)
+    ? (waveDomeProp as SharedValueLike<number>)
+    : null;
+  const waveTimeProp = (props as any).progressiveWaveTime;
+  const waveTimeSV = isSharedValue(waveTimeProp)
+    ? (waveTimeProp as SharedValueLike<number>)
+    : null;
+  const frontGlowProp = (props as any).progressiveFrontGlow;
+  const frontGlowSV = isSharedValue(frontGlowProp)
+    ? (frontGlowProp as SharedValueLike<number>)
+    : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
   // an ACTIVE edge with zero size — so resolveNativeProps still resolves the
@@ -201,6 +234,11 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveMaterialThemeProgress: _materialThemeProgress,
     progressiveMaterialStrength: _materialStrength,
     progressiveMaterialExposure: _materialExposure,
+    progressiveMaterialColorFieldMix: _materialColorFieldMix,
+    progressiveWaveAmplitude: _waveAmplitude,
+    progressiveWaveDome: _waveDome,
+    progressiveWaveTime: _waveTime,
+    progressiveFrontGlow: _frontGlow,
     style,
     children,
     ...viewProps
@@ -209,6 +247,11 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveMaterialThemeProgress?: number | SharedValueLike<number>;
     progressiveMaterialStrength?: number | SharedValueLike<number>;
     progressiveMaterialExposure?: number | SharedValueLike<number>;
+    progressiveMaterialColorFieldMix?: number | SharedValueLike<number>;
+    progressiveWaveAmplitude?: number | SharedValueLike<number>;
+    progressiveWaveDome?: number | SharedValueLike<number>;
+    progressiveWaveTime?: number | SharedValueLike<number>;
+    progressiveFrontGlow?: number | SharedValueLike<number>;
   };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
@@ -230,7 +273,12 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     blurProgressionSV,
     materialThemeProgressSV,
     materialStrengthSV,
-    materialExposureSV
+    materialExposureSV,
+    materialColorFieldMixSV,
+    waveAmplitudeSV,
+    waveDomeSV,
+    waveTimeSV,
+    frontGlowSV
   );
 
   return (
@@ -255,6 +303,13 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       }
       progressiveMaterialStrength={materialStrengthSV ? 0 : _materialStrength}
       progressiveMaterialExposure={materialExposureSV ? 0 : _materialExposure}
+      progressiveMaterialColorFieldMix={
+        materialColorFieldMixSV ? 0 : _materialColorFieldMix
+      }
+      progressiveWaveAmplitude={waveAmplitudeSV ? 0 : _waveAmplitude}
+      progressiveWaveDome={waveDomeSV ? 0 : _waveDome}
+      progressiveWaveTime={waveTimeSV ? 0 : _waveTime}
+      progressiveFrontGlow={frontGlowSV ? 0 : _frontGlow}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

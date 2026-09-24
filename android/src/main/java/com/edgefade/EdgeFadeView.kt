@@ -79,6 +79,13 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveMaterialCurveOffset: Float = 0f
   internal var progressiveMaterialCurveHeight: Float = 1f
 
+  // Living bottom-front warp + bloom. All default to 0, which reproduces the
+  // pre-wave pixels exactly (see BlurLabShaders.maskPerEdge/materialComposite).
+  internal var progressiveWaveAmplitude: Float = 0f
+  internal var progressiveWaveDome: Float = 0f
+  internal var progressiveWaveTime: Float = 0f
+  internal var progressiveFrontGlow: Float = 0f
+
   // Showcase-only native runtime tuner. These values are not public API and
   // default to the JS props so the clean optical baseline stays unchanged.
   internal var progressiveNativeTunerEnabled: Boolean = false

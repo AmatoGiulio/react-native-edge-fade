@@ -80,6 +80,17 @@ interface NativeProps extends ViewProps {
   progressiveMaterialCurveOffset?: CodegenTypes.Float;
   /** Curve height applied to the material response band (0.25..1.5). */
   progressiveMaterialCurveHeight?: CodegenTypes.Float;
+  /**
+   * Internal living bottom-front warp: noise displacement (px, 0..400).
+   * 0 reproduces the flat pre-wave front exactly.
+   */
+  progressiveWaveAmplitude?: CodegenTypes.Float;
+  /** Internal living bottom-front parabolic dome height (px, -600..600). */
+  progressiveWaveDome?: CodegenTypes.Float;
+  /** Internal living bottom-front noise phase (seconds), animated per frame. */
+  progressiveWaveTime?: CodegenTypes.Float;
+  /** Internal light "bloom" band intensity at the front (0..1.5). */
+  progressiveFrontGlow?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
