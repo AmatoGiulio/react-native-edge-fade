@@ -400,7 +400,11 @@ internal class EdgeFadeProgressiveStripRenderer(
         )
 
         strip.fieldScale = next.materialColorFieldScale
-        val fieldPad = ceil(next.materialColorFieldBlurRadiusPx).toInt() + 2
+        // Wide low-res Gaussian needs real scene context outside the visible
+        // sheet. ~2.5 radii is enough to keep CLAMP from turning source edges
+        // into the same large halos we saw in the earlier spread experiments.
+        val fieldPad =
+          ceil(next.materialColorFieldBlurRadiusPx * 2.5f).toInt() + 2
         strip.fieldSource = BlurLabGeometry.Rect(
           (o.left - fieldPad).coerceAtLeast(0),
           (o.top - fieldPad).coerceAtLeast(0),
