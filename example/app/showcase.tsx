@@ -41,9 +41,12 @@ const LIGHT_MATERIAL_COLOR = '#d4d4d4';
 // Near-black smoke anchor: colour shapes come from the source field, not from
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
-const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 0.42;
-const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.10;
-const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 96;
+const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 0.68;
+const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.08;
+const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 160;
+const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE = 0.035;
+const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.35;
+const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.10;
 // CLOSED in the reference is essentially the bottom navigation bar plus a
 // small optical shoulder, not a 200+ px material panel.
 const CLOSED_BAR_HEIGHT = 54;
@@ -497,6 +500,15 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialColorFieldScale={DEFAULT_MATERIAL_COLOR_FIELD_SCALE}
         progressiveMaterialColorFieldBlurRadiusPx={
           DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX
+        }
+        progressiveMaterialColorFieldChromaGate={
+          DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE
+        }
+        progressiveMaterialColorFieldChromaGain={
+          DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN
+        }
+        progressiveMaterialColorFieldLumaMix={
+          DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX
         }
         style={StyleSheet.absoluteFill}
       >
