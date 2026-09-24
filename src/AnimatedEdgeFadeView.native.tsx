@@ -67,7 +67,9 @@ function useEdgeFadeAnimatedProps(
   radiusSV: SharedValueLike<number> | null,
   blurRadiusSV: SharedValueLike<number> | null,
   blurProgressionSV: SharedValueLike<number> | null,
-  materialThemeProgressSV: SharedValueLike<number> | null
+  materialThemeProgressSV: SharedValueLike<number> | null,
+  materialStrengthSV: SharedValueLike<number> | null,
+  materialExposureSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -86,6 +88,12 @@ function useEdgeFadeAnimatedProps(
     if (blurProgressionSV) out.frostProgression = blurProgressionSV.value;
     if (materialThemeProgressSV) {
       out.progressiveMaterialThemeProgress = materialThemeProgressSV.value;
+    }
+    if (materialStrengthSV) {
+      out.progressiveMaterialStrength = materialStrengthSV.value;
+    }
+    if (materialExposureSV) {
+      out.progressiveMaterialExposure = materialExposureSV.value;
     }
     return out;
   });
@@ -137,6 +145,14 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const materialThemeProgressSV = isSharedValue(materialThemeProgressProp)
     ? (materialThemeProgressProp as SharedValueLike<number>)
     : null;
+  const materialStrengthProp = (props as any).progressiveMaterialStrength;
+  const materialStrengthSV = isSharedValue(materialStrengthProp)
+    ? (materialStrengthProp as SharedValueLike<number>)
+    : null;
+  const materialExposureProp = (props as any).progressiveMaterialExposure;
+  const materialExposureSV = isSharedValue(materialExposureProp)
+    ? (materialExposureProp as SharedValueLike<number>)
+    : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
   // an ACTIVE edge with zero size — so resolveNativeProps still resolves the
@@ -183,12 +199,16 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     frostProgression: _fp,
     radius: _radius,
     progressiveMaterialThemeProgress: _materialThemeProgress,
+    progressiveMaterialStrength: _materialStrength,
+    progressiveMaterialExposure: _materialExposure,
     style,
     children,
     ...viewProps
   } = props as AnimatedEdgeFadeViewProps & {
     children?: React.ReactNode;
     progressiveMaterialThemeProgress?: number | SharedValueLike<number>;
+    progressiveMaterialStrength?: number | SharedValueLike<number>;
+    progressiveMaterialExposure?: number | SharedValueLike<number>;
   };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
@@ -208,7 +228,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     radiusSV,
     blurRadiusSV,
     blurProgressionSV,
-    materialThemeProgressSV
+    materialThemeProgressSV,
+    materialStrengthSV,
+    materialExposureSV
   );
 
   return (
@@ -231,6 +253,8 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       progressiveMaterialThemeProgress={
         materialThemeProgressSV ? 0 : _materialThemeProgress
       }
+      progressiveMaterialStrength={materialStrengthSV ? 0 : _materialStrength}
+      progressiveMaterialExposure={materialExposureSV ? 0 : _materialExposure}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

@@ -23,6 +23,7 @@ import Animated, {
   useDerivedValue,
   useSharedValue,
   withDelay,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -150,29 +151,46 @@ const REF_LAYOUT = {
 
 // OPEN field depth is width-based like REF_LAYOUT: ~1.05W from the bottom reaches mid photo-pair, as in the reference.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
-const DEFAULT_EXPANDED_SCALE = 1.05;
+// Bottom sheet height relative to the field width (user: "bottom height 1.30x").
+const DEFAULT_EXPANDED_SCALE = 1.3;
 const MAX_EXPANDED_DEPTH = 620;
 
-// Motion extracted frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
-// One emphasized curve explains panel open/close and both theme directions:
-// near-zero launch velocity, fast middle section, then a long deceleration tail.
-const FIELD_OPEN_MS = 600;
-const FIELD_CLOSE_MS = 540;
+// Motion measured frame-by-frame from reference_demo_edge_fade.mp4 (60 fps).
+// OPEN: immediate attack (veil almost fully up within ~17-50ms), then a long
+// slow tail until ~500ms where blur keeps creeping up the photo pair.
+// CLOSE: fast collapse, ~100ms of real motion.
+const FIELD_OPEN_MS = 560;
+const FIELD_CLOSE_MS = 220;
+const REFERENCE_OPEN_EASE = Easing.bezier(0.05, 0.7, 0.1, 1);
+const REFERENCE_CLOSE_EASE = Easing.bezier(0.25, 0, 0.1, 1);
 const THEME_SURFACE_MS = 525;
 const THEME_CONTROL_MS = 420;
 const REFERENCE_MOTION_EASE = Easing.bezier(0.24, 0, 0.15, 1);
 
-// Bottom-chrome timing measured separately from the material field.
-// OPEN reference: closed nav 0.45→0.55, menu 0.50→0.70.
-// CLOSE reference: menu 5.75→5.90, closed nav 5.95→6.10.
-const CLOSED_NAV_HIDE_DELAY_MS = 40;
-const CLOSED_NAV_HIDE_MS = 110;
-const MENU_SHOW_DELAY_MS = 90;
-const MENU_SHOW_MS = 220;
-const MENU_HIDE_DELAY_MS = 45;
-const MENU_HIDE_MS = 145;
-const CLOSED_NAV_SHOW_DELAY_MS = 235;
-const CLOSED_NAV_SHOW_MS = 160;
+// Theme-change "breath": tapping Dark/Light while open rises the panel to full
+// height using the OPEN easing/duration, holds briefly, then exhales back to
+// the normal open height. Set THEME_BREATH_RETURN = false to keep the panel
+// at full height instead of returning (skips the exhale step entirely).
+const THEME_BREATH_HOLD_MS = 140;
+const THEME_BREATH_RETURN_MS = 620;
+const THEME_BREATH_RETURN_EASE = Easing.bezier(0.3, 0, 0.2, 1);
+const THEME_BREATH_RETURN = true;
+
+// Bottom-chrome timing measured separately from the material field (opacity
+// only, no translate). Theme segment shows first, then avatar + links.
+// OPEN: closed nav hide 0→50ms; theme segment show 15→105ms; avatar+links
+// show 70→150ms.
+// CLOSE: menu (incl. segment) hide 0→90ms; closed nav show 90→170ms.
+const CLOSED_NAV_HIDE_DELAY_MS = 0;
+const CLOSED_NAV_HIDE_MS = 50;
+const SEGMENT_SHOW_DELAY_MS = 15;
+const SEGMENT_SHOW_MS = 90;
+const MENU_SHOW_DELAY_MS = 70;
+const MENU_SHOW_MS = 80;
+const MENU_HIDE_DELAY_MS = 0;
+const MENU_HIDE_MS = 90;
+const CLOSED_NAV_SHOW_DELAY_MS = 90;
+const CLOSED_NAV_SHOW_MS = 80;
 const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
@@ -377,6 +395,7 @@ export default function ProgressiveShowcaseRoute() {
   const progress = useSharedValue(0);
   const closedNavOpacity = useSharedValue(1);
   const openMenuOpacity = useSharedValue(0);
+  const openSegmentOpacity = useSharedValue(0);
   const themeSurfaceProgress = useSharedValue(0);
   const themeControlProgress = useSharedValue(0);
 
@@ -384,11 +403,38 @@ export default function ProgressiveShowcaseRoute() {
     closedDepth + 150,
     Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
   );
+  // progress runs [0,1] for closed→open and extends to 2 for the theme
+  // "breath" (panel rising to full height and back).
   const bottomDepth = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [closedDepth, expandedDepth])
+    interpolate(
+      progress.value,
+      [0, 1, 2],
+      [closedDepth, expandedDepth, height],
+      Extrapolation.CLAMP
+    )
   );
   const blurProgression = useDerivedValue(() =>
-    interpolate(progress.value, [0, 1], [1, openProgression])
+    interpolate(
+      progress.value,
+      [0, 1, 2],
+      [1, openProgression, openProgression],
+      Extrapolation.CLAMP
+    )
+  );
+  // Opening "light flash": the veil is brighter in its first ~80ms then
+  // settles. Zero outside the open pass (progress > 1, i.e. mid-breath).
+  const flash = useDerivedValue(() =>
+    interpolate(progress.value, [0, 0.35, 1], [0, 1, 0], Extrapolation.CLAMP)
+  );
+  // breath: 0 at open height, 1 at full-height breath peak.
+  const breath = useDerivedValue(() =>
+    interpolate(progress.value, [1, 2], [0, 1], Extrapolation.CLAMP)
+  );
+  const materialStrengthValue = useDerivedValue(
+    () => materialStrength - 0.18 * breath.value
+  );
+  const materialExposureValue = useDerivedValue(
+    () => DEFAULT_MATERIAL_EXPOSURE + 0.16 * breath.value + 0.1 * flash.value
   );
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
@@ -444,13 +490,19 @@ export default function ProgressiveShowcaseRoute() {
 
   // The reference chrome is not a simple remap of field progress. It has
   // direction-specific delays/durations, especially on CLOSE where the menu
-  // disappears in ~145 ms while the material field keeps collapsing for 540 ms.
+  // disappears in ~90 ms while the material field keeps collapsing for 220 ms.
   const closedNavStyle = useAnimatedStyle(() => ({
     opacity: closedNavOpacity.value,
   }));
 
+  // Avatar + the three links. The theme segment fades on its own schedule
+  // (openSegmentOpacity, see segmentOpacityStyle below).
   const openMenuStyle = useAnimatedStyle(() => ({
     opacity: openMenuOpacity.value,
+  }));
+
+  const segmentOpacityStyle = useAnimatedStyle(() => ({
+    opacity: openSegmentOpacity.value,
   }));
 
   const menuLinkTextStyle = useAnimatedStyle(() => ({
@@ -570,6 +622,25 @@ export default function ProgressiveShowcaseRoute() {
       duration: THEME_SURFACE_MS,
       easing: REFERENCE_MOTION_EASE,
     });
+
+    // "Breath" experiment: rise to full height on the OPEN curve, hold, then
+    // (optionally) exhale back to the normal open height.
+    cancelAnimation(progress);
+    progress.value = THEME_BREATH_RETURN
+      ? withSequence(
+          withTiming(2, {
+            duration: FIELD_OPEN_MS,
+            easing: REFERENCE_OPEN_EASE,
+          }),
+          withDelay(
+            THEME_BREATH_HOLD_MS,
+            withTiming(1, {
+              duration: THEME_BREATH_RETURN_MS,
+              easing: THEME_BREATH_RETURN_EASE,
+            })
+          )
+        )
+      : withTiming(2, { duration: FIELD_OPEN_MS, easing: REFERENCE_OPEN_EASE });
   };
 
   const togglePanel = () => {
@@ -579,10 +650,11 @@ export default function ProgressiveShowcaseRoute() {
     cancelAnimation(progress);
     cancelAnimation(closedNavOpacity);
     cancelAnimation(openMenuOpacity);
+    cancelAnimation(openSegmentOpacity);
 
     progress.value = withTiming(next ? 1 : 0, {
       duration: next ? FIELD_OPEN_MS : FIELD_CLOSE_MS,
-      easing: REFERENCE_MOTION_EASE,
+      easing: next ? REFERENCE_OPEN_EASE : REFERENCE_CLOSE_EASE,
     });
 
     if (next) {
@@ -591,6 +663,13 @@ export default function ProgressiveShowcaseRoute() {
         withTiming(0, {
           duration: CLOSED_NAV_HIDE_MS,
           easing: CHROME_OUT_EASE,
+        })
+      );
+      openSegmentOpacity.value = withDelay(
+        SEGMENT_SHOW_DELAY_MS,
+        withTiming(1, {
+          duration: SEGMENT_SHOW_MS,
+          easing: CHROME_IN_EASE,
         })
       );
       openMenuOpacity.value = withDelay(
@@ -602,6 +681,13 @@ export default function ProgressiveShowcaseRoute() {
       );
     } else {
       openMenuOpacity.value = withDelay(
+        MENU_HIDE_DELAY_MS,
+        withTiming(0, {
+          duration: MENU_HIDE_MS,
+          easing: CHROME_OUT_EASE,
+        })
+      );
+      openSegmentOpacity.value = withDelay(
         MENU_HIDE_DELAY_MS,
         withTiming(0, {
           duration: MENU_HIDE_MS,
@@ -688,11 +774,11 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend={debugBackend}
         progressiveNativeTuner={true}
-        progressiveMaterialStrength={materialStrength}
+        progressiveMaterialStrength={materialStrengthValue}
         progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}
-        progressiveMaterialExposure={DEFAULT_MATERIAL_EXPOSURE}
+        progressiveMaterialExposure={materialExposureValue}
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
         progressiveMaterialSurfaceProgression={
           DEFAULT_MATERIAL_SURFACE_PROGRESSION
@@ -899,7 +985,7 @@ export default function ProgressiveShowcaseRoute() {
       </Animated.View>
 
       <Animated.View
-        pointerEvents={open ? 'none' : 'auto'}
+        pointerEvents={open ? 'none' : 'box-none'}
         style={[StyleSheet.absoluteFill, s.chromeLayer, closedNavStyle]}
       >
         <Text
@@ -979,66 +1065,71 @@ export default function ProgressiveShowcaseRoute() {
       </Text>
 
       <Animated.View
-        pointerEvents={open ? 'auto' : 'none'}
-        style={[StyleSheet.absoluteFill, s.chromeLayer, openMenuStyle]}
+        pointerEvents={open ? 'box-none' : 'none'}
+        style={[StyleSheet.absoluteFill, s.chromeLayer]}
       >
-        <Image
-          source={SHOWCASE_IMAGES.profile.source}
-          style={[
-            s.menuAvatar,
-            {
-              left: W * om.avatarLeft,
-              top: menuAvatarTop,
-              width: menuAvatarSize,
-              height: menuAvatarSize,
-              borderRadius: menuAvatarSize / 2,
-            },
-          ]}
-          contentFit="cover"
-        />
+        <Animated.View
+          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, openMenuStyle]}
+        >
+          <Image
+            source={SHOWCASE_IMAGES.profile.source}
+            style={[
+              s.menuAvatar,
+              {
+                left: W * om.avatarLeft,
+                top: menuAvatarTop,
+                width: menuAvatarSize,
+                height: menuAvatarSize,
+                borderRadius: menuAvatarSize / 2,
+              },
+            ]}
+            contentFit="cover"
+          />
 
-        <Animated.Text
-          style={[
-            s.menuLink,
-            menuLinkTextStyle,
-            {
-              left: W * om.linkLeft,
-              top: menuLinkCenters[0] - menuLinkLineHeight / 2,
-              fontSize: menuLinkFontSize,
-              lineHeight: menuLinkLineHeight,
-            },
-          ]}
-        >
-          Subscription
-        </Animated.Text>
-        <Animated.Text
-          style={[
-            s.menuLink,
-            menuLinkTextStyle,
-            {
-              left: W * om.linkLeft,
-              top: menuLinkCenters[1] - menuLinkLineHeight / 2,
-              fontSize: menuLinkFontSize,
-              lineHeight: menuLinkLineHeight,
-            },
-          ]}
-        >
-          Extension
-        </Animated.Text>
-        <Animated.Text
-          style={[
-            s.menuLink,
-            menuLinkTextStyle,
-            {
-              left: W * om.linkLeft,
-              top: menuLinkCenters[2] - menuLinkLineHeight / 2,
-              fontSize: menuLinkFontSize,
-              lineHeight: menuLinkLineHeight,
-            },
-          ]}
-        >
-          About
-        </Animated.Text>
+          <Animated.Text
+            style={[
+              s.menuLink,
+              menuLinkTextStyle,
+              {
+                left: W * om.linkLeft,
+                top: menuLinkCenters[0] - menuLinkLineHeight / 2,
+                fontSize: menuLinkFontSize,
+                lineHeight: menuLinkLineHeight,
+              },
+            ]}
+          >
+            Subscription
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              s.menuLink,
+              menuLinkTextStyle,
+              {
+                left: W * om.linkLeft,
+                top: menuLinkCenters[1] - menuLinkLineHeight / 2,
+                fontSize: menuLinkFontSize,
+                lineHeight: menuLinkLineHeight,
+              },
+            ]}
+          >
+            Extension
+          </Animated.Text>
+          <Animated.Text
+            style={[
+              s.menuLink,
+              menuLinkTextStyle,
+              {
+                left: W * om.linkLeft,
+                top: menuLinkCenters[2] - menuLinkLineHeight / 2,
+                fontSize: menuLinkFontSize,
+                lineHeight: menuLinkLineHeight,
+              },
+            ]}
+          >
+            About
+          </Animated.Text>
+        </Animated.View>
 
         <Animated.View
           style={[
@@ -1052,6 +1143,7 @@ export default function ProgressiveShowcaseRoute() {
               padding: segmentInset,
             },
             segmentTrackStyle,
+            segmentOpacityStyle,
           ]}
         >
           <Animated.View
