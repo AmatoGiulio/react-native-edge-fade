@@ -183,16 +183,17 @@ const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
 // Theme-change "single driver": one shared value (themeMotion, 0→1 linear,
-// 900ms) phase-locks everything a Dark/Light tap touches. Each channel reads
+// 1100ms) phase-locks everything a Dark/Light tap touches. Each channel reads
 // its own eased window of that same 0→1 sweep inside a worklet, so colour,
 // pill and panel-lift can never drift out of sync with each other:
-//  - colour c(t): reference luma curve, ~500ms ease-out, over t in [0, 0.56].
+//  - colour c(t): reference luma curve, over t in [0.30, 0.62] (swaps while
+//    the screen is covered by the lift).
 //  - pill p(t): reaches its destination first, ~200ms, over t in [0, 0.22].
 //  - lift L(t) = sin(pi * e(t)): one smooth bell over the full sweep, no
 //    hold, returns to exactly 0 at t=1 (the "breath" idea, without the old
 //    withSequence hold/return discontinuity).
-const THEME_MOTION_MS = 900;
-const THEME_COLOUR_WINDOW = 0.56;
+const THEME_MOTION_MS = 1100;
+const THEME_COLOUR_WINDOW = { start: 0.3, end: 0.62 };
 const THEME_PILL_WINDOW = 0.22;
 const THEME_COLOUR_EASE = Easing.bezierFn(0.3, 0.05, 0.15, 1);
 const THEME_PILL_EASE = Easing.bezierFn(0.3, 0, 0.1, 1);
@@ -201,13 +202,34 @@ const THEME_LIFT = 1;
 
 function themeColourCurve(t: number) {
   'worklet';
-  return THEME_COLOUR_EASE(Math.min(t / THEME_COLOUR_WINDOW, 1));
+  const norm =
+    (t - THEME_COLOUR_WINDOW.start) /
+    (THEME_COLOUR_WINDOW.end - THEME_COLOUR_WINDOW.start);
+  return THEME_COLOUR_EASE(Math.min(Math.max(norm, 0), 1));
 }
 
 function themePillCurve(t: number) {
   'worklet';
   return THEME_PILL_EASE(Math.min(t / THEME_PILL_WINDOW, 1));
 }
+
+function smoothstep01(x: number) {
+  'worklet';
+  const c = Math.min(Math.max(x, 0), 1);
+  return c * c * (3 - 2 * c);
+}
+
+// Living front: dome + noise + bloom band, only alive during motion; open/close
+// envelope sin(πp); theme wave follows the lift bell; colour swaps under cover.
+const OPEN_WAVE_AMP_SCALE = 0.07; // * W, at envelope peak
+const OPEN_WAVE_DOME_SCALE = 0.16; // * W, at envelope peak
+const OPEN_FRONT_GLOW = 0.7;
+const THEME_WAVE_AMP_SCALE = 0.1; // * W, at lift peak
+const THEME_WAVE_DOME_SCALE = 0.22; // * W, at lift peak
+const THEME_FRONT_GLOW = 1.0;
+const WAVE_SPEED = 1.6;
+const FIELD_MIX_BLOOM_START = 0.55;
+const FIELD_MIX_BLOOM_END = 1.0;
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -400,7 +422,8 @@ export default function ProgressiveShowcaseRoute() {
   );
   const closedDepth = clampNumber(depthRaw, defaultClosedDepth, 72, 180);
   const expandedScale = clampNumber(scaleRaw, DEFAULT_EXPANDED_SCALE, 0.6, 1.6);
-  const blurRadiusDp = blurRadiusPx / PixelRatio.get();
+  const pixelRatio = PixelRatio.get();
+  const blurRadiusDp = blurRadiusPx / pixelRatio;
 
   const [open, setOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -416,6 +439,9 @@ export default function ProgressiveShowcaseRoute() {
   const themeMotion = useSharedValue(0);
   const themeFrom = useSharedValue(0);
   const themeTo = useSharedValue(0);
+  // Advances only while something is moving (open/close/theme), so the field
+  // has no idle per-frame native work.
+  const waveClock = useSharedValue(0);
 
   const expandedDepth = Math.max(
     closedDepth + 150,
@@ -452,17 +478,43 @@ export default function ProgressiveShowcaseRoute() {
       Extrapolation.CLAMP
     )
   );
-  // Opening "light flash": the veil is brighter in its first half then
-  // settles, following the rising sweep. Zero outside the open pass.
-  const flash = useDerivedValue(() =>
-    interpolate(progress.value, [0, 0.5, 1], [0, 1, 0], Extrapolation.CLAMP)
-  );
-  const materialStrengthValue = useDerivedValue(
-    () => materialStrength - 0.18 * themeLift.value
-  );
   const materialExposureValue = useDerivedValue(
+    () => DEFAULT_MATERIAL_EXPOSURE + 0.1 * themeLift.value
+  );
+  // Colour field blooms only at the end of the open sweep (or fully once the
+  // theme lift takes over past panelProgress 1) — the pure progressive blur
+  // dominates the rising "triangles" until then.
+  const fieldMixValue = useDerivedValue(
     () =>
-      DEFAULT_MATERIAL_EXPOSURE + 0.16 * themeLift.value + 0.08 * flash.value
+      DEFAULT_MATERIAL_COLOR_FIELD_MIX *
+      smoothstep01(
+        (panelProgress.value - FIELD_MIX_BLOOM_START) /
+          (FIELD_MIX_BLOOM_END - FIELD_MIX_BLOOM_START)
+      )
+  );
+  // Living front envelope: 0 at rest, peaks mid-transition on open/close.
+  const openEnvelope = useDerivedValue(() =>
+    Math.sin(Math.PI * Math.min(Math.max(progress.value, 0), 1))
+  );
+  const waveAmplitude = useDerivedValue(
+    () =>
+      Math.max(
+        OPEN_WAVE_AMP_SCALE * width * openEnvelope.value,
+        THEME_WAVE_AMP_SCALE * width * themeLift.value
+      ) * pixelRatio
+  );
+  const waveDome = useDerivedValue(
+    () =>
+      Math.max(
+        OPEN_WAVE_DOME_SCALE * width * openEnvelope.value,
+        THEME_WAVE_DOME_SCALE * width * themeLift.value
+      ) * pixelRatio
+  );
+  const frontGlow = useDerivedValue(() =>
+    Math.max(
+      OPEN_FRONT_GLOW * openEnvelope.value,
+      THEME_FRONT_GLOW * themeLift.value
+    )
   );
   // Colour and pill channels of the theme driver — both read themeMotion
   // through their own eased window, so a tap moves shape first, colour last.
@@ -669,6 +721,12 @@ export default function ProgressiveShowcaseRoute() {
       duration: THEME_MOTION_MS,
       easing: Easing.linear,
     });
+
+    cancelAnimation(waveClock);
+    waveClock.value = withTiming(
+      waveClock.value + (THEME_MOTION_MS / 1000) * WAVE_SPEED,
+      { duration: THEME_MOTION_MS, easing: Easing.linear }
+    );
   };
 
   const togglePanel = () => {
@@ -679,11 +737,17 @@ export default function ProgressiveShowcaseRoute() {
     cancelAnimation(closedNavOpacity);
     cancelAnimation(openMenuOpacity);
     cancelAnimation(openSegmentOpacity);
+    cancelAnimation(waveClock);
 
+    const fieldDurationMs = next ? FIELD_OPEN_MS : FIELD_CLOSE_MS;
     progress.value = withTiming(next ? 1 : 0, {
-      duration: next ? FIELD_OPEN_MS : FIELD_CLOSE_MS,
+      duration: fieldDurationMs,
       easing: next ? REFERENCE_OPEN_EASE : REFERENCE_CLOSE_EASE,
     });
+    waveClock.value = withTiming(
+      waveClock.value + (fieldDurationMs / 1000) * WAVE_SPEED,
+      { duration: fieldDurationMs, easing: Easing.linear }
+    );
 
     if (next) {
       closedNavOpacity.value = withDelay(
@@ -802,7 +866,11 @@ export default function ProgressiveShowcaseRoute() {
         blurProgression={blurProgression}
         progressiveBackend={debugBackend}
         progressiveNativeTuner={true}
-        progressiveMaterialStrength={materialStrengthValue}
+        progressiveMaterialStrength={materialStrength}
+        progressiveWaveAmplitude={waveAmplitude}
+        progressiveWaveDome={waveDome}
+        progressiveWaveTime={waveClock}
+        progressiveFrontGlow={frontGlow}
         progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}
@@ -812,7 +880,7 @@ export default function ProgressiveShowcaseRoute() {
           DEFAULT_MATERIAL_SURFACE_PROGRESSION
         }
         progressiveMaterialColorFieldEnabled={true}
-        progressiveMaterialColorFieldMix={DEFAULT_MATERIAL_COLOR_FIELD_MIX}
+        progressiveMaterialColorFieldMix={fieldMixValue}
         progressiveMaterialColorFieldScale={DEFAULT_MATERIAL_COLOR_FIELD_SCALE}
         progressiveMaterialColorFieldBlurRadiusPx={
           DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX
