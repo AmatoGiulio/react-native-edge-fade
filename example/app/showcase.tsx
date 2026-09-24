@@ -176,21 +176,24 @@ const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
 // Theme-change "single driver": one shared value (themeMotion, 0→1 linear,
-// 1100ms) phase-locks everything a Dark/Light tap touches. Each channel reads
-// its own eased window of that same 0→1 sweep inside a worklet, so colour,
-// pill and panel-lift can never drift out of sync with each other:
-//  - colour c(t): reference luma curve, over t in [0.30, 0.62] (swaps while
-//    the screen is covered by the lift).
-//  - pill p(t): reaches its destination first, ~200ms, over t in [0, 0.22].
-//  - lift L(t) = sin(pi * e(t)): one smooth bell over the full sweep, no
-//    hold, returns to exactly 0 at t=1 (the "breath" idea, without the old
-//    withSequence hold/return discontinuity).
-const THEME_MOTION_MS = 1100;
-const THEME_COLOUR_WINDOW = { start: 0.3, end: 0.62 };
-const THEME_PILL_WINDOW = 0.22;
+// 720ms) phase-locks everything a Dark/Light tap touches. Each channel reads
+// its own eased window of that same 0→1 sweep inside a worklet — phase-locked
+// so the pill, the colour swap and the panel rise all land together at the
+// peak (t=0.45), then the panel eases back down on its own tail:
+//  - colour c(t): reference luma curve, over t in [0.08, 0.45] (swaps while
+//    the screen is covered by the rising lift, completes at the peak).
+//  - pill p(t): rise phase easing, over t in [0, 0.45] — arrives exactly when
+//    the panel peaks, same curve as the lift's rise.
+//  - lift L(t): rise phase t in [0, 0.45] with EASE_RISE (same curve as the
+//    pill), fall phase t in [0.45, 1] with EASE_FALL back to 0 at t=1 — one
+//    smooth up/down arc, no periodic term, no discontinuity.
+const THEME_MOTION_MS = 720;
+const THEME_COLOUR_WINDOW = { start: 0.08, end: 0.45 };
+const THEME_LIFT_RISE_END = 0.45;
+const THEME_PILL_WINDOW = THEME_LIFT_RISE_END;
 const THEME_COLOUR_EASE = Easing.bezierFn(0.3, 0.05, 0.15, 1);
-const THEME_PILL_EASE = Easing.bezierFn(0.3, 0, 0.1, 1);
-const THEME_LIFT_EASE = Easing.bezierFn(0.33, 0, 0.2, 1);
+const THEME_RISE_EASE = Easing.bezierFn(0.3, 0, 0.1, 1);
+const THEME_FALL_EASE = Easing.bezierFn(0.45, 0, 0.25, 1);
 const THEME_LIFT = 1;
 
 function themeColourCurve(t: number) {
@@ -203,7 +206,16 @@ function themeColourCurve(t: number) {
 
 function themePillCurve(t: number) {
   'worklet';
-  return THEME_PILL_EASE(Math.min(t / THEME_PILL_WINDOW, 1));
+  return THEME_RISE_EASE(Math.min(t / THEME_PILL_WINDOW, 1));
+}
+
+function themeLiftCurve(t: number) {
+  'worklet';
+  if (t <= THEME_LIFT_RISE_END) {
+    return THEME_RISE_EASE(t / THEME_LIFT_RISE_END);
+  }
+  const fallT = (t - THEME_LIFT_RISE_END) / (1 - THEME_LIFT_RISE_END);
+  return 1 - THEME_FALL_EASE(Math.min(fallT, 1));
 }
 
 function smoothstep01(x: number) {
@@ -219,13 +231,11 @@ const THEME_WAVE_DOME_SCALE = 0.22; // * W, at lift peak
 const THEME_FRONT_GLOW = 1.0;
 const WAVE_SPEED = 1.6;
 
-// Material motion: strength loops 0.13–0.71 and surface progression rises/
-// falls while anything moves (open, close or theme); rest values untouched.
-const STRENGTH_LOOP_MIN = 0.13;
-const STRENGTH_LOOP_MAX = 0.71;
-const STRENGTH_LOOP_MID = (STRENGTH_LOOP_MIN + STRENGTH_LOOP_MAX) / 2;
-const STRENGTH_LOOP_AMP = (STRENGTH_LOOP_MAX - STRENGTH_LOOP_MIN) / 2;
-const STRENGTH_LOOP_PERIOD_S = 1.4;
+// Material motion: strength dips once (no periodic term) and surface
+// progression rises/falls while anything moves (open, close or theme); rest
+// values untouched.
+const STRENGTH_MOTION_EDGE = 0.71;
+const STRENGTH_MOTION_PEAK = 0.13;
 const SURFACE_PROG_MOTION_FROM = 0.35;
 const SURFACE_PROG_MOTION_TO = 1.0;
 const MATERIAL_MOTION_WEIGHT_EDGE = 0.2;
@@ -441,9 +451,6 @@ export default function ProgressiveShowcaseRoute() {
   // Advances only while theme motion is running, so the field has no idle
   // per-frame native work.
   const waveClock = useSharedValue(0);
-  // Advances during open/close AND theme motion — drives the material's
-  // strength loop and surface-progression rise/fall while anything moves.
-  const materialClock = useSharedValue(0);
 
   const expandedDepth = Math.max(
     closedDepth + 150,
@@ -451,11 +458,7 @@ export default function ProgressiveShowcaseRoute() {
   );
   // Theme lift bell L(t), gated to 0 unless the panel is fully open — a tap
   // while closed still animates colours/pill but must not lift the panel.
-  const liftValue = useDerivedValue(() => {
-    'worklet';
-    const eased = THEME_LIFT_EASE(themeMotion.value);
-    return Math.sin(Math.PI * eased);
-  });
+  const liftValue = useDerivedValue(() => themeLiftCurve(themeMotion.value));
   const themeLift = useDerivedValue(() =>
     progress.value >= 0.999 ? liftValue.value : 0
   );
@@ -503,16 +506,15 @@ export default function ProgressiveShowcaseRoute() {
   const materialMotionWeight = useDerivedValue(() =>
     smoothstep01(materialMotion.value / MATERIAL_MOTION_WEIGHT_EDGE)
   );
-  const strengthLoop = useDerivedValue(
+  const strengthMotion = useDerivedValue(
     () =>
-      STRENGTH_LOOP_MID +
-      STRENGTH_LOOP_AMP *
-        Math.sin((2 * Math.PI * materialClock.value) / STRENGTH_LOOP_PERIOD_S)
+      STRENGTH_MOTION_EDGE +
+      (STRENGTH_MOTION_PEAK - STRENGTH_MOTION_EDGE) * materialMotion.value
   );
   const strengthValue = useDerivedValue(
     () =>
       materialStrength +
-      (strengthLoop.value - materialStrength) * materialMotionWeight.value
+      (strengthMotion.value - materialStrength) * materialMotionWeight.value
   );
   const surfaceProgressionMotion = useDerivedValue(
     () =>
@@ -736,15 +738,6 @@ export default function ProgressiveShowcaseRoute() {
       waveClock.value + (THEME_MOTION_MS / 1000) * WAVE_SPEED,
       { duration: THEME_MOTION_MS, easing: Easing.linear }
     );
-
-    cancelAnimation(materialClock);
-    materialClock.value = withTiming(
-      materialClock.value + THEME_MOTION_MS / 1000,
-      {
-        duration: THEME_MOTION_MS,
-        easing: Easing.linear,
-      }
-    );
   };
 
   const togglePanel = () => {
@@ -755,20 +748,12 @@ export default function ProgressiveShowcaseRoute() {
     cancelAnimation(closedNavOpacity);
     cancelAnimation(openMenuOpacity);
     cancelAnimation(openSegmentOpacity);
-    cancelAnimation(materialClock);
 
     const fieldDurationMs = next ? FIELD_OPEN_MS : FIELD_CLOSE_MS;
     progress.value = withTiming(next ? 1 : 0, {
       duration: fieldDurationMs,
       easing: REFERENCE_MOTION_EASE,
     });
-    materialClock.value = withTiming(
-      materialClock.value + fieldDurationMs / 1000,
-      {
-        duration: fieldDurationMs,
-        easing: Easing.linear,
-      }
-    );
 
     if (next) {
       closedNavOpacity.value = withDelay(
