@@ -39,17 +39,28 @@ internal class EdgeFadeProgressiveStripRenderer(
     // AndroidX gradient now keeps a full-res entrance/body. Double only the
     // internal kernel radius to preserve the old 0.5x screen-space diffusion.
     const val ANDROIDX_GRADIENT_RADIUS_COMPENSATION = 2f
+
+    // ponytail: bottom/waveAmplitude/waveDome animate every frame (open/close,
+    // living wave). Quantizing the STRUCTURAL reserve they need to a coarse
+    // bucket means band/raster/RenderEffect rebuilds happen only every ~64px
+    // of travel instead of every frame; the exact values still reach the
+    // shader every frame via the cheap uniform path below.
+    const val GEOMETRY_RESERVE_QUANT_PX = 64f
   }
 
   private data class Key(
     val width: Int,
     val height: Int,
     val top: Float,
-    val bottom: Float,
+    // Structural reserve bound for the bottom band (quantized, see
+    // GEOMETRY_RESERVE_QUANT_PX) — NOT the exact animated bottom. The exact
+    // bottom (plus waveAmplitude/waveDome) is tracked outside Key in
+    // exactBottom/exactWaveAmplitude/exactWaveDome and pushed to shader
+    // uniforms every frame without forcing a rebuild.
+    val reserveBottom: Float,
     val left: Float,
     val right: Float,
     val radius: Float,
-    val progression: Float,
     val curveTop: String,
     val curveBottom: String,
     val curveLeft: String,
@@ -58,26 +69,19 @@ internal class EdgeFadeProgressiveStripRenderer(
     val debugStage: String,
     val gradientSpan: Float,
     val materialEnabled: Boolean,
-    val materialStrength: Float,
+    // Whether materialStrength > 0. The exact value is a pure uniform (see
+    // exactMaterialStrength) and animates every frame; only whether the
+    // material pipeline is active at all changes strip.scale/kernelRadius/
+    // RenderEffect *shape*, so only the boolean is structural.
+    val materialActive: Boolean,
     val materialColor: Int,
     val materialColorDark: Int,
-    val materialExposure: Float,
-    val materialSurface: Float,
-    val materialSurfaceProgression: Float,
-    val materialCurveHeight: Float,
-    val materialCurveOffset: Float,
     val materialColorFieldEnabled: Boolean,
-    val materialColorFieldMix: Float,
+    // Whether materialColorFieldMix > 0 — see materialActive above; the exact
+    // mix value is exactColorFieldMix, a pure "materialOverlayMix" uniform.
+    val colorFieldActive: Boolean,
     val materialColorFieldScale: Float,
     val materialColorFieldBlurRadiusPx: Float,
-    val materialColorFieldChromaGate: Float,
-    val materialColorFieldChromaGain: Float,
-    val materialColorFieldLumaMix: Float,
-    val materialColorFieldNeutralWeight: Float,
-    // Geometry-affecting: amplitude/dome change the bottom band's raster
-    // extent, so (unlike waveTime/frontGlow) they go through full configure().
-    val waveAmplitude: Float,
-    val waveDome: Float,
   )
 
   private data class CurveSamples(
@@ -127,6 +131,36 @@ internal class EdgeFadeProgressiveStripRenderer(
   private var livingWaveTime = Float.NaN
   private var livingFrontGlow = Float.NaN
 
+  // Exact per-frame geometry values (unlike Key.reserveBottom, which is
+  // quantized). Updated every frame via updateGeometryUniforms(); configure()
+  // also reads these directly so a structural rebuild always uses the exact
+  // current value.
+  private var exactBottom = Float.NaN
+  private var exactWaveAmplitude = Float.NaN
+  private var exactWaveDome = Float.NaN
+
+  // Exact per-frame material/mask uniform values, excluded from Key so
+  // animating strength/exposure/surface/progression/colorFieldMix during
+  // open/close/theme motion never triggers configure() — only whether the
+  // material or color-field pipeline is *active at all* (materialActive /
+  // colorFieldActive in Key) is structural. Updated via updateMaterialUniforms().
+  private var exactProgression = Float.NaN
+  private var exactMaterialStrength = Float.NaN
+  private var exactMaterialExposure = Float.NaN
+  private var exactMaterialSurface = Float.NaN
+  private var exactMaterialSurfaceProgression = Float.NaN
+  private var exactMaterialCurveHeight = Float.NaN
+  private var exactMaterialCurveOffset = Float.NaN
+  private var exactColorFieldMix = Float.NaN
+  private var exactChromaGate = Float.NaN
+  private var exactChromaGain = Float.NaN
+  private var exactLumaMix = Float.NaN
+  private var exactNeutralWeight = Float.NaN
+
+  // Cached from the last full configure(); reused by the cheap geometry path
+  // (androidx-gradient sharpY/maxY) so it never needs to resample curves.
+  private var curves: CurveSamples? = null
+
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
     val width = host.width
@@ -149,16 +183,60 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
     if (exactBackend.startsWith("androidx") && !AndroidxBlurAdapter.available) return false
 
+    val exactBottomNext = BlurLabGeometry.edge(host.effectiveFadeBottom(), height)
+    val exactWaveAmplitudeNext =
+      BlurLabGeometry.finite(host.progressiveWaveAmplitude).coerceIn(0f, 400f)
+    val exactWaveDomeNext =
+      BlurLabGeometry.finite(host.progressiveWaveDome).coerceIn(-600f, 600f)
+    val waveExtraNext = (maxOf(exactWaveDomeNext, 0f) + exactWaveAmplitudeNext)
+      .coerceIn(0f, height.toFloat())
+    val geometryBottomNext = (exactBottomNext + waveExtraNext).coerceAtMost(height.toFloat())
+    val reserveBottomNext =
+      (ceil(geometryBottomNext / GEOMETRY_RESERVE_QUANT_PX) * GEOMETRY_RESERVE_QUANT_PX)
+        .coerceAtMost(height.toFloat())
+
+    // Uniform-only values: they animate every frame (open/close, theme) but
+    // never require a rebuilt band/raster/RenderEffect *shape* — only
+    // whether the pipeline is active at all (strength/mix > 0) is structural
+    // (materialActive/colorFieldActive below). Pushed to shaders every frame
+    // via updateMaterialUniforms(), never through Key/configure().
+    val exactProgressionNext =
+      BlurLabGeometry.finite(host.effectiveFrostProgression(), 1f).coerceIn(0.05f, 1f)
+    val exactMaterialStrengthNext =
+      BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f)
+    val exactMaterialExposureNext =
+      BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f)
+    val exactMaterialSurfaceNext =
+      BlurLabGeometry.finite(host.effectiveMaterialSurface()).coerceIn(0f, 1f)
+    val exactMaterialSurfaceProgressionNext =
+      BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
+        .coerceIn(0.15f, 1f)
+    val exactMaterialCurveHeightNext =
+      BlurLabGeometry.finite(host.effectiveMaterialCurveHeight(), 1f).coerceIn(0.25f, 1.5f)
+    val exactMaterialCurveOffsetNext =
+      BlurLabGeometry.finite(host.effectiveMaterialCurveOffset(), 0f).coerceIn(-0.35f, 0.35f)
+    val exactColorFieldMixNext =
+      BlurLabGeometry.finite(host.effectiveMaterialColorFieldMix(), 0f).coerceIn(0f, 1f)
+    val exactChromaGateNext =
+      BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGate(), 0.035f)
+        .coerceIn(0f, 0.25f)
+    val exactChromaGainNext =
+      BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGain(), 1.35f)
+        .coerceIn(0.5f, 2.5f)
+    val exactLumaMixNext =
+      BlurLabGeometry.finite(host.effectiveMaterialColorFieldLumaMix(), 0.10f).coerceIn(0f, 1f)
+    val exactNeutralWeightNext =
+      BlurLabGeometry.finite(host.effectiveMaterialColorFieldNeutralWeight(), 0f)
+        .coerceIn(0f, 1f)
+
     val next = Key(
       width = width,
       height = height,
       top = BlurLabGeometry.edge(host.fadeTop, height),
-      bottom = BlurLabGeometry.edge(host.effectiveFadeBottom(), height),
+      reserveBottom = reserveBottomNext,
       left = BlurLabGeometry.edge(host.fadeLeft, width),
       right = BlurLabGeometry.edge(host.fadeRight, width),
       radius = BlurLabGeometry.radius(host.effectiveBlurRadius()),
-      progression =
-        BlurLabGeometry.finite(host.effectiveFrostProgression(), 1f).coerceIn(0.05f, 1f),
       curveTop = host.effectiveCurve(host.curveTop),
       curveBottom = host.effectiveCurve(host.curveBottom),
       curveLeft = host.effectiveCurve(host.curveLeft),
@@ -168,47 +246,17 @@ internal class EdgeFadeProgressiveStripRenderer(
       gradientSpan =
         BlurLabGeometry.finite(host.effectiveGradientSpan(), 1f).coerceIn(0.05f, 1f),
       materialEnabled = host.effectiveMaterialEnabled(),
-      materialStrength =
-        BlurLabGeometry.finite(host.effectiveMaterialStrength()).coerceIn(0f, 1f),
+      materialActive = exactMaterialStrengthNext > 0f,
       materialColor = host.effectiveMaterialColorLight(),
       materialColorDark = host.effectiveMaterialColorDark(),
-      materialExposure =
-        BlurLabGeometry.finite(host.effectiveMaterialExposure(), 1f).coerceIn(0.5f, 1.2f),
-      materialSurface =
-        BlurLabGeometry.finite(host.effectiveMaterialSurface()).coerceIn(0f, 1f),
-      materialSurfaceProgression =
-        BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
-          .coerceIn(0.15f, 1f),
-      materialCurveHeight =
-        BlurLabGeometry.finite(host.effectiveMaterialCurveHeight(), 1f)
-          .coerceIn(0.25f, 1.5f),
-      materialCurveOffset =
-        BlurLabGeometry.finite(host.effectiveMaterialCurveOffset(), 0f)
-          .coerceIn(-0.35f, 0.35f),
       materialColorFieldEnabled = host.effectiveMaterialColorFieldEnabled(),
-      materialColorFieldMix =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldMix(), 0f)
-          .coerceIn(0f, 1f),
+      colorFieldActive = exactColorFieldMixNext > 0f,
       materialColorFieldScale =
         BlurLabGeometry.finite(host.effectiveMaterialColorFieldScale(), 0.10f)
           .coerceIn(0.05f, 0.25f),
       materialColorFieldBlurRadiusPx =
         BlurLabGeometry.finite(host.effectiveMaterialColorFieldBlurRadiusPx(), 160f)
           .coerceIn(16f, 900f),
-      materialColorFieldChromaGate =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGate(), 0.035f)
-          .coerceIn(0f, 0.25f),
-      materialColorFieldChromaGain =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGain(), 1.35f)
-          .coerceIn(0.5f, 2.5f),
-      materialColorFieldLumaMix =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldLumaMix(), 0.10f)
-          .coerceIn(0f, 1f),
-      materialColorFieldNeutralWeight =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldNeutralWeight(), 0f)
-          .coerceIn(0f, 1f),
-      waveAmplitude = BlurLabGeometry.finite(host.progressiveWaveAmplitude).coerceIn(0f, 400f),
-      waveDome = BlurLabGeometry.finite(host.progressiveWaveDome).coerceIn(-600f, 600f),
     )
 
     val nextThemeProgress =
@@ -219,29 +267,61 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (key == next) {
       updateMaterialTheme(next, nextThemeProgress)
       updateLivingUniforms(next, nextWaveTime, nextFrontGlow)
+      updateGeometryUniforms(next, exactBottomNext, exactWaveAmplitudeNext, exactWaveDomeNext)
+      updateMaterialUniforms(
+        next,
+        exactProgressionNext,
+        exactMaterialStrengthNext,
+        exactMaterialExposureNext,
+        exactMaterialSurfaceNext,
+        exactMaterialSurfaceProgressionNext,
+        exactMaterialCurveHeightNext,
+        exactMaterialCurveOffsetNext,
+        exactColorFieldMixNext,
+        exactChromaGateNext,
+        exactChromaGainNext,
+        exactLumaMixNext,
+        exactNeutralWeightNext,
+      )
       return true
     }
 
     materialThemeProgress = nextThemeProgress
     livingWaveTime = nextWaveTime
     livingFrontGlow = nextFrontGlow
+    exactBottom = exactBottomNext
+    exactWaveAmplitude = exactWaveAmplitudeNext
+    exactWaveDome = exactWaveDomeNext
+    exactProgression = exactProgressionNext
+    exactMaterialStrength = exactMaterialStrengthNext
+    exactMaterialExposure = exactMaterialExposureNext
+    exactMaterialSurface = exactMaterialSurfaceNext
+    exactMaterialSurfaceProgression = exactMaterialSurfaceProgressionNext
+    exactMaterialCurveHeight = exactMaterialCurveHeightNext
+    exactMaterialCurveOffset = exactMaterialCurveOffsetNext
+    exactColorFieldMix = exactColorFieldMixNext
+    exactChromaGate = exactChromaGateNext
+    exactChromaGain = exactChromaGainNext
+    exactLumaMix = exactLumaMixNext
+    exactNeutralWeight = exactNeutralWeightNext
 
     Log.i(
       "EdgeFadeCleanConfig",
       "backend=${next.backend} stage=${next.debugStage} radius=${next.radius} " +
-        "progression=${next.progression} gradientSpan=${next.gradientSpan} " +
-        "material=${next.materialEnabled} strength=${next.materialStrength} exposure=${next.materialExposure} " +
-        "kernelRadius=${if (next.backend == "androidx-gradient" && next.materialStrength > 0f) next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION else next.radius} " +
-        "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression} " +
-        "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset} " +
-        "colorField=${next.materialColorFieldEnabled} colorFieldMix=${next.materialColorFieldMix} " +
+        "progression=$exactProgression gradientSpan=${next.gradientSpan} " +
+        "material=${next.materialEnabled} active=${next.materialActive} strength=$exactMaterialStrength exposure=$exactMaterialExposure " +
+        "kernelRadius=${if (next.backend == "androidx-gradient" && next.materialActive) next.radius * ANDROIDX_GRADIENT_RADIUS_COMPENSATION else next.radius} " +
+        "surface=$exactMaterialSurface surfaceProg=$exactMaterialSurfaceProgression " +
+        "materialCurveHeight=$exactMaterialCurveHeight materialCurveOffset=$exactMaterialCurveOffset " +
+        "colorField=${next.materialColorFieldEnabled} colorFieldActive=${next.colorFieldActive} colorFieldMix=$exactColorFieldMix " +
         "colorFieldScale=${next.materialColorFieldScale} " +
         "colorFieldBlurPx=${next.materialColorFieldBlurRadiusPx} " +
-        "chromaGate=${next.materialColorFieldChromaGate} " +
-        "chromaGain=${next.materialColorFieldChromaGain} " +
-        "lumaMix=${next.materialColorFieldLumaMix} " +
-        "neutralWeight=${next.materialColorFieldNeutralWeight} " +
-        "waveAmplitude=${next.waveAmplitude} waveDome=${next.waveDome} " +
+        "chromaGate=$exactChromaGate " +
+        "chromaGain=$exactChromaGain " +
+        "lumaMix=$exactLumaMix " +
+        "neutralWeight=$exactNeutralWeight " +
+        "reserveBottom=${next.reserveBottom} " +
+        "waveAmplitude=$exactWaveAmplitude waveDome=$exactWaveDome " +
         "waveTime=$livingWaveTime frontGlow=$livingFrontGlow",
     )
 
@@ -337,9 +417,9 @@ internal class EdgeFadeProgressiveStripRenderer(
         if (
           (currentKey.debugStage == "material" || currentKey.debugStage == "field") &&
           currentKey.materialEnabled &&
-          currentKey.materialStrength > 0f &&
+          currentKey.materialActive &&
           currentKey.materialColorFieldEnabled &&
-          currentKey.materialColorFieldMix > 0f &&
+          currentKey.colorFieldActive &&
           strip.fieldBlurEffect != null
         ) {
           val fieldSource = strip.fieldSource
@@ -384,18 +464,16 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private fun configure(next: Key) {
-    // The warped front can reach past the nominal bottom depth by up to
-    // (dome + amplitude) px; grow the band/source/raster geometry by that
-    // much so it is never clipped. 0/0 keeps this identical to next.bottom.
-    val waveExtra = (maxOf(next.waveDome, 0f) + next.waveAmplitude)
-      .coerceIn(0f, next.height.toFloat())
-    val geometryBottom = (next.bottom + waveExtra).coerceAtMost(next.height.toFloat())
-
+    // Band/raster geometry is sized to the quantized reserve, not the exact
+    // animated bottom — see Key.reserveBottom and GEOMETRY_RESERVE_QUANT_PX.
+    // It is always >= the exact current (bottom + wave extra), so the raster
+    // never clips; the exact edge still reaches the shader every frame via
+    // updateGeometryUniforms().
     val bands =
       BlurLabGeometry.bands(
         next.width,
         next.height,
-        floatArrayOf(next.top, geometryBottom, next.left, next.right),
+        floatArrayOf(next.top, next.reserveBottom, next.left, next.right),
         next.radius,
       )
 
@@ -406,19 +484,20 @@ internal class EdgeFadeProgressiveStripRenderer(
         left = curveSamples(next.curveLeft),
         right = curveSamples(next.curveRight),
       )
+    this.curves = curves
 
     val previous = strips.associateBy { it.band.edge }.toMutableMap()
     strips = bands.map { band ->
       (previous.remove(band.edge) ?: Strip(band)).also { strip ->
         val highQualityAndroidxGradient =
           (next.backend == "androidx-gradient" || next.debugStage == "field") &&
-            next.materialStrength > 0f
+            next.materialActive
 
         // The official gradient path is production-quality/full-resolution.
         // Legacy experimental backends keep their previous half-res behaviour.
         strip.scale =
           if (highQualityAndroidxGradient) 1f
-          else if (next.materialStrength > 0f) 0.5f
+          else if (next.materialActive) 0.5f
           else 1f
         strip.kernelRadius =
           if (highQualityAndroidxGradient) {
@@ -490,11 +569,11 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.mask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
     strip.mask.setFloatUniform(
       "edges",
-      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
+      floatArrayOf(key.top * scale, exactBottom * scale, key.left * scale, key.right * scale),
     )
-    strip.mask.setFloatUniform("progression", key.progression)
-    strip.mask.setFloatUniform("waveAmp", key.waveAmplitude * scale)
-    strip.mask.setFloatUniform("waveDome", key.waveDome * scale)
+    strip.mask.setFloatUniform("progression", exactProgression)
+    strip.mask.setFloatUniform("waveAmp", exactWaveAmplitude * scale)
+    strip.mask.setFloatUniform("waveDome", exactWaveDome * scale)
     strip.mask.setFloatUniform("waveTime", livingWaveTime)
     strip.mask.setFloatUniform("curveTop", curves.top)
     strip.mask.setFloatUniform("curveBottom", curves.bottom)
@@ -503,15 +582,16 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     val blurEffect =
       if (key.backend == "androidx-gradient" && strip.band.edge in 0..1) {
+        val geometryBottom = currentGeometryBottom(key.height)
         val sharpY =
           if (strip.band.edge == 0) {
             (strip.band.visible.bottom - source.top) * scale
           } else {
-            (strip.band.visible.top - source.top) * scale
+            (key.height - geometryBottom - source.top) * scale
           }
         val depth =
           if (strip.band.edge == 0) strip.band.visible.height.toFloat()
-          else strip.band.visible.height.toFloat()
+          else geometryBottom
         val maxY =
           if (strip.band.edge == 0) {
             sharpY - depth * key.gradientSpan * scale
@@ -534,19 +614,19 @@ internal class EdgeFadeProgressiveStripRenderer(
       } else {
         for (shader in arrayOf(strip.horizontal, strip.vertical)) {
           shader.setInputShader("mask", strip.mask)
-          if (key.materialStrength > 0f) {
+          if (key.materialActive) {
             shader.setFloatUniform("materialOrigin", source.left * scale, source.top * scale)
             shader.setFloatUniform("materialViewSize", key.width * scale, key.height * scale)
             shader.setFloatUniform("materialEdges", floatArrayOf(
-              key.top * scale, key.bottom * scale, key.left * scale, key.right * scale,
+              key.top * scale, exactBottom * scale, key.left * scale, key.right * scale,
             ))
-            shader.setFloatUniform("materialProgression", key.progression)
+            shader.setFloatUniform("materialProgression", exactProgression)
           }
           shader.setFloatUniform("blurRadius", key.radius)
           shader.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
           shader.setFloatUniform(
             "continuousSupport",
-            if (key.materialStrength > 0f) 1f else 0f,
+            if (key.materialActive) 1f else 0f,
           )
         }
 
@@ -558,28 +638,28 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     strip.blurEffect = blurEffect
 
-    if (key.materialEnabled && key.materialStrength > 0f) {
+    if (key.materialEnabled && key.materialActive) {
       strip.material.setInputShader("mask", strip.mask)
-      strip.material.setFloatUniform("materialStrength", key.materialStrength)
+      strip.material.setFloatUniform("materialStrength", exactMaterialStrength)
       setMaterialColor(
         strip.material,
         mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
       )
-      strip.material.setFloatUniform("materialExposure", key.materialExposure)
-      strip.material.setFloatUniform("materialSurface", key.materialSurface)
+      strip.material.setFloatUniform("materialExposure", exactMaterialExposure)
+      strip.material.setFloatUniform("materialSurface", exactMaterialSurface)
       strip.material.setFloatUniform(
         "materialSurfaceProgression",
-        key.materialSurfaceProgression,
+        exactMaterialSurfaceProgression,
       )
-      strip.material.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
-      strip.material.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
+      strip.material.setFloatUniform("materialCurveHeight", exactMaterialCurveHeight)
+      strip.material.setFloatUniform("materialCurveOffset", exactMaterialCurveOffset)
       strip.material.setFloatUniform("materialOverlayMode", 0f)
       strip.material.setFloatUniform("materialOverlayMix", 0f)
       strip.material.setFloatUniform("frontGlow", livingFrontGlow)
     }
 
     configureColorField(strip, key, curves)
-    applyFinalEffect(strip, key)
+    applyFinalEffect(strip, key, logChange = true)
   }
 
   private fun configureColorField(
@@ -589,9 +669,9 @@ internal class EdgeFadeProgressiveStripRenderer(
   ) {
     if (
       !key.materialEnabled ||
-      key.materialStrength <= 0f ||
+      !key.materialActive ||
       !key.materialColorFieldEnabled ||
-      key.materialColorFieldMix <= 0f
+      !key.colorFieldActive
     ) {
       strip.fieldBlurEffect = null
       strip.fieldNode.setRenderEffect(null)
@@ -599,8 +679,8 @@ internal class EdgeFadeProgressiveStripRenderer(
       Log.i(
         "EdgeFadeField",
         "configureColorField edge=${edgeName(strip.band.edge)} disabled " +
-          "materialEnabled=${key.materialEnabled} materialStrength=${key.materialStrength} " +
-          "colorFieldEnabled=${key.materialColorFieldEnabled} colorFieldMix=${key.materialColorFieldMix}",
+          "materialEnabled=${key.materialEnabled} materialActive=${key.materialActive} " +
+          "colorFieldEnabled=${key.materialColorFieldEnabled} colorFieldActive=${key.colorFieldActive}",
       )
       return
     }
@@ -615,50 +695,38 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.fieldMask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
     strip.fieldMask.setFloatUniform(
       "edges",
-      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
+      floatArrayOf(key.top * scale, exactBottom * scale, key.left * scale, key.right * scale),
     )
-    strip.fieldMask.setFloatUniform("progression", key.progression)
-    strip.fieldMask.setFloatUniform("waveAmp", key.waveAmplitude * scale)
-    strip.fieldMask.setFloatUniform("waveDome", key.waveDome * scale)
+    strip.fieldMask.setFloatUniform("progression", exactProgression)
+    strip.fieldMask.setFloatUniform("waveAmp", exactWaveAmplitude * scale)
+    strip.fieldMask.setFloatUniform("waveDome", exactWaveDome * scale)
     strip.fieldMask.setFloatUniform("waveTime", livingWaveTime)
     strip.fieldMask.setFloatUniform("curveTop", curves.top)
     strip.fieldMask.setFloatUniform("curveBottom", curves.bottom)
     strip.fieldMask.setFloatUniform("curveLeft", curves.left)
     strip.fieldMask.setFloatUniform("curveRight", curves.right)
 
-    strip.fieldSourceShader.setFloatUniform(
-      "chromaGate",
-      key.materialColorFieldChromaGate,
-    )
-    strip.fieldSourceShader.setFloatUniform(
-      "chromaGain",
-      key.materialColorFieldChromaGain,
-    )
-    strip.fieldSourceShader.setFloatUniform(
-      "lumaMix",
-      key.materialColorFieldLumaMix,
-    )
-    strip.fieldSourceShader.setFloatUniform(
-      "neutralWeight",
-      key.materialColorFieldNeutralWeight,
-    )
+    strip.fieldSourceShader.setFloatUniform("chromaGate", exactChromaGate)
+    strip.fieldSourceShader.setFloatUniform("chromaGain", exactChromaGain)
+    strip.fieldSourceShader.setFloatUniform("lumaMix", exactLumaMix)
+    strip.fieldSourceShader.setFloatUniform("neutralWeight", exactNeutralWeight)
 
     strip.fieldMaterial.setInputShader("mask", strip.fieldMask)
-    strip.fieldMaterial.setFloatUniform("materialStrength", key.materialStrength)
+    strip.fieldMaterial.setFloatUniform("materialStrength", exactMaterialStrength)
     setMaterialColor(
       strip.fieldMaterial,
       mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
     )
-    strip.fieldMaterial.setFloatUniform("materialExposure", key.materialExposure)
-    strip.fieldMaterial.setFloatUniform("materialSurface", key.materialSurface)
+    strip.fieldMaterial.setFloatUniform("materialExposure", exactMaterialExposure)
+    strip.fieldMaterial.setFloatUniform("materialSurface", exactMaterialSurface)
     strip.fieldMaterial.setFloatUniform(
       "materialSurfaceProgression",
-      key.materialSurfaceProgression,
+      exactMaterialSurfaceProgression,
     )
-    strip.fieldMaterial.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
-    strip.fieldMaterial.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
+    strip.fieldMaterial.setFloatUniform("materialCurveHeight", exactMaterialCurveHeight)
+    strip.fieldMaterial.setFloatUniform("materialCurveOffset", exactMaterialCurveOffset)
     strip.fieldMaterial.setFloatUniform("materialOverlayMode", 1f)
-    strip.fieldMaterial.setFloatUniform("materialOverlayMix", key.materialColorFieldMix)
+    strip.fieldMaterial.setFloatUniform("materialOverlayMix", exactColorFieldMix)
     strip.fieldMaterial.setFloatUniform("frontGlow", livingFrontGlow)
 
     val lowResBlur =
@@ -674,14 +742,14 @@ internal class EdgeFadeProgressiveStripRenderer(
       "EdgeFadeField",
       "configureColorField edge=${edgeName(strip.band.edge)} fieldSource=$source " +
         "fieldScale=$scale raster=${rasterWidth}x$rasterHeight lowResBlur=$lowResBlur " +
-        "materialColorFieldMix=${key.materialColorFieldMix}",
+        "materialColorFieldMix=$exactColorFieldMix",
     )
   }
 
   private fun updateMaterialTheme(key: Key, progress: Float) {
     if (progress == materialThemeProgress) return
     materialThemeProgress = progress
-    if (!key.materialEnabled || key.materialStrength <= 0f) return
+    if (!key.materialEnabled || !key.materialActive) return
 
     val color = mixColor(key.materialColor, key.materialColorDark, progress)
     for (strip in strips) {
@@ -706,9 +774,9 @@ internal class EdgeFadeProgressiveStripRenderer(
     for (strip in strips) {
       strip.mask.setFloatUniform("waveTime", time)
       strip.fieldMask.setFloatUniform("waveTime", time)
-      if (key.materialEnabled && key.materialStrength > 0f) {
+      if (key.materialEnabled && key.materialActive) {
         strip.material.setFloatUniform("frontGlow", glow)
-        if (key.materialColorFieldEnabled && key.materialColorFieldMix > 0f) {
+        if (key.materialColorFieldEnabled && key.colorFieldActive) {
           strip.fieldMaterial.setFloatUniform("frontGlow", glow)
         }
       }
@@ -716,13 +784,207 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
   }
 
-  private fun applyFinalEffect(strip: Strip, key: Key) {
+  /** Exact (unquantized) bottom band depth for the current frame. */
+  private fun currentGeometryBottom(height: Int): Float {
+    val waveExtra = (maxOf(exactWaveDome, 0f) + exactWaveAmplitude).coerceIn(0f, height.toFloat())
+    return (exactBottom + waveExtra).coerceAtMost(height.toFloat())
+  }
+
+  /**
+   * Cheap per-frame update for the animated bottom depth / wave amplitude /
+   * wave dome. Band/raster geometry (Key.reserveBottom) only changes every
+   * ~GEOMETRY_RESERVE_QUANT_PX of travel, so most frames land here instead of
+   * configure(): just push the exact values to the mask uniforms.
+   *
+   * The one exception is the androidx-gradient backend, whose blur profile is
+   * baked into RenderEffect stops (not settable uniforms) — its gradient
+   * spec is rebuilt from the exact depth every time it changes, but nothing
+   * else (bands, curves, strip objects, logging) is touched.
+   */
+  private fun updateGeometryUniforms(
+    key: Key,
+    bottom: Float,
+    waveAmplitude: Float,
+    waveDome: Float,
+  ) {
+    if (bottom == exactBottom && waveAmplitude == exactWaveAmplitude && waveDome == exactWaveDome) {
+      return
+    }
+    exactBottom = bottom
+    exactWaveAmplitude = waveAmplitude
+    exactWaveDome = waveDome
+    if (strips.isEmpty()) return
+
+    val curves = this.curves ?: return
+    val geometryBottom = currentGeometryBottom(key.height)
+
+    for (strip in strips) {
+      val scale = strip.scale
+      for (mask in arrayOf(strip.mask, strip.fieldMask)) {
+        mask.setFloatUniform(
+          "edges",
+          floatArrayOf(key.top * scale, bottom * scale, key.left * scale, key.right * scale),
+        )
+        mask.setFloatUniform("waveAmp", waveAmplitude * scale)
+        mask.setFloatUniform("waveDome", waveDome * scale)
+      }
+
+      if (key.backend == "agsl" && key.materialActive) {
+        for (shader in arrayOf(strip.horizontal, strip.vertical)) {
+          shader.setFloatUniform(
+            "materialEdges",
+            floatArrayOf(key.top * scale, bottom * scale, key.left * scale, key.right * scale),
+          )
+        }
+      }
+
+      if (key.backend == "androidx-gradient" && strip.band.edge in 0..1) {
+        val source = strip.band.source
+        val rasterWidth = ceil(source.width * scale).toInt()
+        val rasterHeight = ceil(source.height * scale).toInt()
+        val sharpY =
+          if (strip.band.edge == 0) {
+            (strip.band.visible.bottom - source.top) * scale
+          } else {
+            (key.height - geometryBottom - source.top) * scale
+          }
+        val depth =
+          if (strip.band.edge == 0) strip.band.visible.height.toFloat() else geometryBottom
+        val maxY =
+          if (strip.band.edge == 0) {
+            sharpY - depth * key.gradientSpan * scale
+          } else {
+            sharpY + depth * key.gradientSpan * scale
+          }
+        val presence = if (strip.band.edge == 0) curves.top else curves.bottom
+
+        strip.blurEffect = AndroidxBlurAdapter.createShowcaseVerticalGradient(
+          rasterWidth,
+          rasterHeight,
+          strip.kernelRadius,
+          sharpY,
+          maxY,
+          presence,
+        )
+      }
+
+      applyFinalEffect(strip, key)
+    }
+  }
+
+  /**
+   * Cheap per-frame update for the material/mask uniforms that animate every
+   * frame during open/close/theme motion (frostProgression, materialStrength,
+   * materialExposure, materialSurface[Progression], materialCurve[Height/
+   * Offset], materialColorFieldMix, chromaGate/Gain, lumaMix, neutralWeight).
+   * None of these change band/raster geometry or the androidx-gradient
+   * RenderEffect shape (that only depends on materialActive, gradientSpan
+   * and depth, all handled elsewhere) — they are pure RuntimeShader uniforms,
+   * so this never touches configure()/bands/curves/strip objects.
+   */
+  private fun updateMaterialUniforms(
+    key: Key,
+    progression: Float,
+    materialStrength: Float,
+    materialExposure: Float,
+    materialSurface: Float,
+    materialSurfaceProgression: Float,
+    materialCurveHeight: Float,
+    materialCurveOffset: Float,
+    colorFieldMix: Float,
+    chromaGate: Float,
+    chromaGain: Float,
+    lumaMix: Float,
+    neutralWeight: Float,
+  ) {
+    if (
+      progression == exactProgression &&
+      materialStrength == exactMaterialStrength &&
+      materialExposure == exactMaterialExposure &&
+      materialSurface == exactMaterialSurface &&
+      materialSurfaceProgression == exactMaterialSurfaceProgression &&
+      materialCurveHeight == exactMaterialCurveHeight &&
+      materialCurveOffset == exactMaterialCurveOffset &&
+      colorFieldMix == exactColorFieldMix &&
+      chromaGate == exactChromaGate &&
+      chromaGain == exactChromaGain &&
+      lumaMix == exactLumaMix &&
+      neutralWeight == exactNeutralWeight
+    ) {
+      return
+    }
+    exactProgression = progression
+    exactMaterialStrength = materialStrength
+    exactMaterialExposure = materialExposure
+    exactMaterialSurface = materialSurface
+    exactMaterialSurfaceProgression = materialSurfaceProgression
+    exactMaterialCurveHeight = materialCurveHeight
+    exactMaterialCurveOffset = materialCurveOffset
+    exactColorFieldMix = colorFieldMix
+    exactChromaGate = chromaGate
+    exactChromaGain = chromaGain
+    exactLumaMix = lumaMix
+    exactNeutralWeight = neutralWeight
+    if (strips.isEmpty()) return
+
+    val materialOn = key.materialEnabled && key.materialActive
+    val colorFieldOn = materialOn && key.materialColorFieldEnabled && key.colorFieldActive
+
+    for (strip in strips) {
+      strip.mask.setFloatUniform("progression", progression)
+      strip.fieldMask.setFloatUniform("progression", progression)
+
+      if (key.backend == "agsl" && key.materialActive) {
+        for (shader in arrayOf(strip.horizontal, strip.vertical)) {
+          shader.setFloatUniform("materialProgression", progression)
+        }
+      }
+
+      if (materialOn) {
+        strip.material.setFloatUniform("materialStrength", materialStrength)
+        strip.material.setFloatUniform("materialExposure", materialExposure)
+        strip.material.setFloatUniform("materialSurface", materialSurface)
+        strip.material.setFloatUniform("materialSurfaceProgression", materialSurfaceProgression)
+        strip.material.setFloatUniform("materialCurveHeight", materialCurveHeight)
+        strip.material.setFloatUniform("materialCurveOffset", materialCurveOffset)
+      }
+
+      if (colorFieldOn) {
+        strip.fieldSourceShader.setFloatUniform("chromaGate", chromaGate)
+        strip.fieldSourceShader.setFloatUniform("chromaGain", chromaGain)
+        strip.fieldSourceShader.setFloatUniform("lumaMix", lumaMix)
+        strip.fieldSourceShader.setFloatUniform("neutralWeight", neutralWeight)
+
+        strip.fieldMaterial.setFloatUniform("materialStrength", materialStrength)
+        strip.fieldMaterial.setFloatUniform("materialExposure", materialExposure)
+        strip.fieldMaterial.setFloatUniform("materialSurface", materialSurface)
+        strip.fieldMaterial.setFloatUniform(
+          "materialSurfaceProgression",
+          materialSurfaceProgression,
+        )
+        strip.fieldMaterial.setFloatUniform("materialCurveHeight", materialCurveHeight)
+        strip.fieldMaterial.setFloatUniform("materialCurveOffset", materialCurveOffset)
+        strip.fieldMaterial.setFloatUniform("materialOverlayMix", colorFieldMix)
+      }
+
+      applyFinalEffect(strip, key)
+    }
+  }
+
+  /**
+   * `logChange` is true only when called from a structural configure() (via
+   * configureStrip); the cheap per-frame paths (updateMaterialTheme,
+   * updateLivingUniforms, updateGeometryUniforms, updateMaterialUniforms)
+   * pass false so animating a frame never writes a log line — see
+   * EdgeFadeField logging requirement.
+   */
+  private fun applyFinalEffect(strip: Strip, key: Key, logChange: Boolean = false) {
     val blurEffect = strip.blurEffect ?: return
     val finalEffect =
       when {
         key.debugStage == "capture" -> null
         key.debugStage == "gaussian" -> blurEffect
-        !key.materialEnabled || key.materialStrength <= 0f -> blurEffect
+        !key.materialEnabled || !key.materialActive -> blurEffect
         else ->
           RenderEffect.createChainEffect(
             RenderEffect.createRuntimeShaderEffect(strip.material, "content"),
@@ -736,9 +998,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       if (
         (key.debugStage == "material" || key.debugStage == "field") &&
         key.materialEnabled &&
-        key.materialStrength > 0f &&
+        key.materialActive &&
         key.materialColorFieldEnabled &&
-        key.materialColorFieldMix > 0f &&
+        key.colorFieldActive &&
         fieldBlur != null
       ) {
         val sourceEffect =
@@ -756,11 +1018,13 @@ internal class EdgeFadeProgressiveStripRenderer(
         null
       }
     strip.fieldNode.setRenderEffect(fieldEffect)
-    Log.i(
-      "EdgeFadeField",
-      "applyFinalEffect edge=${edgeName(strip.band.edge)} stage=${key.debugStage} " +
-        "fieldEffectNonNull=${fieldEffect != null}",
-    )
+    if (logChange) {
+      Log.i(
+        "EdgeFadeField",
+        "applyFinalEffect edge=${edgeName(strip.band.edge)} stage=${key.debugStage} " +
+          "fieldEffectNonNull=${fieldEffect != null}",
+      )
+    }
   }
 
   private fun setMaterialColor(shader: RuntimeShader, color: Int) {
@@ -823,6 +1087,22 @@ internal class EdgeFadeProgressiveStripRenderer(
     materialThemeProgress = Float.NaN
     livingWaveTime = Float.NaN
     livingFrontGlow = Float.NaN
+    exactBottom = Float.NaN
+    exactWaveAmplitude = Float.NaN
+    exactWaveDome = Float.NaN
+    exactProgression = Float.NaN
+    exactMaterialStrength = Float.NaN
+    exactMaterialExposure = Float.NaN
+    exactMaterialSurface = Float.NaN
+    exactMaterialSurfaceProgression = Float.NaN
+    exactMaterialCurveHeight = Float.NaN
+    exactMaterialCurveOffset = Float.NaN
+    exactColorFieldMix = Float.NaN
+    exactChromaGate = Float.NaN
+    exactChromaGain = Float.NaN
+    exactLumaMix = Float.NaN
+    exactNeutralWeight = Float.NaN
+    curves = null
   }
 
   private inline fun <T> tracePhase(name: String, block: () -> T): T {
