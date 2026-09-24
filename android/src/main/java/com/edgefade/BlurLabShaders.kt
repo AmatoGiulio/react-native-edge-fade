@@ -269,6 +269,7 @@ internal object BlurLabShaders {
     uniform float materialColorFieldMix;
     uniform float materialColorFieldRadius;
     uniform float2 materialExtent;
+    uniform float2 materialOrigin;
 
     float3 sampleMaterialRgb(float2 coord) {
       float2 maxCoord = max(materialExtent - float2(0.5), float2(0.5));
@@ -276,6 +277,28 @@ internal object BlurLabShaders {
       half4 sample = content.eval(p);
       float alpha = max(float(sample.a), 0.0001);
       return clamp(float3(sample.rgb) / alpha, 0.0, 1.0);
+    }
+
+    // Reconstruct a coarse, screen-anchored colour texture directly from the
+    // already-blurred content. Four samples represent the neighbouring
+    // low-resolution texels; smooth interpolation creates broad colour masses
+    // without expanding every source edge radially around each output pixel.
+    float3 sampleLowFrequencyField(float2 localCoord, float cellSize) {
+      float2 globalCoord = localCoord + materialOrigin;
+      float2 grid = globalCoord / cellSize - float2(0.5);
+      float2 cell = floor(grid);
+      float2 f = fract(grid);
+      // Quintic smootherstep keeps cell transitions invisible.
+      float2 w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+
+      float2 p00 = (cell + float2(0.5, 0.5)) * cellSize - materialOrigin;
+      float2 p10 = (cell + float2(1.5, 0.5)) * cellSize - materialOrigin;
+      float2 p01 = (cell + float2(0.5, 1.5)) * cellSize - materialOrigin;
+      float2 p11 = (cell + float2(1.5, 1.5)) * cellSize - materialOrigin;
+
+      float3 a = mix(sampleMaterialRgb(p00), sampleMaterialRgb(p10), w.x);
+      float3 b = mix(sampleMaterialRgb(p01), sampleMaterialRgb(p11), w.x);
+      return mix(a, b, w.y);
     }
 
     half4 main(float2 coord) {
@@ -304,36 +327,17 @@ internal object BlurLabShaders {
       float alpha = max(float(blurred.a), 0.0001);
       float3 rgb = clamp(float3(blurred.rgb) / alpha, 0.0, 1.0);
 
-      // Wide RGB-only field. Geometry/alpha stay exactly on the original
-      // progressive Gaussian, while neighbouring source colours merge into
-      // larger, smoother shapes before the pearl/smoke response.
+      // Virtual low-resolution colour texture. Unlike the previous radial
+      // neighbourhood average, increasing the spread no longer "grows" each
+      // thumbnail in every direction. It lowers colour frequency instead:
+      // nearby cards contribute to the same broad reconstructed colour field.
       if (
         materialColorFieldEnabled > 0.5 &&
         materialColorFieldMix > 0.0001 &&
-        materialColorFieldRadius > 0.5
+        materialColorFieldRadius > 1.0
       ) {
-        float r = materialColorFieldRadius;
-        float h = r * 0.5;
-        float d = r * 0.70710678;
-
-        float3 field = rgb * 4.0;
-
-        field += sampleMaterialRgb(coord + float2( h, 0.0)) * 2.0;
-        field += sampleMaterialRgb(coord + float2(-h, 0.0)) * 2.0;
-        field += sampleMaterialRgb(coord + float2(0.0,  h)) * 2.0;
-        field += sampleMaterialRgb(coord + float2(0.0, -h)) * 2.0;
-
-        field += sampleMaterialRgb(coord + float2( r, 0.0));
-        field += sampleMaterialRgb(coord + float2(-r, 0.0));
-        field += sampleMaterialRgb(coord + float2(0.0,  r));
-        field += sampleMaterialRgb(coord + float2(0.0, -r));
-
-        field += sampleMaterialRgb(coord + float2( d,  d));
-        field += sampleMaterialRgb(coord + float2(-d,  d));
-        field += sampleMaterialRgb(coord + float2( d, -d));
-        field += sampleMaterialRgb(coord + float2(-d, -d));
-
-        field /= 20.0;
+        float3 field =
+          sampleLowFrequencyField(coord, max(materialColorFieldRadius, 1.0));
         rgb = mix(rgb, field, clamp(materialColorFieldMix, 0.0, 1.0));
       }
 

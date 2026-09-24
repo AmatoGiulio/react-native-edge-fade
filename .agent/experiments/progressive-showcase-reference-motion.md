@@ -315,3 +315,32 @@ latest preferred configuration plus this colour-field experiment.
 
 Public progressive blur remains unaffected because all new material-field props
 default to disabled/zero.
+
+
+## 2026-09-24 — Colour field v2: virtual low-resolution reconstruction
+
+The first colour-field experiment used a radial 13-tap neighbourhood around
+every output pixel. Device feedback matched the expected failure mode: larger
+radius values made individual thumbnails appear to inflate because each source
+colour was propagated outward around every pixel, producing larger halos.
+
+The field now models the intended reference process more directly:
+
+- the progressive AndroidX Gaussian remains unchanged;
+- material samples the already-blurred result on a coarse 2D lattice;
+- four neighbouring coarse samples are reconstructed with quintic smooth
+  interpolation, equivalent in behaviour to a very low-resolution colour
+  texture being smoothly upsampled;
+- the lattice is anchored in full-view coordinates, so OPEN/CLOSED geometry
+  changes do not shift the colour cells relative to the content;
+- only RGB is replaced/mixed. Alpha, blur radius, edge geometry and material
+  density are unchanged.
+
+The existing `field radius ×` runtime value now controls coarse-cell spread
+and is labelled `field spread ×` in TUNE. Larger values therefore lower the
+spatial frequency of the colour field instead of performing a radial expansion
+of each image.
+
+This is intentionally a shader-side virtual low-res pass for the first optical
+validation. It avoids introducing another framebuffer/render-target topology
+until the visual hypothesis is confirmed on device.

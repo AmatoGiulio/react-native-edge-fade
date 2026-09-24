@@ -461,6 +461,11 @@ internal class EdgeFadeProgressiveStripRenderer(
         rasterWidth.toFloat(),
         rasterHeight.toFloat(),
       )
+      strip.material.setFloatUniform(
+        "materialOrigin",
+        source.left * scale,
+        source.top * scale,
+      )
     }
 
     applyFinalEffect(strip, key)

@@ -359,7 +359,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     }
     addSlider(
       body,
-      "field radius ×",
+      "field spread ×",
       0.5f,
       3f,
       host.effectiveMaterialColorFieldRadiusScale(),
