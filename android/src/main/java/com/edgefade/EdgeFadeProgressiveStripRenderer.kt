@@ -419,26 +419,30 @@ internal class EdgeFadeProgressiveStripRenderer(
 
         val pad = ceil(strip.kernelRadius / strip.scale).toInt() + 1
         val o = strip.output
+        // Snap left/top down to a multiple of (1 / scale) full-res pixels so
+        // the low-res sampling grid stays fixed while the animated band
+        // moves under it — otherwise the raster origin drifts by fractional
+        // low-res pixels every frame and the resampled content shimmers.
+        // Integer floorDiv keeps this exact (and correct for negative
+        // values) instead of relying on float division + truncation.
+        val gridStep = Math.round(1f / strip.scale)
         strip.band = if (strip.scale == 1f) band else band.copy(
           source = BlurLabGeometry.Rect(
-            (o.left - pad).coerceAtLeast(0), (o.top - pad).coerceAtLeast(0),
+            Math.floorDiv(o.left - pad, gridStep).times(gridStep).coerceAtLeast(0),
+            Math.floorDiv(o.top - pad, gridStep).times(gridStep).coerceAtLeast(0),
             (o.right + pad).coerceAtMost(next.width),
             (o.bottom + pad).coerceAtMost(next.height),
           ),
         )
 
         strip.fieldScale = next.materialColorFieldScale
-        // Wide low-res Gaussian needs real scene context outside the visible
-        // sheet. ~2.5 radii is enough to keep CLAMP from turning source edges
-        // into the same large halos we saw in the earlier spread experiments.
-        val fieldPad =
-          ceil(next.materialColorFieldBlurRadiusPx * 2.5f).toInt() + 2
-        strip.fieldSource = BlurLabGeometry.Rect(
-          (o.left - fieldPad).coerceAtLeast(0),
-          (o.top - fieldPad).coerceAtLeast(0),
-          (o.right + fieldPad).coerceAtMost(next.width),
-          (o.bottom + fieldPad).coerceAtMost(next.height),
-        )
+        // ponytail: fixed full-view source keeps the low-res sampling grid
+        // stationary while the animated band moves under it — a moving
+        // fieldSource shifted the raster origin by fractional low-res
+        // pixels every frame, resampling content on a shifting grid and
+        // causing visible shimmer. Cost is a ~100x230 raster for the whole
+        // view instead of a tighter band-sized one.
+        strip.fieldSource = BlurLabGeometry.Rect(0, 0, next.width, next.height)
 
         configureStrip(strip, next, curves)
       }
