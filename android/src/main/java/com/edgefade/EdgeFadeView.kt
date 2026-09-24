@@ -70,7 +70,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // disabled, so production/public semantics remain a pure Gaussian.
   internal var progressiveMaterialColorFieldEnabled: Boolean = false
   internal var progressiveMaterialColorFieldMix: Float = 0f
-  internal var progressiveMaterialColorFieldRadiusScale: Float = 1f
+  internal var progressiveMaterialColorFieldScale: Float = 0.10f
+  internal var progressiveMaterialColorFieldBlurRadiusPx: Float = 96f
 
   // Showcase-only native runtime tuner. These values are not public API and
   // default to the JS props so the clean optical baseline stays unchanged.
@@ -95,7 +96,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerMaterialCurveOffsetOverride: Float? = null
   internal var tunerMaterialColorFieldEnabledOverride: Boolean? = null
   internal var tunerMaterialColorFieldMixOverride: Float? = null
-  internal var tunerMaterialColorFieldRadiusScaleOverride: Float? = null
+  internal var tunerMaterialColorFieldScaleOverride: Float? = null
+  internal var tunerMaterialColorFieldBlurRadiusPxOverride: Float? = null
   internal var tunerMaterialColorLightOverride: Int? = null
   internal var tunerMaterialColorDarkOverride: Int? = null
   internal var tunerShowBounds: Boolean = false
@@ -271,8 +273,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialColorFieldEnabledOverride ?: progressiveMaterialColorFieldEnabled
   internal fun effectiveMaterialColorFieldMix(): Float =
     tunerMaterialColorFieldMixOverride ?: progressiveMaterialColorFieldMix
-  internal fun effectiveMaterialColorFieldRadiusScale(): Float =
-    tunerMaterialColorFieldRadiusScaleOverride ?: progressiveMaterialColorFieldRadiusScale
+  internal fun effectiveMaterialColorFieldScale(): Float =
+    tunerMaterialColorFieldScaleOverride ?: progressiveMaterialColorFieldScale
+  internal fun effectiveMaterialColorFieldBlurRadiusPx(): Float =
+    tunerMaterialColorFieldBlurRadiusPxOverride ?: progressiveMaterialColorFieldBlurRadiusPx
   internal fun effectiveMaterialColorLight(): Int =
     tunerMaterialColorLightOverride ?: progressiveMaterialColor
   internal fun effectiveMaterialColorDark(): Int =
@@ -299,7 +303,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialCurveOffsetOverride = null
     tunerMaterialColorFieldEnabledOverride = null
     tunerMaterialColorFieldMixOverride = null
-    tunerMaterialColorFieldRadiusScaleOverride = null
+    tunerMaterialColorFieldScaleOverride = null
+    tunerMaterialColorFieldBlurRadiusPxOverride = null
     tunerMaterialColorLightOverride = null
     tunerMaterialColorDarkOverride = null
     tunerShowBounds = false
