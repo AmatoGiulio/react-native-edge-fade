@@ -186,9 +186,24 @@ class EdgeFadeViewManager :
     view.progressiveMaterialColorFieldScale = value.coerceIn(0.05f, 0.25f)
   }
 
-  @ReactProp(name = "progressiveMaterialColorFieldBlurRadiusPx", defaultFloat = 96f)
+  @ReactProp(name = "progressiveMaterialColorFieldBlurRadiusPx", defaultFloat = 160f)
   override fun setProgressiveMaterialColorFieldBlurRadiusPx(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 220f)
+    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 260f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColorFieldChromaGate", defaultFloat = 0.035f)
+  override fun setProgressiveMaterialColorFieldChromaGate(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldChromaGate = value.coerceIn(0f, 0.25f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColorFieldChromaGain", defaultFloat = 1.35f)
+  override fun setProgressiveMaterialColorFieldChromaGain(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldChromaGain = value.coerceIn(0.5f, 2.5f)
+  }
+
+  @ReactProp(name = "progressiveMaterialColorFieldLumaMix", defaultFloat = 0.10f)
+  override fun setProgressiveMaterialColorFieldLumaMix(view: EdgeFadeView, value: Float) {
+    view.progressiveMaterialColorFieldLumaMix = value.coerceIn(0f, 0.5f)
   }
 
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
