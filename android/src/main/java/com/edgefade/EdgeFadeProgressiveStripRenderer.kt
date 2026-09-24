@@ -70,6 +70,9 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialColorFieldMix: Float,
     val materialColorFieldScale: Float,
     val materialColorFieldBlurRadiusPx: Float,
+    val materialColorFieldChromaGate: Float,
+    val materialColorFieldChromaGain: Float,
+    val materialColorFieldLumaMix: Float,
   )
 
   private data class CurveSamples(
@@ -94,6 +97,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     var fieldSource = band.source
     val fieldNode = RenderNode("EdgeFade.Progressive.colorField")
     val fieldMask = RuntimeShader(BlurLabShaders.maskPerEdge)
+    val fieldSourceShader = RuntimeShader(BlurLabShaders.colorFieldSource)
     val fieldMaterial = RuntimeShader(BlurLabShaders.materialComposite)
     var fieldBlurEffect: RenderEffect? = null
 
@@ -178,8 +182,17 @@ internal class EdgeFadeProgressiveStripRenderer(
         BlurLabGeometry.finite(host.effectiveMaterialColorFieldScale(), 0.10f)
           .coerceIn(0.05f, 0.25f),
       materialColorFieldBlurRadiusPx =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldBlurRadiusPx(), 96f)
-          .coerceIn(16f, 220f),
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldBlurRadiusPx(), 160f)
+          .coerceIn(16f, 260f),
+      materialColorFieldChromaGate =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGate(), 0.035f)
+          .coerceIn(0f, 0.25f),
+      materialColorFieldChromaGain =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldChromaGain(), 1.35f)
+          .coerceIn(0.5f, 2.5f),
+      materialColorFieldLumaMix =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldLumaMix(), 0.10f)
+          .coerceIn(0f, 0.5f),
     )
 
     val nextThemeProgress =
@@ -202,7 +215,10 @@ internal class EdgeFadeProgressiveStripRenderer(
         "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset} " +
         "colorField=${next.materialColorFieldEnabled} colorFieldMix=${next.materialColorFieldMix} " +
         "colorFieldScale=${next.materialColorFieldScale} " +
-        "colorFieldBlurPx=${next.materialColorFieldBlurRadiusPx}",
+        "colorFieldBlurPx=${next.materialColorFieldBlurRadiusPx} " +
+        "chromaGate=${next.materialColorFieldChromaGate} " +
+        "chromaGain=${next.materialColorFieldChromaGain} " +
+        "lumaMix=${next.materialColorFieldLumaMix}",
     )
 
     if (next.radius <= 0f) {
@@ -556,6 +572,19 @@ internal class EdgeFadeProgressiveStripRenderer(
     strip.fieldMask.setFloatUniform("curveLeft", curves.left)
     strip.fieldMask.setFloatUniform("curveRight", curves.right)
 
+    strip.fieldSourceShader.setFloatUniform(
+      "chromaGate",
+      key.materialColorFieldChromaGate,
+    )
+    strip.fieldSourceShader.setFloatUniform(
+      "chromaGain",
+      key.materialColorFieldChromaGain,
+    )
+    strip.fieldSourceShader.setFloatUniform(
+      "lumaMix",
+      key.materialColorFieldLumaMix,
+    )
+
     strip.fieldMaterial.setInputShader("mask", strip.fieldMask)
     strip.fieldMaterial.setFloatUniform("materialStrength", key.materialStrength)
     setMaterialColor(
@@ -621,9 +650,16 @@ internal class EdgeFadeProgressiveStripRenderer(
         key.materialColorFieldMix > 0f &&
         fieldBlur != null
       ) {
+        val sourceEffect =
+          RenderEffect.createRuntimeShaderEffect(strip.fieldSourceShader, "content")
+        val diffusedField =
+          RenderEffect.createChainEffect(
+            fieldBlur,
+            sourceEffect,
+          )
         RenderEffect.createChainEffect(
           RenderEffect.createRuntimeShaderEffect(strip.fieldMaterial, "content"),
-          fieldBlur,
+          diffusedField,
         )
       } else {
         null
