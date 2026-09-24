@@ -56,6 +56,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val colorFieldMix: Float,
     val colorFieldScale: Float,
     val colorFieldBlurRadiusPx: Float,
+    val colorFieldChromaGate: Float,
+    val colorFieldChromaGain: Float,
+    val colorFieldLumaMix: Float,
     val materialLightColor: Int,
     val materialDarkColor: Int,
     val bounds: Boolean,
@@ -206,7 +209,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.nativeTuneChanged()
         host.postDelayed({ rebuildExpanded() }, 40L)
       },
-      "LOAD SHAPE TEST" to {
+      "LOAD CHROMA TEST" to {
         host.tunerBackendOverride = "androidx-gradient"
         host.tunerBlurRadiusOverride = 150f
         host.tunerProgressionOverride = 1f
@@ -224,9 +227,12 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         host.tunerMaterialCurveHeightOverride = 1.14f
         host.tunerMaterialCurveOffsetOverride = 0.07f
         host.tunerMaterialColorFieldEnabledOverride = true
-        host.tunerMaterialColorFieldMixOverride = 0.42f
-        host.tunerMaterialColorFieldScaleOverride = 0.10f
-        host.tunerMaterialColorFieldBlurRadiusPxOverride = 96f
+        host.tunerMaterialColorFieldMixOverride = 0.68f
+        host.tunerMaterialColorFieldScaleOverride = 0.08f
+        host.tunerMaterialColorFieldBlurRadiusPxOverride = 160f
+        host.tunerMaterialColorFieldChromaGateOverride = 0.035f
+        host.tunerMaterialColorFieldChromaGainOverride = 1.35f
+        host.tunerMaterialColorFieldLumaMixOverride = 0.10f
         host.tunerMaterialColorLightOverride = Color.rgb(0xD4, 0xD4, 0xD4)
         host.tunerMaterialColorDarkOverride = Color.rgb(0x01, 0x01, 0x01)
         host.nativeTuneChanged()
@@ -374,11 +380,44 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       body,
       "field blur",
       16f,
-      220f,
+      260f,
       host.effectiveMaterialColorFieldBlurRadiusPx(),
       "px",
     ) {
       host.tunerMaterialColorFieldBlurRadiusPxOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(
+      body,
+      "chroma gate",
+      0f,
+      0.25f,
+      host.effectiveMaterialColorFieldChromaGate(),
+      "",
+    ) {
+      host.tunerMaterialColorFieldChromaGateOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(
+      body,
+      "chroma gain",
+      0.5f,
+      2.5f,
+      host.effectiveMaterialColorFieldChromaGain(),
+      "×",
+    ) {
+      host.tunerMaterialColorFieldChromaGainOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(
+      body,
+      "luma carry",
+      0f,
+      0.5f,
+      host.effectiveMaterialColorFieldLumaMix(),
+      "",
+    ) {
+      host.tunerMaterialColorFieldLumaMixOverride = it
       host.nativeTuneChanged()
     }
     addHexColor(body, "light anchor", host.effectiveMaterialColorLight()) {
@@ -459,6 +498,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialColorFieldMix(),
     host.effectiveMaterialColorFieldScale(),
     host.effectiveMaterialColorFieldBlurRadiusPx(),
+    host.effectiveMaterialColorFieldChromaGate(),
+    host.effectiveMaterialColorFieldChromaGain(),
+    host.effectiveMaterialColorFieldLumaMix(),
     host.effectiveMaterialColorLight(),
     host.effectiveMaterialColorDark(),
     host.tunerShowBounds,
@@ -485,6 +527,9 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.tunerMaterialColorFieldMixOverride = s.colorFieldMix
     host.tunerMaterialColorFieldScaleOverride = s.colorFieldScale
     host.tunerMaterialColorFieldBlurRadiusPxOverride = s.colorFieldBlurRadiusPx
+    host.tunerMaterialColorFieldChromaGateOverride = s.colorFieldChromaGate
+    host.tunerMaterialColorFieldChromaGainOverride = s.colorFieldChromaGain
+    host.tunerMaterialColorFieldLumaMixOverride = s.colorFieldLumaMix
     host.tunerMaterialColorLightOverride = s.materialLightColor
     host.tunerMaterialColorDarkOverride = s.materialDarkColor
     host.tunerShowBounds = s.bounds
@@ -504,6 +549,8 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
         "materialCurveOffset=${fmt(s.materialCurveOffset)} colorField=${s.colorFieldEnabled} " +
         "colorFieldMix=${fmt(s.colorFieldMix)} colorFieldScale=${fmt(s.colorFieldScale)} " +
         "colorFieldBlurPx=${fmt(s.colorFieldBlurRadiusPx)} " +
+        "chromaGate=${fmt(s.colorFieldChromaGate)} chromaGain=${fmt(s.colorFieldChromaGain)} " +
+        "lumaCarry=${fmt(s.colorFieldLumaMix)} " +
         "lightAnchor=${hexColor(s.materialLightColor)} darkAnchor=${hexColor(s.materialDarkColor)} " +
         "bounds=${s.bounds}"
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
