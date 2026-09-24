@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.os.Build
 import android.os.Trace
 import android.util.Log
@@ -38,10 +39,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     // AndroidX gradient now keeps a full-res entrance/body. Double only the
     // internal kernel radius to preserve the old 0.5x screen-space diffusion.
     const val ANDROIDX_GRADIENT_RADIUS_COMPENSATION = 2f
-
-    // Low-frequency RGB sampling only. At radius=150 and scale=1.85 this is
-    // ~50 px, broad enough to merge local colours without becoming geometry.
-    const val MATERIAL_COLOR_FIELD_BASE_RADIUS_FRACTION = 0.18f
   }
 
   private data class Key(
@@ -71,7 +68,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val materialCurveOffset: Float,
     val materialColorFieldEnabled: Boolean,
     val materialColorFieldMix: Float,
-    val materialColorFieldRadiusScale: Float,
+    val materialColorFieldScale: Float,
+    val materialColorFieldBlurRadiusPx: Float,
   )
 
   private data class CurveSamples(
@@ -92,10 +90,20 @@ internal class EdgeFadeProgressiveStripRenderer(
     val material by lazy { RuntimeShader(BlurLabShaders.materialComposite) }
     var blurEffect: RenderEffect? = null
 
+    var fieldScale = 0.10f
+    var fieldSource = band.source
+    val fieldNode = RenderNode("EdgeFade.Progressive.colorField")
+    val fieldMask = RuntimeShader(BlurLabShaders.maskPerEdge)
+    val fieldMaterial = RuntimeShader(BlurLabShaders.materialComposite)
+    var fieldBlurEffect: RenderEffect? = null
+
     fun release() {
       blurEffect = null
+      fieldBlurEffect = null
       node.setRenderEffect(null)
+      fieldNode.setRenderEffect(null)
       node.discardDisplayList()
+      fieldNode.discardDisplayList()
     }
   }
 
@@ -166,9 +174,12 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialColorFieldMix =
         BlurLabGeometry.finite(host.effectiveMaterialColorFieldMix(), 0f)
           .coerceIn(0f, 1f),
-      materialColorFieldRadiusScale =
-        BlurLabGeometry.finite(host.effectiveMaterialColorFieldRadiusScale(), 1f)
-          .coerceIn(0.5f, 3f),
+      materialColorFieldScale =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldScale(), 0.10f)
+          .coerceIn(0.05f, 0.25f),
+      materialColorFieldBlurRadiusPx =
+        BlurLabGeometry.finite(host.effectiveMaterialColorFieldBlurRadiusPx(), 96f)
+          .coerceIn(16f, 220f),
     )
 
     val nextThemeProgress =
@@ -190,7 +201,8 @@ internal class EdgeFadeProgressiveStripRenderer(
         "surface=${next.materialSurface} surfaceProg=${next.materialSurfaceProgression} " +
         "materialCurveHeight=${next.materialCurveHeight} materialCurveOffset=${next.materialCurveOffset} " +
         "colorField=${next.materialColorFieldEnabled} colorFieldMix=${next.materialColorFieldMix} " +
-        "colorFieldRadiusScale=${next.materialColorFieldRadiusScale}",
+        "colorFieldScale=${next.materialColorFieldScale} " +
+        "colorFieldBlurPx=${next.materialColorFieldBlurRadiusPx}",
     )
 
     if (next.radius <= 0f) {
@@ -243,6 +255,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         }
       }
 
+      val currentKey = key ?: return false
       for (index in strips.indices) {
         val strip = strips[index]
         val src = strip.band.source
@@ -276,6 +289,48 @@ internal class EdgeFadeProgressiveStripRenderer(
             canvas.drawRenderNode(strip.node)
           } finally {
             canvas.restoreToCount(save)
+          }
+        }
+
+        if (
+          currentKey.debugStage == "material" &&
+          currentKey.materialEnabled &&
+          currentKey.materialStrength > 0f &&
+          currentKey.materialColorFieldEnabled &&
+          currentKey.materialColorFieldMix > 0f &&
+          strip.fieldBlurEffect != null
+        ) {
+          val fieldSource = strip.fieldSource
+          tracePhase("EdgeFade.progressive.recordColorField.${edgeName(strip.band.edge)}") {
+            val rc = strip.fieldNode.beginRecording()
+            try {
+              rc.scale(strip.fieldScale, strip.fieldScale)
+              rc.translate(-fieldSource.left.toFloat(), -fieldSource.top.toFloat())
+              rc.drawRenderNode(content)
+            } finally {
+              strip.fieldNode.endRecording()
+            }
+          }
+
+          tracePhase("EdgeFade.progressive.drawColorField.${edgeName(strip.band.edge)}") {
+            val output = strip.output
+            val save = canvas.save()
+            try {
+              canvas.clipRect(
+                output.left.toFloat(),
+                output.top.toFloat(),
+                output.right.toFloat(),
+                output.bottom.toFloat(),
+              )
+              for (previous in 0 until index) {
+                clipOut(canvas, strips[previous].output)
+              }
+              canvas.translate(fieldSource.left.toFloat(), fieldSource.top.toFloat())
+              canvas.scale(1f / strip.fieldScale, 1f / strip.fieldScale)
+              canvas.drawRenderNode(strip.fieldNode)
+            } finally {
+              canvas.restoreToCount(save)
+            }
           }
         }
       }
@@ -343,6 +398,16 @@ internal class EdgeFadeProgressiveStripRenderer(
             (o.bottom + pad).coerceAtMost(next.height),
           ),
         )
+
+        strip.fieldScale = next.materialColorFieldScale
+        val fieldPad = ceil(next.materialColorFieldBlurRadiusPx).toInt() + 2
+        strip.fieldSource = BlurLabGeometry.Rect(
+          (o.left - fieldPad).coerceAtLeast(0),
+          (o.top - fieldPad).coerceAtLeast(0),
+          (o.right + fieldPad).coerceAtMost(next.width),
+          (o.bottom + fieldPad).coerceAtMost(next.height),
+        )
+
         configureStrip(strip, next, curves)
       }
     }
@@ -444,31 +509,74 @@ internal class EdgeFadeProgressiveStripRenderer(
       )
       strip.material.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
       strip.material.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
-      strip.material.setFloatUniform(
-        "materialColorFieldEnabled",
-        if (key.materialColorFieldEnabled) 1f else 0f,
-      )
-      strip.material.setFloatUniform("materialColorFieldMix", key.materialColorFieldMix)
-      strip.material.setFloatUniform(
-        "materialColorFieldRadius",
-        key.radius *
-          MATERIAL_COLOR_FIELD_BASE_RADIUS_FRACTION *
-          key.materialColorFieldRadiusScale *
-          strip.scale,
-      )
-      strip.material.setFloatUniform(
-        "materialExtent",
-        rasterWidth.toFloat(),
-        rasterHeight.toFloat(),
-      )
-      strip.material.setFloatUniform(
-        "materialOrigin",
-        source.left * scale,
-        source.top * scale,
-      )
+      strip.material.setFloatUniform("materialOverlayMode", 0f)
+      strip.material.setFloatUniform("materialOverlayMix", 0f)
     }
 
+    configureColorField(strip, key, curves)
     applyFinalEffect(strip, key)
+  }
+
+  private fun configureColorField(
+    strip: Strip,
+    key: Key,
+    curves: CurveSamples,
+  ) {
+    if (
+      !key.materialEnabled ||
+      key.materialStrength <= 0f ||
+      !key.materialColorFieldEnabled ||
+      key.materialColorFieldMix <= 0f
+    ) {
+      strip.fieldBlurEffect = null
+      strip.fieldNode.setRenderEffect(null)
+      strip.fieldNode.discardDisplayList()
+      return
+    }
+
+    val source = strip.fieldSource
+    val scale = strip.fieldScale
+    val rasterWidth = ceil(source.width * scale).toInt().coerceAtLeast(1)
+    val rasterHeight = ceil(source.height * scale).toInt().coerceAtLeast(1)
+    strip.fieldNode.setPosition(0, 0, rasterWidth, rasterHeight)
+
+    strip.fieldMask.setFloatUniform("origin", source.left * scale, source.top * scale)
+    strip.fieldMask.setFloatUniform("viewSize", key.width * scale, key.height * scale)
+    strip.fieldMask.setFloatUniform(
+      "edges",
+      floatArrayOf(key.top * scale, key.bottom * scale, key.left * scale, key.right * scale),
+    )
+    strip.fieldMask.setFloatUniform("progression", key.progression)
+    strip.fieldMask.setFloatUniform("curveTop", curves.top)
+    strip.fieldMask.setFloatUniform("curveBottom", curves.bottom)
+    strip.fieldMask.setFloatUniform("curveLeft", curves.left)
+    strip.fieldMask.setFloatUniform("curveRight", curves.right)
+
+    strip.fieldMaterial.setInputShader("mask", strip.fieldMask)
+    strip.fieldMaterial.setFloatUniform("materialStrength", key.materialStrength)
+    setMaterialColor(
+      strip.fieldMaterial,
+      mixColor(key.materialColor, key.materialColorDark, materialThemeProgress),
+    )
+    strip.fieldMaterial.setFloatUniform("materialExposure", key.materialExposure)
+    strip.fieldMaterial.setFloatUniform("materialSurface", key.materialSurface)
+    strip.fieldMaterial.setFloatUniform(
+      "materialSurfaceProgression",
+      key.materialSurfaceProgression,
+    )
+    strip.fieldMaterial.setFloatUniform("materialCurveHeight", key.materialCurveHeight)
+    strip.fieldMaterial.setFloatUniform("materialCurveOffset", key.materialCurveOffset)
+    strip.fieldMaterial.setFloatUniform("materialOverlayMode", 1f)
+    strip.fieldMaterial.setFloatUniform("materialOverlayMix", key.materialColorFieldMix)
+
+    val lowResBlur =
+      (key.materialColorFieldBlurRadiusPx * scale).coerceAtLeast(0.5f)
+    strip.fieldBlurEffect =
+      RenderEffect.createBlurEffect(
+        lowResBlur,
+        lowResBlur,
+        Shader.TileMode.CLAMP,
+      )
   }
 
   private fun updateMaterialTheme(key: Key, progress: Float) {
@@ -479,8 +587,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val color = mixColor(key.materialColor, key.materialColorDark, progress)
     for (strip in strips) {
       setMaterialColor(strip.material, color)
-      // Guarantee the updated material shader state is committed to the
-      // rendered chain without rebuilding the expensive AndroidX blur.
+      setMaterialColor(strip.fieldMaterial, color)
       applyFinalEffect(strip, key)
     }
   }
@@ -499,6 +606,25 @@ internal class EdgeFadeProgressiveStripRenderer(
           )
       }
     strip.node.setRenderEffect(finalEffect)
+
+    val fieldBlur = strip.fieldBlurEffect
+    val fieldEffect =
+      if (
+        key.debugStage == "material" &&
+        key.materialEnabled &&
+        key.materialStrength > 0f &&
+        key.materialColorFieldEnabled &&
+        key.materialColorFieldMix > 0f &&
+        fieldBlur != null
+      ) {
+        RenderEffect.createChainEffect(
+          RenderEffect.createRuntimeShaderEffect(strip.fieldMaterial, "content"),
+          fieldBlur,
+        )
+      } else {
+        null
+      }
+    strip.fieldNode.setRenderEffect(fieldEffect)
   }
 
   private fun setMaterialColor(shader: RuntimeShader, color: Int) {
