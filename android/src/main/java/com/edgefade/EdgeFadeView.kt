@@ -165,6 +165,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerTideFlickerOverride: Float? = null
   internal var tunerTideRippleOverride: Float? = null
   internal var tunerTideShellLookOverride: Float? = null
+  internal var tunerTideLensFallOverride: Float? = null
   internal var tunerTideLensOverride: Float? = null
 
   // Kept temporarily for source compatibility with the 0.2.x public API.
@@ -352,6 +353,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // its bend.
   internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 0.18f
   internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1.01f
+  // Multiplier on the surface lens while the flame falls back (1 = same as
+  // the rise).
+  internal fun effectiveTideLensFall(): Float = tunerTideLensFallOverride ?: 1f
   internal fun effectiveTideMeniscusEnabled(): Boolean = tunerTideMeniscusEnabledOverride ?: true
   internal fun effectiveTideMeniscus(): Float =
     if (effectiveTideMeniscusEnabled()) tunerTideMeniscusOverride ?: progressiveTideMeniscus else 0f
@@ -428,6 +432,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerTideFlickerOverride = null
     tunerTideRippleOverride = null
     tunerTideShellLookOverride = null
+    tunerTideLensFallOverride = null
     tunerTideLensOverride = null
     nativeTuneChanged()
   }

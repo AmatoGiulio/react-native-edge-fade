@@ -82,6 +82,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val LENS_GLOW = 0.2f
     const val LENS_RISE = 0.08f
     const val LENS_FADE = 0.3f
+    const val LENS_FALL_BLEND_S = 0.12f
   }
 
   private data class Key(
@@ -1334,12 +1335,26 @@ internal class EdgeFadeProgressiveStripRenderer(
       impactStartNs = System.nanoTime()
       impactX = host.progressiveTideCenter.coerceIn(0f, 1f) * width
     }
-    val rising = amount >= previousTideAmount
+    // Direction only flips on real motion: a frame drawn without a new prop
+    // repeats the amount and must not read as rising.
+    if (amount > previousTideAmount + 1e-4f) tideRising = true
+    else if (amount < previousTideAmount - 1e-4f) tideRising = false
+    val rising = tideRising
     previousTideAmount = amount
+    // Rise -> fall blend for the lens-on-fall multiplier, eased over
+    // LENS_FALL_BLEND_S so the switch at the apex is not a step.
+    val now = System.nanoTime()
+    val dt = if (lastTideFrameNs == 0L) 0f else ((now - lastTideFrameNs) / 1e9f).coerceIn(0f, 0.1f)
+    lastTideFrameNs = now
+    val fallTarget = if (rising) 0f else 1f
+    lensFallMix += (fallTarget - lensFallMix) * (1f - exp(-dt / LENS_FALL_BLEND_S))
     if (heightPx <= 0f || amount == 0f || width <= 0) {
       impactStartNs = 0L
+      lensFallMix = 0f
+      tideRising = true
       return null
     }
+    val lensFall = 1f + (host.effectiveTideLensFall().coerceIn(0f, 3f) - 1f) * lensFallMix
     val w = width.toFloat()
     val sigmaDome = host.effectiveTideWidth().coerceIn(0.1f, 1.2f) * w / 2.3548f
     val shape = host.progressiveTideShape.coerceIn(0f, 3f)
@@ -1387,9 +1402,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       shellLook = host.effectiveTideShellLook().coerceIn(0f, 2f),
       // Full strength almost as soon as the flame leaves the panel (LENS_RISE);
       // on the way back it fades over the last LENS_FADE of the settle.
-      lensLevel = lensLevel(amount, rising),
+      lensLevel = lensLevel(amount, rising) * lensFall,
       lensPx = host.effectiveTideLens().coerceIn(0f, 3f) * LENS_DISPLACEMENT * w *
-        lensLevel(amount, rising),
+        lensLevel(amount, rising) * lensFall,
       viewHeight = height.toFloat(),
     )
   }
@@ -1414,6 +1429,9 @@ internal class EdgeFadeProgressiveStripRenderer(
   }
 
   private var previousTideAmount = 0f
+  private var tideRising = true
+  private var lastTideFrameNs = 0L
+  private var lensFallMix = 0f
   private var impactStartNs = 0L
   private var impactX = 0f
 
