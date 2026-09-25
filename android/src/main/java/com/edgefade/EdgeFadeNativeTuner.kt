@@ -292,8 +292,12 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerTideFlickerOverride = it
       host.nativeTuneChanged()
     }
-    addSlider(body, "impact shell", 0f, 3f, host.effectiveTideRipple(), "×") {
+    addSlider(body, "shell bend", 0f, 3f, host.effectiveTideRipple(), "×") {
       host.tunerTideRippleOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "shell visibility", 0f, 2f, host.effectiveTideShellLook(), "×") {
+      host.tunerTideShellLookOverride = it
       host.nativeTuneChanged()
     }
     addSlider(body, "surface lens", 0f, 3f, host.effectiveTideLens(), "×") {

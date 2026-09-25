@@ -164,6 +164,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerTideSharpnessOverride: Float? = null
   internal var tunerTideFlickerOverride: Float? = null
   internal var tunerTideRippleOverride: Float? = null
+  internal var tunerTideShellLookOverride: Float? = null
   internal var tunerTideLensOverride: Float? = null
 
   // Kept temporarily for source compatibility with the 0.2.x public API.
@@ -345,6 +346,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal fun effectiveTideFlicker(): Float = tunerTideFlickerOverride ?: progressiveTideFlicker
   // Impact ripples and surface lens, 1 = the tuned showcase strength.
   internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 1f
+  // Visibility of the impact shell's light, sheen and wake, separate from
+  // its bend.
+  internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 1f
   internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1f
   internal fun effectiveTideMeniscusEnabled(): Boolean = tunerTideMeniscusEnabledOverride ?: true
   internal fun effectiveTideMeniscus(): Float =
@@ -421,6 +425,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerTideSharpnessOverride = null
     tunerTideFlickerOverride = null
     tunerTideRippleOverride = null
+    tunerTideShellLookOverride = null
     tunerTideLensOverride = null
     nativeTuneChanged()
   }

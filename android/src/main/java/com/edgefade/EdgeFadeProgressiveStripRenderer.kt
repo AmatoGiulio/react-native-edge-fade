@@ -1384,6 +1384,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       impactAge =
         if (impactStartNs == 0L) -1f else (System.nanoTime() - impactStartNs) / 1e9f,
       ripple = host.effectiveTideRipple().coerceIn(0f, 3f),
+      shellLook = host.effectiveTideShellLook().coerceIn(0f, 2f),
       // Full strength almost as soon as the flame leaves the panel (LENS_RISE);
       // on the way back it fades over the last LENS_FADE of the settle.
       lensLevel = lensLevel(amount, rising),
@@ -1473,6 +1474,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         LENS_GLOW,
       )
       strip.fieldMaterial.setFloatUniform("lensLevel", tide.lensLevel)
+      strip.fieldMaterial.setFloatUniform("shellLook", tide.shellLook)
       strip.fieldMaterial.setFloatUniform("meniscus", tide.meniscusPerPx, tide.meniscusBandPx)
     }
     // The composite holds a snapshot of its child shader: re-bind the mask so
@@ -1496,6 +1498,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val impactX: Float,
     val impactAge: Float,
     val ripple: Float,
+    val shellLook: Float,
     val lensLevel: Float,
     val lensPx: Float,
     val viewHeight: Float,

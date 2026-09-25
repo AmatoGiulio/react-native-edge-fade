@@ -446,6 +446,9 @@ internal object BlurLabShaders {
     // 0..1 presence of the flame lens: scales its bend, light and sheen
     // together so it fades out as one piece while the flame settles.
     uniform float lensLevel;
+    // How much of the impact shell is seen (light, rim, sheen, frosted
+    // wake), independent of how much it bends: 0 = pure refraction.
+    uniform float shellLook;
     // Strip source left edge in screen px (raster -> screen x).
     uniform float srcLeft;
 
@@ -627,13 +630,13 @@ internal object BlurLabShaders {
           float bend = grad * w * rippleShape.z * k;
           disp += dir * bend;
           ca += dir * abs(bend) * lensFront.z;
-          opticSlope += -dir * (grad * w * 0.9) * k;
-          opticShell = max(opticShell, lens * k);
-          opticRim += exp(-(x * x) / (2.0 * (w * 0.45) * (w * 0.45))) * k;
-          opticGlow = max(opticGlow, 0.55 * rippleSrc.z);
+          opticSlope += -dir * (grad * w * 0.9) * k * shellLook;
+          opticShell = max(opticShell, lens * k * shellLook);
+          opticRim += exp(-(x * x) / (2.0 * (w * 0.45) * (w * 0.45))) * k * shellLook;
+          opticGlow = max(opticGlow, 0.55 * rippleSrc.z * shellLook);
           opticHue = 0.42 + 0.24 * sin(ang * 2.0 + dist * 0.008 + p * 2.5);
           float passed = smoothstep(front - w * 2.4, front - w * 2.4 - rippleSrc.w * 0.9, dist);
-          opticFrost = passed * fade * rippleSrc.z;
+          opticFrost = passed * fade * rippleSrc.z * shellLook;
         }
         if (meniscus.x != 0.0 && tide.x != 0.0) disp.y += meniscusShift(coord) / scale;
         float2 rc = coord + disp * scale;
