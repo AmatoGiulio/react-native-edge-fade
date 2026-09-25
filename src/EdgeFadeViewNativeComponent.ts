@@ -55,6 +55,18 @@ interface NativeProps extends ViewProps {
    * sheet reach full density earlier across the edge band.
    */
   progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
+  /**
+   * Internal "focus" theme transition: 0..1 amount of backdrop replaced by
+   * the veil colour. 0 is a no-op.
+   */
+  progressiveMaterialVeil?: CodegenTypes.Float;
+  /** Internal "focus" theme transition: 0..1 chroma removal. 0 is a no-op. */
+  progressiveMaterialNeutrality?: CodegenTypes.Float;
+  /**
+   * Internal "focus" theme transition: 0..1 luminance range compression
+   * toward the veil luminance. 0 is a no-op.
+   */
+  progressiveMaterialLumaFlatten?: CodegenTypes.Float;
   /** Internal low-frequency RGB field before the material tone response. */
   progressiveMaterialColorFieldEnabled?: boolean;
   /** 0 = normal material only, 1 = full low-frequency colour-field influence. */
@@ -91,6 +103,35 @@ interface NativeProps extends ViewProps {
   progressiveWaveTime?: CodegenTypes.Float;
   /** Internal light "bloom" band intensity at the front (0..1.5). */
   progressiveFrontGlow?: CodegenTypes.Float;
+  /**
+   * Internal debug-stage cross-fade. 0 = current rendering (byte-identical),
+   * 1 = visually identical to the "agsl-debug-field" debug stage (sharp scene
+   * and material strip clipped out, only the colour-field overlay remains).
+   * Intermediate values cross-fade. Per-frame animatable.
+   */
+  progressiveFieldBlend?: CodegenTypes.Float;
+  // Light wave V0 (showcase): exposure wave centre in panel depth (0 bottom
+  // -> 1 top), gain in stops (0 = off) and gaussian sigma in depth units.
+  progressiveLightWaveCenter?: CodegenTypes.Float;
+  progressiveLightWaveStops?: CodegenTypes.Float;
+  progressiveLightWaveWidth?: CodegenTypes.Float;
+  // Marea V0 (showcase): signed normalised surface amplitude, press->dome
+  // shape blend, x centre (0..1), dome reach (space above the panel, 1 = top
+  // edge, 0 = off), dome FWHM (fraction of view width), conserved volume (0..1) and
+  // meniscus drag in px at full dome (0 = off).
+  progressiveTideAmount?: CodegenTypes.Float;
+  progressiveTideShape?: CodegenTypes.Float;
+  progressiveTideCenter?: CodegenTypes.Float;
+  progressiveTideHeight?: CodegenTypes.Float;
+  progressiveTideWidth?: CodegenTypes.Float;
+  progressiveTideVolume?: CodegenTypes.Float;
+  progressiveTideMeniscus?: CodegenTypes.Float;
+  /** Marea core profile exponent: 2 = gaussian dome, lower = flame tip. */
+  progressiveTideSharpness?: CodegenTypes.Float;
+  /** Marea flame flicker amplitude (fraction of the space above the panel). */
+  progressiveTideFlicker?: CodegenTypes.Float;
+  /** Marea flicker clock in seconds (animated). */
+  progressiveTideTime?: CodegenTypes.Float;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

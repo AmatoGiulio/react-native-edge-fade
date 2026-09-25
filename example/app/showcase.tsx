@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import {
   type ImageSourcePropType,
+  type StyleProp,
+  type TextStyle,
   PixelRatio,
   Pressable,
   StatusBar,
@@ -21,10 +23,12 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useDerivedValue,
+  useFrameCallback,
   useSharedValue,
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
@@ -63,7 +67,9 @@ const SHOWCASE_IMAGES = {
 const DEFAULT_BLUR_RADIUS_PX = 150;
 // Reference-oriented opalescent substrate. Blur remains a single Gaussian;
 // these values only tune the post-blur material response.
+// Dark strength; light uses LIGHT_MATERIAL_STRENGTH (follows g(t)).
 const DEFAULT_MATERIAL_STRENGTH = 1;
+const LIGHT_MATERIAL_STRENGTH = 0.45;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.95;
@@ -72,9 +78,10 @@ const LIGHT_MATERIAL_COLOR = '#c6c2c4';
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
 const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 1;
-const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.08;
+// 0.20: finer low-res grid, so the bilinear upscale leaves no row creases.
+const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.2;
 const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 320;
-const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE = 0.035;
+const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE = 0.04;
 const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.2;
 const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.8;
 const DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT = 1;
@@ -149,6 +156,9 @@ const REF_LAYOUT = {
 } as const;
 
 // OPEN field depth is width-based like REF_LAYOUT: ~1.05W from the bottom reaches mid photo-pair, as in the reference.
+// blurProgression is animated on `progress` (open/close only):
+// interpolate([0,1], [1, openProgression]), so the blur gradient densifies as
+// the panel opens, matching 098aa76.
 const DEFAULT_OPEN_PROGRESSION = 0.9;
 // Bottom sheet height relative to the field width (user: "bottom height 1.30x").
 const DEFAULT_EXPANDED_SCALE = 1.3;
@@ -175,70 +185,70 @@ const CLOSED_NAV_SHOW_MS = 160;
 const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
-// Theme-change "single driver": one shared value (themeMotion, 0→1 linear,
-// 720ms) phase-locks everything a Dark/Light tap touches. Each channel reads
-// its own eased window of that same 0→1 sweep inside a worklet — phase-locked
-// so the pill, the colour swap and the panel rise all land together at the
-// peak (t=0.45), then the panel eases back down on its own tail:
-//  - colour c(t): reference luma curve, over t in [0.08, 0.45] (swaps while
-//    the screen is covered by the rising lift, completes at the peak).
-//  - pill p(t): rise phase easing, over t in [0, 0.45] — arrives exactly when
-//    the panel peaks, same curve as the lift's rise.
-//  - lift L(t): rise phase t in [0, 0.45] with EASE_RISE (same curve as the
-//    pill), fall phase t in [0.45, 1] with EASE_FALL back to 0 at t=1 — one
-//    smooth up/down arc, no periodic term, no discontinuity.
-const THEME_MOTION_MS = 720;
-const THEME_COLOUR_WINDOW = { start: 0.08, end: 0.45 };
-const THEME_LIFT_RISE_END = 0.45;
-const THEME_PILL_WINDOW = THEME_LIFT_RISE_END;
-const THEME_COLOUR_EASE = Easing.bezierFn(0.3, 0.05, 0.15, 1);
-const THEME_RISE_EASE = Easing.bezierFn(0.3, 0, 0.1, 1);
-const THEME_FALL_EASE = Easing.bezierFn(0.45, 0, 0.25, 1);
-const THEME_LIFT = 1;
+// Theme change = two overlapping processes.
+// 1. Global transition g(t), measured on the reference video: every surface
+//    (page, text, pill, material tone) changes uniformly in direct sRGB;
+//    Light→Dark 10/50/90% at ~50/130/290 ms, settled ~400 ms; Dark→Light
+//    ~15% faster. One bezier fitted to those points drives it.
+// 2. Light wave V0, the sheet's own material phenomenon: one very wide
+//    exposure wave (gaussian in depth, gain in stops) rises through the FMASK
+//    material. Only the material response's exposure changes; diffusion,
+//    detail and colour hue are untouched. Values are calibration parameters.
+const THEME_EASE = Easing.bezier(0.35, 0, 0.2, 1);
+const THEME_LD = { ms: 420, stops: 0.5 };
+const THEME_DL = { ms: 430, stops: 0.4 };
+// Wave centre travels from below the sheet to past its top fade with a
+// finite launch speed: c(τ) = from + (to - from)·(1 - (1 - τ)^P).
+const LIGHT_WAVE_FROM = -0.6;
+const LIGHT_WAVE_TO = 1.5;
+const LIGHT_WAVE_POWER = 1.6;
+const LIGHT_WAVE_WIDTH = 0.35;
+// Gain ramps in over the first ~60 ms and out over the last 20%.
+const LIGHT_WAVE_RAMP_IN_MS = 60;
 
-function themeColourCurve(t: number) {
-  'worklet';
-  const norm =
-    (t - THEME_COLOUR_WINDOW.start) /
-    (THEME_COLOUR_WINDOW.end - THEME_COLOUR_WINDOW.start);
-  return THEME_COLOUR_EASE(Math.min(Math.max(norm, 0), 1));
-}
+// Marea: the theme toggle releases a flame of material from the centre of
+// the sheet. It only rises: a soft push, a free climb, the crest breaks
+// against the top edge of the screen, then it settles back to rest from above
+// (never below it) while the theme changes. The surface amplitude a(t) is
+// normalised to the space above the open panel (1 = the top edge, a wall):
+//   push    : v eases 0 -> v0 over TIDE_PUSH_S (the tap's impulse)
+//   flight  : a'' = -g                   (one parabola, aimed past 1)
+//   impact  : a'' = -g - Ωw²(a-1) - 2ζwΩw a'   (a > 1, the wall absorbs it)
+//   fall    : a'' = -Ωf²a - 2Ωf a'       (critically damped, lands from above)
+// The theme follows the fall: 0 at the start of the descent, 1 at rest.
+const TIDE_V0 = true;
+const TIDE_REACH = 1; // wall = top edge of the screen
+const TIDE_CENTER = 0.5; // the flame always rises from the screen centre
+const TIDE_WIDTH = 1.1; // base FWHM, fraction of screen width
+const TIDE_SHARPNESS = 1.7; // core exponent: 2 = round dome, lower = flame tip
+const TIDE_TAPER = 0.12; // how much narrower the tongue gets at the top
+const TIDE_VOLUME = 0; // no returned-volume trough: the flame only rises
+const TIDE_MENISCUS_PX = 0; // replaced by the surface lens (native)
+const TIDE_FLICKER = 0.07; // edge ripple, fraction of the space above panel
+const TIDE_SWAY = 0.05; // lateral sway of the flame, fraction of width
+const TIDE_SWAY_HZ = 1.1;
+const TIDE_BREATH = 0.12; // width breathing while it burns
+const TIDE_BREATH_HZ = 1.7;
+// Free-flight apex, in wall units: the extra energy is what the wall absorbs.
+const TIDE_ENERGY = 1.45;
+const TIDE_TIME_S = 0.6; // gravity time scale (unit parabola rise time)
+const TIDE_PUSH_S = 0.16;
+const TIDE_WALL_OMEGA = 4.5; // wall cushion stiffness (rad/s)
+const TIDE_WALL_DAMPING = 0.7;
+const TIDE_FALL_OMEGA = 6;
+// How much wider the crest spreads per unit of penetration into the wall.
+const TIDE_SPLASH = 10;
+const TIDE_GRAVITY = 2 / (TIDE_TIME_S * TIDE_TIME_S);
+const TIDE_LAUNCH_SPEED = Math.sqrt(2 * TIDE_GRAVITY * TIDE_ENERGY);
+const TIDE_STEP_S = 0.001;
+const TIDE_REST = 0;
+const TIDE_PUSH = 1;
+const TIDE_FLIGHT = 2;
+const TIDE_FALL = 3;
 
-function themePillCurve(t: number) {
-  'worklet';
-  return THEME_RISE_EASE(Math.min(t / THEME_PILL_WINDOW, 1));
-}
-
-function themeLiftCurve(t: number) {
-  'worklet';
-  if (t <= THEME_LIFT_RISE_END) {
-    return THEME_RISE_EASE(t / THEME_LIFT_RISE_END);
-  }
-  const fallT = (t - THEME_LIFT_RISE_END) / (1 - THEME_LIFT_RISE_END);
-  return 1 - THEME_FALL_EASE(Math.min(fallT, 1));
-}
-
-function smoothstep01(x: number) {
-  'worklet';
-  const c = Math.min(Math.max(x, 0), 1);
-  return c * c * (3 - 2 * c);
-}
-
-// Living front: dome + noise + bloom band, only alive during theme motion —
-// the wave follows the theme lift bell; colour swaps under cover.
-const THEME_WAVE_AMP_SCALE = 0.1; // * W, at lift peak
-const THEME_WAVE_DOME_SCALE = 0.22; // * W, at lift peak
-const THEME_FRONT_GLOW = 1.0;
-const WAVE_SPEED = 1.6;
-
-// Material motion: strength dips once (no periodic term) and surface
-// progression rises/falls while anything moves (open, close or theme); rest
-// values untouched.
-const STRENGTH_MOTION_EDGE = 0.71;
-const STRENGTH_MOTION_PEAK = 0.13;
-const SURFACE_PROG_MOTION_FROM = 0.35;
-const SURFACE_PROG_MOTION_TO = 1.0;
-const MATERIAL_MOTION_WEIGHT_EDGE = 0.2;
+// Dark smoke reads too grey/white at the default exposure; darken it while
+// the theme is dark.
+const DARK_MATERIAL_EXPOSURE = 0.7;
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -260,6 +270,36 @@ function clampNumber(
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+// Theme colour change as an opacity cross-fade of two static copies: animating
+// Text `color` re-lays out the text on every frame (Fabric updateState +
+// StaticLayout), which saturated the UI thread during the theme swap.
+function CrossfadeText({
+  progress,
+  colors,
+  style,
+  children,
+}: {
+  progress: SharedValue<number>;
+  colors: [string, string];
+  style: StyleProp<TextStyle>;
+  children: string;
+}) {
+  const fromStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+  const toStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  return (
+    <View>
+      <Animated.Text style={[style, { color: colors[0] }, fromStyle]}>
+        {children}
+      </Animated.Text>
+      <Animated.Text
+        style={[style, { color: colors[1] }, s.crossfadeTop, toStyle]}
+      >
+        {children}
+      </Animated.Text>
+    </View>
+  );
 }
 
 function AccountRow({
@@ -285,33 +325,6 @@ function AccountRow({
   const dateFontSize = Math.round(width * sizing.dateFontSize);
   const textGap = width * sizing.textGap;
 
-  const primaryTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#111111', '#f3f2ef'],
-      'RGB',
-      { gamma: 1 }
-    ),
-  }));
-  const secondaryTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#222222', '#d9d7d2'],
-      'RGB',
-      { gamma: 1 }
-    ),
-  }));
-  const dateStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeProgress.value,
-      [0, 1],
-      ['#aaa7a2', '#85827d'],
-      'RGB',
-      { gamma: 1 }
-    ),
-  }));
   const badgeStyle = useAnimatedStyle(() => ({
     borderColor: interpolateColor(
       themeProgress.value,
@@ -363,39 +376,42 @@ function AccountRow({
         </View>
 
         <View>
-          <Animated.Text
+          <CrossfadeText
+            progress={themeProgress}
+            colors={['#111111', '#f3f2ef']}
             style={[
               s.accountName,
               { fontSize: nameFontSize, lineHeight: textLineHeight },
-              primaryTextStyle,
             ]}
           >
             {name}
-          </Animated.Text>
-          <Animated.Text
+          </CrossfadeText>
+          <CrossfadeText
+            progress={themeProgress}
+            colors={['#222222', '#d9d7d2']}
             style={[
               s.accountSubtitle,
               { fontSize: nameFontSize, lineHeight: textLineHeight },
-              secondaryTextStyle,
             ]}
           >
             {subtitle}
-          </Animated.Text>
+          </CrossfadeText>
         </View>
       </View>
 
-      <Animated.Text
+      <CrossfadeText
+        progress={themeProgress}
+        colors={['#aaa7a2', '#85827d']}
         style={[
           s.accountDate,
           {
             fontSize: dateFontSize,
             lineHeight: Math.round(dateFontSize * 1.2),
           },
-          dateStyle,
         ]}
       >
         {date}
-      </Animated.Text>
+      </CrossfadeText>
     </View>
   );
 }
@@ -437,108 +453,180 @@ export default function ProgressiveShowcaseRoute() {
   const [open, setOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [debugStage, setDebugStage] = useState<
-    'material' | 'field' | 'capture' | 'gaussian'
-  >('material');
+    'material' | 'field' | 'fieldmask' | 'capture' | 'gaussian'
+  >('fieldmask');
   const progress = useSharedValue(0);
   const closedNavOpacity = useSharedValue(1);
   const openMenuOpacity = useSharedValue(0);
   const openSegmentOpacity = useSharedValue(0);
-  // Single theme driver: themeFrom/themeTo bracket the tap, themeMotion
-  // sweeps 0→1, everything else is derived from it (see constants above).
-  const themeMotion = useSharedValue(0);
-  const themeFrom = useSharedValue(0);
-  const themeTo = useSharedValue(0);
-  // Advances only while theme motion is running, so the field has no idle
-  // per-frame native work.
-  const waveClock = useSharedValue(0);
+  // Theme colour progress: 0 = light, 1 = dark. Surface, text, pill and
+  // material-theme progress all read this single value.
+  const themeColour = useSharedValue(0);
+  // Light wave clock (linear 0 -> 1 over the transition) and direction
+  // (1 = towards dark).
+  const phaseT = useSharedValue(0);
+  const phaseToDark = useSharedValue(1);
+  // Marea surface state (see TIDE_* above).
+  const tideAmount = useSharedValue(0);
+  const tideVelocity = useSharedValue(0);
+  const tideShape = useSharedValue(1);
+  const tideCenter = useSharedValue(TIDE_CENTER);
+  const tidePhase = useSharedValue(TIDE_REST);
+  const tideTime = useSharedValue(0);
+  // Theme carried by the fall: target, value at the start of the descent and
+  // the height the descent starts from (-1 = not descending yet).
+  const tideThemeTo = useSharedValue(0);
+  const tideThemeFrom = useSharedValue(0);
+  const tideFallFrom = useSharedValue(-1);
+
+  const commitDarkMode = (nextDark: boolean) => setDarkMode(nextDark);
+
+  useFrameCallback((frame) => {
+    'worklet';
+    if (tidePhase.value === TIDE_REST) return;
+    const dt = Math.min((frame.timeSincePreviousFrame ?? 16) / 1000, 0.05);
+    let a = tideAmount.value;
+    let v = tideVelocity.value;
+    let phase = tidePhase.value;
+    let time = tideTime.value;
+    for (let t = 0; t < dt; t += TIDE_STEP_S) {
+      const h = Math.min(TIDE_STEP_S, dt - t);
+      time += h;
+      if (phase === TIDE_PUSH) {
+        // Smoothstep velocity ramp: the flame leaves with zero acceleration
+        // jerk and reaches launch speed at the end of the push.
+        const u = Math.min(time / TIDE_PUSH_S, 1);
+        v = TIDE_LAUNCH_SPEED * u * u * (3 - 2 * u);
+        a += v * h;
+        if (u >= 1) phase = TIDE_FLIGHT;
+        continue;
+      }
+      let acc: number;
+      if (phase === TIDE_FLIGHT) {
+        acc = -TIDE_GRAVITY;
+        if (a > 1) {
+          acc -=
+            TIDE_WALL_OMEGA * TIDE_WALL_OMEGA * (a - 1) +
+            2 * TIDE_WALL_DAMPING * TIDE_WALL_OMEGA * v;
+        }
+      } else {
+        acc = -TIDE_FALL_OMEGA * TIDE_FALL_OMEGA * a - 2 * TIDE_FALL_OMEGA * v;
+      }
+      v += acc * h;
+      a += v * h;
+      if (phase === TIDE_FLIGHT && v < 0) {
+        phase = TIDE_FALL;
+        tideFallFrom.value = Math.max(a, 1e-3);
+        tideThemeFrom.value = themeColour.value;
+      } else if (phase === TIDE_FALL && a < 2e-3 && Math.abs(v) < 2e-2) {
+        phase = TIDE_REST;
+        a = 0;
+        v = 0;
+        break;
+      }
+    }
+    a = Math.max(a, 0);
+    // Base width breathes and the tongue tapers as it climbs; the crest
+    // spreads along the top edge while pressed into it.
+    const lit = Math.min(a, 1);
+    tideShape.value = Math.min(
+      1 -
+        TIDE_TAPER * lit +
+        TIDE_BREATH * lit * Math.sin(2 * Math.PI * TIDE_BREATH_HZ * time) +
+        TIDE_SPLASH * Math.max(a - 1, 0),
+      3
+    );
+    tideCenter.value =
+      TIDE_CENTER +
+      TIDE_SWAY * lit * Math.sin(2 * Math.PI * TIDE_SWAY_HZ * time + 0.6);
+    // The theme is deposited by the fall and completes at rest.
+    if (tideFallFrom.value > 0) {
+      const fall =
+        phase === TIDE_REST
+          ? 1
+          : Math.min(Math.max(1 - a / tideFallFrom.value, 0), 1);
+      const from = tideThemeFrom.value;
+      themeColour.value = from + (tideThemeTo.value - from) * fall;
+      if (phase === TIDE_REST) {
+        tideFallFrom.value = -1;
+        scheduleOnRN(commitDarkMode, tideThemeTo.value > 0.5);
+      }
+    }
+    tideAmount.value = a;
+    tideVelocity.value = v;
+    tidePhase.value = phase;
+    tideTime.value = time;
+  });
+
+  const pressTide = (nextDark: boolean) => {
+    cancelAnimation(themeColour);
+    tideThemeTo.value = nextDark ? 1 : 0;
+    // A new press while the flame is still up keeps its height and speed.
+    if (tidePhase.value === TIDE_REST) {
+      tideTime.value = 0;
+      tidePhase.value = TIDE_PUSH;
+    } else if (tidePhase.value === TIDE_FALL) {
+      tideFallFrom.value = -1;
+      tideVelocity.value = Math.max(tideVelocity.value, 0) + TIDE_LAUNCH_SPEED;
+      tidePhase.value = TIDE_FLIGHT;
+    }
+  };
 
   const expandedDepth = Math.max(
     closedDepth + 150,
     Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
   );
-  // Theme lift bell L(t), gated to 0 unless the panel is fully open — a tap
-  // while closed still animates colours/pill but must not lift the panel.
-  const liftValue = useDerivedValue(() => themeLiftCurve(themeMotion.value));
-  const themeLift = useDerivedValue(() =>
-    progress.value >= 0.999 ? liftValue.value : 0
-  );
-  // progress runs [0,1] for closed→open; the theme lift bell adds on top of
-  // the open height (single smooth rise/return, no discontinuity).
-  const panelProgress = useDerivedValue(
-    () => progress.value + THEME_LIFT * themeLift.value
-  );
   const bottomDepth = useDerivedValue(() =>
     interpolate(
-      panelProgress.value,
-      [0, 1, 2],
-      [closedDepth, expandedDepth, height],
+      progress.value,
+      [0, 1],
+      [closedDepth, expandedDepth],
       Extrapolation.CLAMP
     )
   );
-  const blurProgression = useDerivedValue(() =>
+  // Blur gradient densifies as the panel opens (098aa76), driven by `progress`.
+  const blurProgressionValue = useDerivedValue(() =>
     interpolate(
-      panelProgress.value,
-      [0, 1, 2],
-      [1, openProgression, openProgression],
+      progress.value,
+      [0, 1],
+      [1, openProgression],
       Extrapolation.CLAMP
     )
   );
-  const materialExposureValue = useDerivedValue(
-    () => DEFAULT_MATERIAL_EXPOSURE + 0.1 * themeLift.value
-  );
-  // Living wave: alive only during theme motion, follows the theme lift bell.
-  const waveAmplitude = useDerivedValue(
-    () => THEME_WAVE_AMP_SCALE * width * themeLift.value * pixelRatio
-  );
-  const waveDome = useDerivedValue(
-    () => THEME_WAVE_DOME_SCALE * width * themeLift.value * pixelRatio
-  );
-  const frontGlow = useDerivedValue(() => THEME_FRONT_GLOW * themeLift.value);
-  // Motion envelope for the material: 0 at rest, 1 mid open/close or mid
-  // theme lift. `a` is the soft entry/exit weight applied to the strength
-  // loop and the surface-progression rise/fall (see constants above).
-  const mOpen = useDerivedValue(() =>
-    Math.sin(Math.PI * Math.min(Math.max(progress.value, 0), 1))
-  );
-  const materialMotion = useDerivedValue(() =>
-    Math.max(mOpen.value, themeLift.value)
-  );
-  const materialMotionWeight = useDerivedValue(() =>
-    smoothstep01(materialMotion.value / MATERIAL_MOTION_WEIGHT_EDGE)
-  );
-  const strengthMotion = useDerivedValue(
-    () =>
-      STRENGTH_MOTION_EDGE +
-      (STRENGTH_MOTION_PEAK - STRENGTH_MOTION_EDGE) * materialMotion.value
-  );
+  // Light wave V0 channels, gated to the fully open panel.
+  const lightWaveCenter = useDerivedValue(() => {
+    const t = Math.min(Math.max(phaseT.value, 0), 1);
+    return (
+      LIGHT_WAVE_FROM +
+      (LIGHT_WAVE_TO - LIGHT_WAVE_FROM) *
+        (1 - Math.pow(1 - t, LIGHT_WAVE_POWER))
+    );
+  });
+  const lightWaveStops = useDerivedValue(() => {
+    const t = phaseT.value;
+    if (progress.value < 0.999 || t <= 0 || t >= 1) return 0;
+    const c = phaseToDark.value > 0.5 ? THEME_LD : THEME_DL;
+    const ease = (x: number) => x * x * (3 - 2 * x);
+    const rampIn = Math.min(t / (LIGHT_WAVE_RAMP_IN_MS / c.ms), 1);
+    const out = Math.min(Math.max((1 - t) / 0.2, 0), 1);
+    return c.stops * ease(rampIn) * ease(out);
+  });
+  // Material strength is part of the global transition: it follows g(t).
   const strengthValue = useDerivedValue(
     () =>
-      materialStrength +
-      (strengthMotion.value - materialStrength) * materialMotionWeight.value
+      LIGHT_MATERIAL_STRENGTH +
+      (materialStrength - LIGHT_MATERIAL_STRENGTH) * themeColour.value
   );
-  const surfaceProgressionMotion = useDerivedValue(
-    () =>
-      SURFACE_PROG_MOTION_FROM +
-      (SURFACE_PROG_MOTION_TO - SURFACE_PROG_MOTION_FROM) * materialMotion.value
-  );
-  const surfaceProgressionValue = useDerivedValue(
-    () =>
-      DEFAULT_MATERIAL_SURFACE_PROGRESSION +
-      (surfaceProgressionMotion.value - DEFAULT_MATERIAL_SURFACE_PROGRESSION) *
-        materialMotionWeight.value
-  );
-  // Colour and pill channels of the theme driver — both read themeMotion
-  // through their own eased window, so a tap moves shape first, colour last.
-  const themeSurfaceProgress = useDerivedValue(
-    () =>
-      themeFrom.value +
-      (themeTo.value - themeFrom.value) * themeColourCurve(themeMotion.value)
-  );
+  // Colour and pill channels all read the single global value g(t).
+  const themeSurfaceProgress = themeColour;
   const themeControlProgress = themeSurfaceProgress;
-  const themePillProgress = useDerivedValue(
+  const themePillProgress = themeSurfaceProgress;
+  // Darkens with the global theme transition g(t).
+  const materialExposureValue = useDerivedValue(
     () =>
-      themeFrom.value +
-      (themeTo.value - themeFrom.value) * themePillCurve(themeMotion.value)
+      DEFAULT_MATERIAL_EXPOSURE +
+      (DARK_MATERIAL_EXPOSURE - DEFAULT_MATERIAL_EXPOSURE) *
+        themeSurfaceProgress.value
   );
 
   // Reference scene geometry is tied to the viewport width, not to a scrolling
@@ -607,18 +695,6 @@ export default function ProgressiveShowcaseRoute() {
 
   const segmentOpacityStyle = useAnimatedStyle(() => ({
     opacity: openSegmentOpacity.value,
-  }));
-
-  const menuLinkTextStyle = useAnimatedStyle(() => ({
-    // The reference keeps menu copy white in both themes. The pearly material
-    // supplies contrast in light mode; a subtle shadow preserves edge clarity.
-    color: interpolateColor(
-      themeSurfaceProgress.value,
-      [0, 1],
-      ['rgba(255,255,255,0.97)', 'rgba(255,255,255,0.98)'],
-      'RGB',
-      { gamma: 1 }
-    ),
   }));
 
   const backdropStyle = useAnimatedStyle(() => ({
@@ -693,51 +769,22 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
-  const darkSegmentTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeControlProgress.value,
-      [0, 1],
-      ['rgba(91,86,79,0.88)', '#f6f3ee'],
-      'RGB',
-      { gamma: 1 }
-    ),
-  }));
-
-  const lightSegmentTextStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(
-      themeControlProgress.value,
-      [0, 1],
-      ['#171513', 'rgba(206,201,194,0.72)'],
-      'RGB',
-      { gamma: 1 }
-    ),
-  }));
-
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
     setDarkMode(nextDark);
     const target = nextDark ? 1 : 0;
 
-    // Capture where the colour channel actually is right now (mid-tap-safe),
-    // fold it into themeFrom, then sweep themeMotion 0→1 again. Pill and lift
-    // read the same sweep through their own windows, so everything a tap
-    // touches stays phase-locked with no separate timers to drift apart.
-    cancelAnimation(themeMotion);
-    const currentColour = themeColourCurve(themeMotion.value);
-    themeFrom.value =
-      themeFrom.value + (themeTo.value - themeFrom.value) * currentColour;
-    themeTo.value = target;
-    themeMotion.value = 0;
-    themeMotion.value = withTiming(1, {
-      duration: THEME_MOTION_MS,
-      easing: Easing.linear,
+    const c = nextDark ? THEME_LD : THEME_DL;
+    cancelAnimation(themeColour);
+    themeColour.value = withTiming(target, {
+      duration: c.ms,
+      easing: THEME_EASE,
     });
 
-    cancelAnimation(waveClock);
-    waveClock.value = withTiming(
-      waveClock.value + (THEME_MOTION_MS / 1000) * WAVE_SPEED,
-      { duration: THEME_MOTION_MS, easing: Easing.linear }
-    );
+    cancelAnimation(phaseT);
+    phaseToDark.value = target;
+    phaseT.value = 0;
+    phaseT.value = withTiming(1, { duration: c.ms, easing: Easing.linear });
   };
 
   const togglePanel = () => {
@@ -807,10 +854,12 @@ export default function ProgressiveShowcaseRoute() {
       current === 'material'
         ? 'field'
         : current === 'field'
-          ? 'capture'
-          : current === 'capture'
-            ? 'gaussian'
-            : 'material'
+          ? 'fieldmask'
+          : current === 'fieldmask'
+            ? 'capture'
+            : current === 'capture'
+              ? 'gaussian'
+              : 'material'
     );
   };
 
@@ -869,20 +918,32 @@ export default function ProgressiveShowcaseRoute() {
         right={0}
         curve={REFERENCE_BLUR_CURVE}
         blurRadius={blurRadiusDp}
-        blurProgression={blurProgression}
+        blurProgression={blurProgressionValue}
         progressiveBackend={debugBackend}
         progressiveNativeTuner={true}
+        // Static per theme: no strength motion on open/close or theme swap.
         progressiveMaterialStrength={strengthValue}
-        progressiveWaveAmplitude={waveAmplitude}
-        progressiveWaveDome={waveDome}
-        progressiveWaveTime={waveClock}
-        progressiveFrontGlow={frontGlow}
+        progressiveLightWaveCenter={lightWaveCenter}
+        progressiveLightWaveStops={lightWaveStops}
+        progressiveLightWaveWidth={LIGHT_WAVE_WIDTH}
+        progressiveTideAmount={tideAmount}
+        progressiveTideShape={tideShape}
+        progressiveTideCenter={tideCenter}
+        progressiveTideHeight={TIDE_V0 ? TIDE_REACH : 0}
+        progressiveTideWidth={TIDE_WIDTH}
+        progressiveTideVolume={TIDE_VOLUME}
+        progressiveTideMeniscus={TIDE_MENISCUS_PX}
+        progressiveTideSharpness={TIDE_SHARPNESS}
+        progressiveTideFlicker={TIDE_FLICKER}
+        progressiveTideTime={tideTime}
         progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}
         progressiveMaterialExposure={materialExposureValue}
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
-        progressiveMaterialSurfaceProgression={surfaceProgressionValue}
+        progressiveMaterialSurfaceProgression={
+          DEFAULT_MATERIAL_SURFACE_PROGRESSION
+        }
         progressiveMaterialColorFieldEnabled={true}
         progressiveMaterialColorFieldMix={DEFAULT_MATERIAL_COLOR_FIELD_MIX}
         progressiveMaterialColorFieldScale={DEFAULT_MATERIAL_COLOR_FIELD_SCALE}
@@ -1066,9 +1127,11 @@ export default function ProgressiveShowcaseRoute() {
             ? 'FULL'
             : debugStage === 'field'
               ? 'FIELD'
-              : debugStage === 'capture'
-                ? 'CAP'
-                : 'GAUSS'}
+              : debugStage === 'fieldmask'
+                ? 'FMASK'
+                : debugStage === 'capture'
+                  ? 'CAP'
+                  : 'GAUSS'}
         </Text>
       </Pressable>
 
@@ -1190,7 +1253,6 @@ export default function ProgressiveShowcaseRoute() {
           <Animated.Text
             style={[
               s.menuLink,
-              menuLinkTextStyle,
               {
                 left: W * om.linkLeft,
                 top: menuLinkCenters[0] - menuLinkLineHeight / 2,
@@ -1204,7 +1266,6 @@ export default function ProgressiveShowcaseRoute() {
           <Animated.Text
             style={[
               s.menuLink,
-              menuLinkTextStyle,
               {
                 left: W * om.linkLeft,
                 top: menuLinkCenters[1] - menuLinkLineHeight / 2,
@@ -1218,7 +1279,6 @@ export default function ProgressiveShowcaseRoute() {
           <Animated.Text
             style={[
               s.menuLink,
-              menuLinkTextStyle,
               {
                 left: W * om.linkLeft,
                 top: menuLinkCenters[2] - menuLinkLineHeight / 2,
@@ -1263,35 +1323,39 @@ export default function ProgressiveShowcaseRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: darkMode }}
-            onPress={() => setTheme(true)}
+            onPressIn={() => TIDE_V0 && pressTide(true)}
+            onPress={() => !TIDE_V0 && setTheme(true)}
             style={s.themeSegmentHit}
           >
-            <Animated.Text
+            <CrossfadeText
+              progress={themeControlProgress}
+              colors={['rgba(91,86,79,0.88)', '#f6f3ee']}
               style={[
                 s.themeSegmentLabel,
                 { fontSize: themeSegmentLabelFontSize },
-                darkSegmentTextStyle,
               ]}
             >
               Dark
-            </Animated.Text>
+            </CrossfadeText>
           </Pressable>
 
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: !darkMode }}
-            onPress={() => setTheme(false)}
+            onPressIn={() => TIDE_V0 && pressTide(false)}
+            onPress={() => !TIDE_V0 && setTheme(false)}
             style={s.themeSegmentHit}
           >
-            <Animated.Text
+            <CrossfadeText
+              progress={themeControlProgress}
+              colors={['#171513', 'rgba(206,201,194,0.72)']}
               style={[
                 s.themeSegmentLabel,
                 { fontSize: themeSegmentLabelFontSize },
-                lightSegmentTextStyle,
               ]}
             >
               Light
-            </Animated.Text>
+            </CrossfadeText>
           </Pressable>
         </Animated.View>
       </Animated.View>
@@ -1457,8 +1521,14 @@ const s = StyleSheet.create({
     position: 'absolute',
     backgroundColor: '#d6d2cd',
   },
+  crossfadeTop: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
   menuLink: {
     position: 'absolute',
+    color: 'rgba(255,255,255,0.97)',
     fontWeight: '600',
     textShadowColor: 'rgba(0,0,0,0.18)',
     textShadowOffset: { width: 0, height: 1 },

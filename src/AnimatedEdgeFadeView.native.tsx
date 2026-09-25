@@ -71,11 +71,24 @@ function useEdgeFadeAnimatedProps(
   materialStrengthSV: SharedValueLike<number> | null,
   materialSurfaceProgressionSV: SharedValueLike<number> | null,
   materialExposureSV: SharedValueLike<number> | null,
+  materialCurveOffsetSV: SharedValueLike<number> | null,
+  materialCurveHeightSV: SharedValueLike<number> | null,
+  materialVeilSV: SharedValueLike<number> | null,
+  materialNeutralitySV: SharedValueLike<number> | null,
+  materialLumaFlattenSV: SharedValueLike<number> | null,
   materialColorFieldMixSV: SharedValueLike<number> | null,
   waveAmplitudeSV: SharedValueLike<number> | null,
   waveDomeSV: SharedValueLike<number> | null,
   waveTimeSV: SharedValueLike<number> | null,
-  frontGlowSV: SharedValueLike<number> | null
+  frontGlowSV: SharedValueLike<number> | null,
+  fieldBlendSV: SharedValueLike<number> | null,
+  lightWaveCenterSV: SharedValueLike<number> | null,
+  lightWaveStopsSV: SharedValueLike<number> | null,
+  lightWaveWidthSV: SharedValueLike<number> | null,
+  tideAmountSV: SharedValueLike<number> | null,
+  tideShapeSV: SharedValueLike<number> | null,
+  tideCenterSV: SharedValueLike<number> | null,
+  tideTimeSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -105,6 +118,21 @@ function useEdgeFadeAnimatedProps(
     if (materialExposureSV) {
       out.progressiveMaterialExposure = materialExposureSV.value;
     }
+    if (materialCurveOffsetSV) {
+      out.progressiveMaterialCurveOffset = materialCurveOffsetSV.value;
+    }
+    if (materialCurveHeightSV) {
+      out.progressiveMaterialCurveHeight = materialCurveHeightSV.value;
+    }
+    if (materialVeilSV) {
+      out.progressiveMaterialVeil = materialVeilSV.value;
+    }
+    if (materialNeutralitySV) {
+      out.progressiveMaterialNeutrality = materialNeutralitySV.value;
+    }
+    if (materialLumaFlattenSV) {
+      out.progressiveMaterialLumaFlatten = materialLumaFlattenSV.value;
+    }
     if (materialColorFieldMixSV) {
       out.progressiveMaterialColorFieldMix = materialColorFieldMixSV.value;
     }
@@ -112,6 +140,17 @@ function useEdgeFadeAnimatedProps(
     if (waveDomeSV) out.progressiveWaveDome = waveDomeSV.value;
     if (waveTimeSV) out.progressiveWaveTime = waveTimeSV.value;
     if (frontGlowSV) out.progressiveFrontGlow = frontGlowSV.value;
+    if (fieldBlendSV) out.progressiveFieldBlend = fieldBlendSV.value;
+    if (lightWaveCenterSV)
+      out.progressiveLightWaveCenter = lightWaveCenterSV.value;
+    if (lightWaveStopsSV)
+      out.progressiveLightWaveStops = lightWaveStopsSV.value;
+    if (lightWaveWidthSV)
+      out.progressiveLightWaveWidth = lightWaveWidthSV.value;
+    if (tideAmountSV) out.progressiveTideAmount = tideAmountSV.value;
+    if (tideShapeSV) out.progressiveTideShape = tideShapeSV.value;
+    if (tideCenterSV) out.progressiveTideCenter = tideCenterSV.value;
+    if (tideTimeSV) out.progressiveTideTime = tideTimeSV.value;
     return out;
   });
 }
@@ -177,6 +216,26 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const materialExposureSV = isSharedValue(materialExposureProp)
     ? (materialExposureProp as SharedValueLike<number>)
     : null;
+  const materialCurveOffsetProp = (props as any).progressiveMaterialCurveOffset;
+  const materialCurveOffsetSV = isSharedValue(materialCurveOffsetProp)
+    ? (materialCurveOffsetProp as SharedValueLike<number>)
+    : null;
+  const materialCurveHeightProp = (props as any).progressiveMaterialCurveHeight;
+  const materialCurveHeightSV = isSharedValue(materialCurveHeightProp)
+    ? (materialCurveHeightProp as SharedValueLike<number>)
+    : null;
+  const materialVeilProp = (props as any).progressiveMaterialVeil;
+  const materialVeilSV = isSharedValue(materialVeilProp)
+    ? (materialVeilProp as SharedValueLike<number>)
+    : null;
+  const materialNeutralityProp = (props as any).progressiveMaterialNeutrality;
+  const materialNeutralitySV = isSharedValue(materialNeutralityProp)
+    ? (materialNeutralityProp as SharedValueLike<number>)
+    : null;
+  const materialLumaFlattenProp = (props as any).progressiveMaterialLumaFlatten;
+  const materialLumaFlattenSV = isSharedValue(materialLumaFlattenProp)
+    ? (materialLumaFlattenProp as SharedValueLike<number>)
+    : null;
   const materialColorFieldMixProp = (props as any)
     .progressiveMaterialColorFieldMix;
   const materialColorFieldMixSV = isSharedValue(materialColorFieldMixProp)
@@ -197,6 +256,38 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const frontGlowProp = (props as any).progressiveFrontGlow;
   const frontGlowSV = isSharedValue(frontGlowProp)
     ? (frontGlowProp as SharedValueLike<number>)
+    : null;
+  const fieldBlendProp = (props as any).progressiveFieldBlend;
+  const fieldBlendSV = isSharedValue(fieldBlendProp)
+    ? (fieldBlendProp as SharedValueLike<number>)
+    : null;
+  const lightWaveCenterProp = (props as any).progressiveLightWaveCenter;
+  const lightWaveCenterSV = isSharedValue(lightWaveCenterProp)
+    ? (lightWaveCenterProp as SharedValueLike<number>)
+    : null;
+  const lightWaveStopsProp = (props as any).progressiveLightWaveStops;
+  const lightWaveStopsSV = isSharedValue(lightWaveStopsProp)
+    ? (lightWaveStopsProp as SharedValueLike<number>)
+    : null;
+  const lightWaveWidthProp = (props as any).progressiveLightWaveWidth;
+  const lightWaveWidthSV = isSharedValue(lightWaveWidthProp)
+    ? (lightWaveWidthProp as SharedValueLike<number>)
+    : null;
+  const tideAmountProp = (props as any).progressiveTideAmount;
+  const tideAmountSV = isSharedValue(tideAmountProp)
+    ? (tideAmountProp as SharedValueLike<number>)
+    : null;
+  const tideShapeProp = (props as any).progressiveTideShape;
+  const tideShapeSV = isSharedValue(tideShapeProp)
+    ? (tideShapeProp as SharedValueLike<number>)
+    : null;
+  const tideTimeProp = (props as any).progressiveTideTime;
+  const tideTimeSV = isSharedValue(tideTimeProp)
+    ? (tideTimeProp as SharedValueLike<number>)
+    : null;
+  const tideCenterProp = (props as any).progressiveTideCenter;
+  const tideCenterSV = isSharedValue(tideCenterProp)
+    ? (tideCenterProp as SharedValueLike<number>)
     : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
@@ -247,11 +338,24 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveMaterialStrength: _materialStrength,
     progressiveMaterialSurfaceProgression: _materialSurfaceProgression,
     progressiveMaterialExposure: _materialExposure,
+    progressiveMaterialCurveOffset: _materialCurveOffset,
+    progressiveMaterialCurveHeight: _materialCurveHeight,
+    progressiveMaterialVeil: _materialVeil,
+    progressiveMaterialNeutrality: _materialNeutrality,
+    progressiveMaterialLumaFlatten: _materialLumaFlatten,
     progressiveMaterialColorFieldMix: _materialColorFieldMix,
     progressiveWaveAmplitude: _waveAmplitude,
     progressiveWaveDome: _waveDome,
     progressiveWaveTime: _waveTime,
     progressiveFrontGlow: _frontGlow,
+    progressiveFieldBlend: _fieldBlend,
+    progressiveLightWaveCenter: _lightWaveCenter,
+    progressiveLightWaveStops: _lightWaveStops,
+    progressiveLightWaveWidth: _lightWaveWidth,
+    progressiveTideAmount: _tideAmount,
+    progressiveTideShape: _tideShape,
+    progressiveTideCenter: _tideCenter,
+    progressiveTideTime: _tideTime,
     style,
     children,
     ...viewProps
@@ -261,11 +365,24 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveMaterialStrength?: number | SharedValueLike<number>;
     progressiveMaterialSurfaceProgression?: number | SharedValueLike<number>;
     progressiveMaterialExposure?: number | SharedValueLike<number>;
+    progressiveMaterialCurveOffset?: number | SharedValueLike<number>;
+    progressiveMaterialCurveHeight?: number | SharedValueLike<number>;
+    progressiveMaterialVeil?: number | SharedValueLike<number>;
+    progressiveMaterialNeutrality?: number | SharedValueLike<number>;
+    progressiveMaterialLumaFlatten?: number | SharedValueLike<number>;
     progressiveMaterialColorFieldMix?: number | SharedValueLike<number>;
     progressiveWaveAmplitude?: number | SharedValueLike<number>;
     progressiveWaveDome?: number | SharedValueLike<number>;
     progressiveWaveTime?: number | SharedValueLike<number>;
     progressiveFrontGlow?: number | SharedValueLike<number>;
+    progressiveFieldBlend?: number | SharedValueLike<number>;
+    progressiveLightWaveCenter?: number | SharedValueLike<number>;
+    progressiveLightWaveStops?: number | SharedValueLike<number>;
+    progressiveLightWaveWidth?: number | SharedValueLike<number>;
+    progressiveTideAmount?: number | SharedValueLike<number>;
+    progressiveTideShape?: number | SharedValueLike<number>;
+    progressiveTideCenter?: number | SharedValueLike<number>;
+    progressiveTideTime?: number | SharedValueLike<number>;
   };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
@@ -289,11 +406,24 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     materialStrengthSV,
     materialSurfaceProgressionSV,
     materialExposureSV,
+    materialCurveOffsetSV,
+    materialCurveHeightSV,
+    materialVeilSV,
+    materialNeutralitySV,
+    materialLumaFlattenSV,
     materialColorFieldMixSV,
     waveAmplitudeSV,
     waveDomeSV,
     waveTimeSV,
-    frontGlowSV
+    frontGlowSV,
+    fieldBlendSV,
+    lightWaveCenterSV,
+    lightWaveStopsSV,
+    lightWaveWidthSV,
+    tideAmountSV,
+    tideShapeSV,
+    tideCenterSV,
+    tideTimeSV
   );
 
   return (
@@ -321,6 +451,19 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
         materialSurfaceProgressionSV ? 0 : _materialSurfaceProgression
       }
       progressiveMaterialExposure={materialExposureSV ? 0 : _materialExposure}
+      progressiveMaterialCurveOffset={
+        materialCurveOffsetSV ? 0 : _materialCurveOffset
+      }
+      progressiveMaterialCurveHeight={
+        materialCurveHeightSV ? 1 : _materialCurveHeight
+      }
+      progressiveMaterialVeil={materialVeilSV ? 0 : _materialVeil}
+      progressiveMaterialNeutrality={
+        materialNeutralitySV ? 0 : _materialNeutrality
+      }
+      progressiveMaterialLumaFlatten={
+        materialLumaFlattenSV ? 0 : _materialLumaFlatten
+      }
       progressiveMaterialColorFieldMix={
         materialColorFieldMixSV ? 0 : _materialColorFieldMix
       }
@@ -328,6 +471,14 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       progressiveWaveDome={waveDomeSV ? 0 : _waveDome}
       progressiveWaveTime={waveTimeSV ? 0 : _waveTime}
       progressiveFrontGlow={frontGlowSV ? 0 : _frontGlow}
+      progressiveFieldBlend={fieldBlendSV ? 0 : _fieldBlend}
+      progressiveLightWaveCenter={lightWaveCenterSV ? 0 : _lightWaveCenter}
+      progressiveLightWaveStops={lightWaveStopsSV ? 0 : _lightWaveStops}
+      progressiveLightWaveWidth={lightWaveWidthSV ? 0 : _lightWaveWidth}
+      progressiveTideAmount={tideAmountSV ? 0 : _tideAmount}
+      progressiveTideShape={tideShapeSV ? 0 : _tideShape}
+      progressiveTideCenter={tideCenterSV ? 0.5 : _tideCenter}
+      progressiveTideTime={tideTimeSV ? 0 : _tideTime}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

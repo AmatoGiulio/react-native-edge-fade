@@ -43,5 +43,10 @@
     "expo-dev-client": "~58.0.2",
     "react-native-builder-bob": "^0.41.0",
     "react-native-monorepo-config": "^0.3.3"
+  },
+  "reanimated": {
+    "staticFeatureFlags": {
+      "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
+    }
   }
 }

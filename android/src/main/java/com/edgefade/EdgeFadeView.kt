@@ -66,6 +66,12 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveMaterialSurface: Float = 0f
   internal var progressiveMaterialSurfaceProgression: Float = 0.7f
 
+  // "Focus" theme transition. All default to 0, which keeps materialComposite's
+  // veil block a no-op (see BlurLabShaders.materialComposite).
+  internal var progressiveMaterialVeil: Float = 0f
+  internal var progressiveMaterialNeutrality: Float = 0f
+  internal var progressiveMaterialLumaFlatten: Float = 0f
+
   // Demo-only low-frequency colour field. Public progressive blur keeps this
   // disabled, so production/public semantics remain a pure Gaussian.
   internal var progressiveMaterialColorFieldEnabled: Boolean = false
@@ -85,6 +91,38 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var progressiveWaveDome: Float = 0f
   internal var progressiveWaveTime: Float = 0f
   internal var progressiveFrontGlow: Float = 0f
+
+  // Debug-stage cross-fade: 0 keeps the current "material" rendering exactly,
+  // 1 is visually identical to the "agsl-debug-field" debug stage (sharp
+  // scene and material strip suppressed, only the colour field remains).
+  // Not part of the renderer Key — see
+  // EdgeFadeProgressiveStripRenderer.draw()'s crossfadeEntrance handling.
+  internal var progressiveFieldBlend: Float = 0f
+  // Light wave V0 (draw-time uniforms, see EdgeFadeProgressiveStripRenderer).
+  internal var progressiveLightWaveCenter: Float = 0f
+  internal var progressiveLightWaveStops: Float = 0f
+  internal var progressiveLightWaveWidth: Float = 0f
+  // Marea V0: a volume-conserving deformation of the bottom material surface.
+  // amount is the signed normalised amplitude (1 = full dome height), shape
+  // blends press width (0) -> dome width (1), center is x in 0..1. height is
+  // the dome height as a fraction of the view height (0 disables the tide),
+  // width the dome FWHM as a fraction of the view width, volume 0..1 how much
+  // of the displaced area is returned around the bump, meniscus the surface
+  // drag on the sharp scene in px at full dome height (0 = off). height is the
+  // dome reach in the space above the panel: 1 = surface on the top edge.
+  internal var progressiveTideAmount: Float = 0f
+  internal var progressiveTideShape: Float = 0f
+  internal var progressiveTideCenter: Float = 0.5f
+  internal var progressiveTideHeight: Float = 0f
+  internal var progressiveTideWidth: Float = 0.5f
+  internal var progressiveTideVolume: Float = 1f
+  internal var progressiveTideMeniscus: Float = 0f
+  // Core profile exponent: 2 = gaussian dome, lower = pointed flame tip.
+  internal var progressiveTideSharpness: Float = 2f
+  // Flame flicker amplitude (fraction of the space above the panel) and its
+  // clock in seconds (animated).
+  internal var progressiveTideFlicker: Float = 0f
+  internal var progressiveTideTime: Float = 0f
 
   // Showcase-only native runtime tuner. These values are not public API and
   // default to the JS props so the clean optical baseline stays unchanged.
@@ -118,6 +156,15 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal var tunerMaterialColorLightOverride: Int? = null
   internal var tunerMaterialColorDarkOverride: Int? = null
   internal var tunerShowBounds: Boolean = false
+  internal var tunerTideHeightOverride: Float? = null
+  internal var tunerTideWidthOverride: Float? = null
+  internal var tunerTideVolumeOverride: Float? = null
+  internal var tunerTideMeniscusEnabledOverride: Boolean? = null
+  internal var tunerTideMeniscusOverride: Float? = null
+  internal var tunerTideSharpnessOverride: Float? = null
+  internal var tunerTideFlickerOverride: Float? = null
+  internal var tunerTideRippleOverride: Float? = null
+  internal var tunerTideLensOverride: Float? = null
 
   // Kept temporarily for source compatibility with the 0.2.x public API.
   // Saturation/lift are intentionally ignored by Public Progressive.
@@ -146,6 +193,19 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
 
   /** Internal selector flag; never exposed as a public backend prop. */
   internal var progressiveBlurActive: Boolean = false
+
+  /**
+   * Set by EdgeFadeViewManager's ReactProp setters when a structural prop
+   * changed (backend/mode selection, band geometry, curves) — but NOT by the
+   * per-frame animated props (fadeBottom/Top/Left/Right's non-zero value,
+   * frostProgression, materialStrength/Exposure/SurfaceProgression/
+   * ColorFieldMix, waveAmplitude/Dome/Time, frontGlow). onAfterUpdateTransaction
+   * skips the expensive EdgeFadeProgressiveBlurEffect.apply(view) call
+   * (backend selection, curve parsing, hierarchy walk, full renderer.prepare())
+   * when only animated props changed, since the renderer's own draw() already
+   * calls prepare() every frame regardless.
+   */
+  internal var progressiveStructureDirty: Boolean = true
 
   private val topSlot = EdgeShaderSlot()
   private val bottomSlot = EdgeShaderSlot()
@@ -276,6 +336,22 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialSurfaceOverride ?: progressiveMaterialSurface
   internal fun effectiveMaterialSurfaceProgression(): Float =
     tunerMaterialSurfaceProgressionOverride ?: progressiveMaterialSurfaceProgression
+  internal fun effectiveFieldBlend(): Float = progressiveFieldBlend
+  internal fun effectiveTideHeight(): Float = tunerTideHeightOverride ?: progressiveTideHeight
+  internal fun effectiveTideWidth(): Float = tunerTideWidthOverride ?: progressiveTideWidth
+  internal fun effectiveTideVolume(): Float = tunerTideVolumeOverride ?: progressiveTideVolume
+  internal fun effectiveTideSharpness(): Float =
+    tunerTideSharpnessOverride ?: progressiveTideSharpness
+  internal fun effectiveTideFlicker(): Float = tunerTideFlickerOverride ?: progressiveTideFlicker
+  // Impact ripples and surface lens, 1 = the tuned showcase strength.
+  internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 1f
+  internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1f
+  internal fun effectiveTideMeniscusEnabled(): Boolean = tunerTideMeniscusEnabledOverride ?: true
+  internal fun effectiveTideMeniscus(): Float =
+    if (effectiveTideMeniscusEnabled()) tunerTideMeniscusOverride ?: progressiveTideMeniscus else 0f
+  internal fun effectiveMaterialVeil(): Float = progressiveMaterialVeil
+  internal fun effectiveMaterialNeutrality(): Float = progressiveMaterialNeutrality
+  internal fun effectiveMaterialLumaFlatten(): Float = progressiveMaterialLumaFlatten
   internal fun effectiveMaterialCurveSync(): Boolean =
     tunerMaterialCurveSyncOverride ?: false
   internal fun effectiveMaterialCurveHeight(): Float =
@@ -337,6 +413,15 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerMaterialColorLightOverride = null
     tunerMaterialColorDarkOverride = null
     tunerShowBounds = false
+    tunerTideHeightOverride = null
+    tunerTideWidthOverride = null
+    tunerTideVolumeOverride = null
+    tunerTideMeniscusEnabledOverride = null
+    tunerTideMeniscusOverride = null
+    tunerTideSharpnessOverride = null
+    tunerTideFlickerOverride = null
+    tunerTideRippleOverride = null
+    tunerTideLensOverride = null
     nativeTuneChanged()
   }
 
@@ -345,6 +430,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   internal fun nativeTuneChanged() {
+    progressiveStructureDirty = true
     postInvalidateOnAnimation()
     syncNativeTunerBounds()
   }

@@ -73,6 +73,17 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private var slotA: Snapshot? = null
   private var slotB: Snapshot? = null
 
+  // syncToEdgeBounds() is driven from EdgeFadeView.syncNativeTunerBounds(),
+  // which onAfterUpdateTransaction's fast path now calls every animated
+  // frame. A PopupWindow.update() every frame forces a window relayout, so
+  // this is debounced: a call whose computed bounds already match the last
+  // *applied* bounds returns immediately (steady state costs nothing), and
+  // any other call re-arms a single postDelayed(pendingSync, 120) that
+  // recomputes fresh bounds when it actually fires.
+  private data class TunerBounds(val x: Int, val y: Int, val width: Int, val height: Int)
+  private var lastSyncedBounds: TunerBounds? = null
+  private val pendingSync = Runnable { performPendingSync() }
+
   fun show(expandedInitially: Boolean = false) {
     if (popup?.isShowing == true) return
     expanded = expandedInitially
@@ -108,16 +119,34 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     val p = popup ?: return
     if (!p.isShowing || !host.isAttachedToWindow || host.height <= 0) return
 
+    if (computeTunerBounds() == lastSyncedBounds) return
+
+    host.removeCallbacks(pendingSync)
+    host.postDelayed(pendingSync, 120L)
+  }
+
+  private fun performPendingSync() {
+    val p = popup ?: return
+    if (!p.isShowing || !host.isAttachedToWindow || host.height <= 0) return
+
+    val bounds = computeTunerBounds()
+    lastSyncedBounds = bounds
+    p.update(bounds.x, bounds.y, bounds.width, bounds.height)
+  }
+
+  private fun computeTunerBounds(): TunerBounds {
     val width = if (expanded) panelWidth() else dp(88)
     val height = if (expanded) constrainedPanelHeight() else dp(52)
     val hostLocation = IntArray(2)
     host.getLocationOnScreen(hostLocation)
     val x = (hostLocation[0] + host.width - width - dp(8)).coerceAtLeast(0)
     val y = panelTopOnScreen()
-    p.update(x, y, width, height)
+    return TunerBounds(x, y, width, height)
   }
 
   fun dismiss() {
+    host.removeCallbacks(pendingSync)
+    lastSyncedBounds = null
     popup?.dismiss()
     popup = null
     backendStatusView = null
@@ -243,6 +272,44 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
 
     addSwitch(body, "panel bounds", host.tunerShowBounds) {
       host.tunerShowBounds = it
+      host.nativeTuneChanged()
+    }
+
+    addSection(body, "TIDE")
+    addSlider(body, "dome reach", 0f, 1.5f, host.effectiveTideHeight(), "↑") {
+      host.tunerTideHeightOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "dome width", 0.15f, 1.2f, host.effectiveTideWidth(), "·W") {
+      host.tunerTideWidthOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "flame tip", 1f, 2.5f, host.effectiveTideSharpness(), "") {
+      host.tunerTideSharpnessOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "flicker", 0f, 0.3f, host.effectiveTideFlicker(), "") {
+      host.tunerTideFlickerOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "impact shell", 0f, 3f, host.effectiveTideRipple(), "×") {
+      host.tunerTideRippleOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "surface lens", 0f, 3f, host.effectiveTideLens(), "×") {
+      host.tunerTideLensOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "conserved volume", 0f, 1f, host.effectiveTideVolume(), "") {
+      host.tunerTideVolumeOverride = it
+      host.nativeTuneChanged()
+    }
+    addSwitch(body, "meniscus", host.effectiveTideMeniscusEnabled()) {
+      host.tunerTideMeniscusEnabledOverride = it
+      host.nativeTuneChanged()
+    }
+    addSlider(body, "meniscus drag", 0f, 40f, host.tunerTideMeniscusOverride ?: host.progressiveTideMeniscus, "px") {
+      host.tunerTideMeniscusOverride = it
       host.nativeTuneChanged()
     }
 
