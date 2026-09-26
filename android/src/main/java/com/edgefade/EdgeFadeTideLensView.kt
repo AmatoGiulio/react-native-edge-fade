@@ -65,6 +65,9 @@ internal object EdgeFadeTideBus {
 internal class EdgeFadeTideLensView(context: Context) : FrameLayout(context),
   ReactPointerEventsView {
   var strength = 1f
+  // Bottom band (px) left unrefracted: the surface is born there, right
+  // under the finger and the segment.
+  var calmBottomPx = 0f
 
   // A full-screen wrapper: touches go to its children or pass through.
   override val pointerEvents: PointerEvents = PointerEvents.BOX_NONE
@@ -112,6 +115,7 @@ internal class EdgeFadeTideLensView(context: Context) : FrameLayout(context),
     s.setFloatUniform("tideFlicker", surface.flickerPx, surface.time)
     s.setFloatUniform("slopeScale", surface.slopeScale)
     s.setFloatUniform("surf", surface.baselineY, surface.lensPx * strength, surface.bandPx, surface.chroma)
+    s.setFloatUniform("calmBottom", calmBottomPx)
     setRenderEffect(RenderEffect.createRuntimeShaderEffect(s, "content"))
     active = true
   }
@@ -140,6 +144,7 @@ internal class EdgeFadeTideLensView(context: Context) : FrameLayout(context),
       uniform float tideSharp;
       uniform float2 tideFlicker;
       uniform float slopeScale;
+      uniform float calmBottom;
       // x = baseline y, y = lens displacement px, z = band sigma px, w = chroma
       uniform float4 surf;
 
@@ -176,7 +181,8 @@ internal class EdgeFadeTideLensView(context: Context) : FrameLayout(context),
         float lens = exp(-(x * x) / (2.0 * w * w));
         if (lens < 0.002) return content.eval(p);
         float grad = -(x / (w * w)) * lens;
-        float bend = grad * w * surf.y;
+        float bend = grad * w * surf.y *
+          smoothstep(size.y - calmBottom, size.y - calmBottom * 1.8, p.y);
         float2 rc = p + dir * bend;
         half4 c = content.eval(rc);
         float2 ca = dir * abs(bend) * surf.w;

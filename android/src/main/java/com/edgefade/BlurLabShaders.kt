@@ -688,7 +688,9 @@ internal object BlurLabShaders {
           float ang = atan(v.y, v.x);
           float wob = 1.0 + 0.04 * (sin(ang * 3.0) * 0.6 + sin(ang * 2.0 + 1.7) * 0.4);
           float released = smoothstep(0.0, 0.08, p);
-          float fe = 1.0 - pow(1.0 - clamp(p, 0.0, 1.0), 2.2);
+          // Softer ease: after the burst the shell visibly travels down the
+          // screen instead of leaving it in a few frames.
+          float fe = 1.0 - pow(1.0 - clamp(p, 0.0, 1.0), 1.6);
           float front = rippleShape.w * fe * wob;
           float w = max(rippleShape.y, 1.0);
           float x = dist - front;

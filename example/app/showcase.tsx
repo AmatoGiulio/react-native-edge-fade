@@ -258,13 +258,28 @@ const TIDE_BOUNCE = 0.16; // rebound speed / impact speed
 // 'lens': the capped mass and the surface lens fall back together (lens on
 // fall from the tuner); 'dissolve': they dissolve in place, only the impact
 // explosion is left.
-const TIDE_FALL_MODE: 'lens' | 'dissolve' = 'lens';
+const TIDE_FALL_MODE: 'lens' | 'dissolve' = 'dissolve';
 // How high the material lifts, fraction of the space above the panel (the
 // surface lens still reaches the top edge).
 const TIDE_BODY_REACH = 0.35;
 // Chrome (avatar, menu, segment) bends under the same surface at a fraction
 // of the feed's lens: small elements stretch past their own size otherwise.
-const TIDE_CHROME_LENS = 0.5;
+const TIDE_CHROME_LENS = 0.3;
+// Chrome afloat: each element (segment, links, avatar, Settings) is lifted
+// by the crest as the surface crosses it and drops back on an underdamped
+// spring, so the wave is seen travelling through the interface. The segment
+// first sinks a little under the finger while the push charges the wave.
+// The crest crosses the chrome in ~0.1 s, too fast for a spring chasing it:
+// each crossing is an upward kick instead, and the element falls back and
+// bobs once (peak ~BOB_LIFT).
+const BOB_LIFT = 0.05; // bob peak, fraction of the width
+// Slow enough to be read after the crest has gone (period ~0.6 s), so the
+// chrome settles while the impact shell falls: two layers in time.
+const BOB_OMEGA = 10; // rad/s
+const BOB_DAMPING = 0.32;
+const BOB_KICK = (BOB_LIFT * BOB_OMEGA) / 0.65; // initial speed, x width / s
+const BOB_SCALE = 0.05; // extra scale at full lift
+const SEG_CHARGE = 0.94; // segment scale while the push charges
 // How much wider the crest spreads per unit of penetration into the wall.
 const TIDE_SPLASH = 10;
 const TIDE_STEP_S = 0.001;
@@ -280,6 +295,10 @@ const TIDE_REST = 0;
 const TIDE_PUSH = 1;
 const TIDE_FLIGHT = 2;
 const TIDE_FALL = 3;
+// After the dissolved surface lands, the impact shell keeps falling through
+// the screen; the transition ends when it has run out.
+const TIDE_SETTLE = 4;
+const TIDE_SHELL_S = 0.96; // native SHELL_LIFETIME_S
 
 // Dark smoke reads too grey/white at the default exposure; darken it while
 // the theme is dark.
@@ -533,6 +552,17 @@ export default function ProgressiveShowcaseRoute() {
   const tidePeak = useSharedValue(-1);
   // 1 once the falling surface has landed and rebounded.
   const tideLanded = useSharedValue(0);
+  // Clock time of the crest hitting the top (-1 = not yet).
+  const tideImpactT = useSharedValue(-1);
+  const chromeBob = useSharedValue({
+    y: [0, 0, 0, 0, 0, 0],
+    v: [0, 0, 0, 0, 0, 0],
+    // Signed crest-to-element height last frame (per element), to catch the
+    // crossing (-1e9 = not armed).
+    s: [-1e9, -1e9, -1e9, -1e9, -1e9, -1e9],
+    sc: 1,
+    sv: 0,
+  });
   // Page background carried by the wave: native reveal below the surface
   // (-1 = off, then 0 -> 1 after the crest hits the top), its direction, and
   // the React background, which switches once the reveal has covered the
@@ -558,6 +588,15 @@ export default function ProgressiveShowcaseRoute() {
     for (let t = 0; t < dt; t += TIDE_STEP_S) {
       const h = Math.min(TIDE_STEP_S, dt - t);
       time += h;
+      if (phase === TIDE_SETTLE) {
+        if (tideImpactT.value < 0 || time - tideImpactT.value >= TIDE_SHELL_S) {
+          phase = TIDE_REST;
+          a = 0;
+          v = 0;
+          break;
+        }
+        continue;
+      }
       if (phase === TIDE_PUSH) {
         // Smoothstep velocity ramp: the flame leaves with zero acceleration
         // jerk and reaches launch speed at the end of the push.
@@ -594,6 +633,12 @@ export default function ProgressiveShowcaseRoute() {
           tideLanded.value = 1;
           a = 0;
           v = -v * TIDE_BOUNCE;
+        } else if (TIDE_FALL_MODE === 'dissolve') {
+          // Keep a trace of the tide alive (no surface, no mass) so the
+          // impact shell can finish falling through the screen.
+          phase = TIDE_SETTLE;
+          a = 1e-4;
+          v = 0;
         } else {
           phase = TIDE_REST;
           a = 0;
@@ -601,6 +646,7 @@ export default function ProgressiveShowcaseRoute() {
           break;
         }
       }
+      if (a >= 1 && tideImpactT.value < 0) tideImpactT.value = time;
     }
     a = Math.max(a, 0);
     // Base width breathes and the tongue tapers as it climbs; the crest
@@ -636,7 +682,12 @@ export default function ProgressiveShowcaseRoute() {
           : tideBody.value;
     if (tideReveal.value >= 0) {
       // Completes once the crest has hit the top (or the wave turns back).
-      if (a >= 1 || phase === TIDE_FALL || phase === TIDE_REST) {
+      if (
+        a >= 1 ||
+        phase === TIDE_FALL ||
+        phase >= TIDE_SETTLE ||
+        phase === TIDE_REST
+      ) {
         tideReveal.value = Math.min(tideReveal.value + dt / TIDE_REVEAL_S, 1);
       }
       if (tideReveal.value >= 1 || phase === TIDE_REST) {
@@ -666,8 +717,9 @@ export default function ProgressiveShowcaseRoute() {
     tideThemeFrom.value = themeColour.value;
     tidePeak.value = 0;
     tideLanded.value = 0;
+    tideImpactT.value = -1;
     // A new press while the flame is still up keeps its height and speed.
-    if (tidePhase.value === TIDE_REST) {
+    if (tidePhase.value === TIDE_REST || tidePhase.value === TIDE_SETTLE) {
       tideTime.value = 0;
       tidePhase.value = TIDE_PUSH;
     } else if (tidePhase.value === TIDE_FALL) {
@@ -1002,6 +1054,104 @@ export default function ProgressiveShowcaseRoute() {
   const persistentSettingsTop =
     persistentSettingsCenterY - closedNavLabelLineHeight / 2;
 
+  // Chrome afloat (see BOB_*). Element anchors: x centre and height above the
+  // bottom edge; order avatar, Subscription, Extension, About, segment,
+  // Settings.
+  const linkX = W * om.linkLeft + W * 0.12;
+  const bobX = [
+    W * om.avatarLeft + menuAvatarSize / 2,
+    linkX,
+    linkX,
+    linkX,
+    W * om.theme.left + segmentWidth / 2,
+    W * (1 - REF_LAYOUT.closedNav.settingsRight - 0.07),
+  ];
+  const bobY = [
+    H - (menuAvatarTop + menuAvatarSize / 2),
+    H - menuLinkCenters[0],
+    H - menuLinkCenters[1],
+    H - menuLinkCenters[2],
+    H - themeSegmentCenterY,
+    H - persistentSettingsCenterY,
+  ];
+  const bobSigma = (TIDE_WIDTH * W) / 2.3548;
+  useFrameCallback((frame) => {
+    'worklet';
+    const b = chromeBob.value;
+    const phase = tidePhase.value;
+    let still = phase === TIDE_REST && Math.abs(b.sc - 1) < 1e-4;
+    for (let i = 0; i < b.y.length && still; i++) {
+      if (Math.abs(b.y[i]) > 0.01 || Math.abs(b.v[i]) > 0.01) still = false;
+    }
+    if (still) return;
+    const dt = Math.min((frame.timeSincePreviousFrame ?? 16) / 1000, 0.05);
+    const surfaceOn =
+      phase === TIDE_PUSH ||
+      phase === TIDE_FLIGHT ||
+      (phase === TIDE_FALL && TIDE_FALL_MODE === 'lens');
+    const a = tideAmount.value;
+    const cx = tideCenter.value * W;
+    const sigma = bobSigma * Math.max(tideShape.value, 0.2);
+    const y = b.y.slice();
+    const v = b.v.slice();
+    const sPrev = b.s.slice();
+    let sc = b.sc;
+    let sv = b.sv;
+    for (let i = 0; i < y.length; i++) {
+      if (!surfaceOn) {
+        sPrev[i] = -1e9;
+        continue;
+      }
+      const d = Math.abs(bobX[i] - cx) / sigma;
+      const surface = a * H * Math.exp(-0.5 * Math.pow(d, TIDE_SHARPNESS));
+      const s = surface - bobY[i];
+      // The crest passes under the element: kick it up.
+      if (sPrev[i] > -1e8 && sPrev[i] < 0 && s >= 0) v[i] -= BOB_KICK * W;
+      sPrev[i] = s;
+    }
+    for (let t = 0; t < dt; t += 0.004) {
+      const h = Math.min(0.004, dt - t);
+      for (let i = 0; i < y.length; i++) {
+        const acc =
+          -BOB_OMEGA * BOB_OMEGA * y[i] - 2 * BOB_DAMPING * BOB_OMEGA * v[i];
+        v[i] += acc * h;
+        y[i] += v[i] * h;
+      }
+      const scTarget = phase === TIDE_PUSH ? SEG_CHARGE : 1;
+      const sacc =
+        -BOB_OMEGA * BOB_OMEGA * (sc - scTarget) -
+        2 * BOB_DAMPING * BOB_OMEGA * sv;
+      sv += sacc * h;
+      sc += sv * h;
+    }
+    chromeBob.value = { y, v, s: sPrev, sc, sv };
+  });
+  // Each style reads chromeBob itself: a useAnimatedStyle only subscribes
+  // to shared values read in its own worklet, not inside a helper.
+  const bobStyle = (y: number, charge: number) => {
+    'worklet';
+    const k = 1 + BOB_SCALE * Math.min(Math.max(-y / (BOB_LIFT * W), 0), 1.2);
+    return { transform: [{ translateY: y }, { scale: k * charge }] };
+  };
+  const avatarBobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[0], 1)
+  );
+  const link0BobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[1], 1)
+  );
+  const link1BobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[2], 1)
+  );
+  const link2BobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[3], 1)
+  );
+  const segmentBobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[4], chromeBob.value.sc)
+  );
+  const settingsBobStyle = useAnimatedStyle(() =>
+    bobStyle(chromeBob.value.y[5], 1)
+  );
+
   return (
     <View style={s.page}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -1246,6 +1396,7 @@ export default function ProgressiveShowcaseRoute() {
       <TideLensHost
         pointerEvents="box-none"
         tideLensStrength={TIDE_CHROME_LENS}
+        tideLensCalmBottom={W * 0.16}
         style={StyleSheet.absoluteFill}
       >
         <Animated.View
@@ -1324,7 +1475,7 @@ export default function ProgressiveShowcaseRoute() {
           </Pressable>
         </Animated.View>
 
-        <Text
+        <Animated.Text
           pointerEvents="none"
           style={[
             s.closedNavLabel,
@@ -1335,10 +1486,11 @@ export default function ProgressiveShowcaseRoute() {
               fontSize: closedNavLabelFontSize,
               lineHeight: closedNavLabelLineHeight,
             },
+            settingsBobStyle,
           ]}
         >
           Settings
-        </Text>
+        </Animated.Text>
 
         <Animated.View
           pointerEvents={open ? 'box-none' : 'none'}
@@ -1348,20 +1500,33 @@ export default function ProgressiveShowcaseRoute() {
             pointerEvents="box-none"
             style={[StyleSheet.absoluteFill, openMenuStyle]}
           >
-            <Image
-              source={SHOWCASE_IMAGES.profile.source}
+            <Animated.View
+              pointerEvents="none"
               style={[
-                s.menuAvatar,
+                s.menuAvatarFloat,
                 {
                   left: W * om.avatarLeft,
                   top: menuAvatarTop,
                   width: menuAvatarSize,
                   height: menuAvatarSize,
-                  borderRadius: menuAvatarSize / 2,
                 },
+                avatarBobStyle,
               ]}
-              contentFit="cover"
-            />
+            >
+              <Image
+                source={SHOWCASE_IMAGES.profile.source}
+                style={[
+                  s.menuAvatar,
+                  s.menuAvatarInFloat,
+                  {
+                    width: menuAvatarSize,
+                    height: menuAvatarSize,
+                    borderRadius: menuAvatarSize / 2,
+                  },
+                ]}
+                contentFit="cover"
+              />
+            </Animated.View>
 
             <Animated.Text
               style={[
@@ -1372,6 +1537,7 @@ export default function ProgressiveShowcaseRoute() {
                   fontSize: menuLinkFontSize,
                   lineHeight: menuLinkLineHeight,
                 },
+                link0BobStyle,
               ]}
             >
               Subscription
@@ -1385,6 +1551,7 @@ export default function ProgressiveShowcaseRoute() {
                   fontSize: menuLinkFontSize,
                   lineHeight: menuLinkLineHeight,
                 },
+                link1BobStyle,
               ]}
             >
               Extension
@@ -1398,6 +1565,7 @@ export default function ProgressiveShowcaseRoute() {
                   fontSize: menuLinkFontSize,
                   lineHeight: menuLinkLineHeight,
                 },
+                link2BobStyle,
               ]}
             >
               About
@@ -1417,6 +1585,7 @@ export default function ProgressiveShowcaseRoute() {
               },
               segmentTrackStyle,
               segmentOpacityStyle,
+              segmentBobStyle,
             ]}
           >
             <Animated.View
@@ -1634,6 +1803,13 @@ const s = StyleSheet.create({
   menuAvatar: {
     position: 'absolute',
     backgroundColor: '#d6d2cd',
+  },
+  menuAvatarFloat: {
+    position: 'absolute',
+  },
+  menuAvatarInFloat: {
+    left: 0,
+    top: 0,
   },
   crossfadeTop: {
     position: 'absolute',

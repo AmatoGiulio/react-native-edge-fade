@@ -72,11 +72,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     // Impact shell and flame lens, after the chessboard wave-shader (band
     // 64 pt, amplitude 50 pt, chroma 0.28 on a ~411 pt wide screen), as
     // fractions of the view width.
-    const val SHELL_EXPAND_S = 1.1f
+    // The impact shell is what falls through the screen after the crest
+    // dissolves: brisk, decelerating, fading as it spreads.
+    const val SHELL_EXPAND_S = 0.8f
     const val SHELL_LIFETIME_S = 1.2f * SHELL_EXPAND_S
     const val SHELL_BAND = 0.155f
     const val SHELL_DISPLACEMENT = 0.12f
-    const val SHELL_RADIUS_OVERSCAN = 1.28f
+    const val SHELL_RADIUS_OVERSCAN = 1.02f
     const val LENS_DISPLACEMENT = 0.10f
     const val LENS_BAND = 0.155f
     // Top-corner calm radius (fraction of the width) and the bend kept at

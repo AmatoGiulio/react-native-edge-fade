@@ -11,6 +11,8 @@ import {
 interface NativeProps extends ViewProps {
   /** Multiplier on the host's surface lens displacement. */
   tideLensStrength?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
+  /** Bottom band (dp) left unrefracted, fading over as much again. */
+  tideLensCalmBottom?: CodegenTypes.Float;
 }
 
 export default codegenNativeComponent<NativeProps>('EdgeFadeTideLens', {

@@ -22,6 +22,11 @@ internal class EdgeFadeTideLensViewManager : ViewGroupManager<EdgeFadeTideLensVi
     view.strength = value.coerceIn(0f, 3f)
   }
 
+  @ReactProp(name = "tideLensCalmBottom", defaultFloat = 0f)
+  override fun setTideLensCalmBottom(view: EdgeFadeTideLensView, value: Float) {
+    view.calmBottomPx = value.coerceAtLeast(0f) * view.resources.displayMetrics.density
+  }
+
   companion object {
     const val NAME = "EdgeFadeTideLens"
   }
