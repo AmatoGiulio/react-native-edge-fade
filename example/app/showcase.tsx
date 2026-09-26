@@ -594,6 +594,14 @@ export default function ProgressiveShowcaseRoute() {
       v += acc * h;
       a += v * h;
       if (phase === TIDE_FLIGHT && v < 0) {
+        if (TIDE_FALL_MODE === 'dissolve') {
+          // No invisible fall to simulate: the surface stays at the top while
+          // it dissolves and the impact shell finishes.
+          if (tideImpactT.value < 0) tideImpactT.value = time;
+          phase = TIDE_SETTLE;
+          v = 0;
+          continue;
+        }
         phase = TIDE_FALL;
       } else if (phase === TIDE_FALL && a <= 0) {
         if (tideLanded.value === 0 && v < 0) {
@@ -645,7 +653,8 @@ export default function ProgressiveShowcaseRoute() {
     tideBody.value =
       phase === TIDE_REST
         ? 1
-        : phase === TIDE_FALL && TIDE_FALL_MODE === 'dissolve'
+        : (phase === TIDE_FALL || phase === TIDE_SETTLE) &&
+            TIDE_FALL_MODE === 'dissolve'
           ? Math.max(tideBody.value - dt / TIDE_BODY_FADE_S, 0)
           : tideBody.value;
     if (tideReveal.value >= 0) {
@@ -686,14 +695,13 @@ export default function ProgressiveShowcaseRoute() {
     tidePeak.value = 0;
     tideLanded.value = 0;
     tideImpactT.value = -1;
-    // A new press while the flame is still up keeps its height and speed.
-    if (tidePhase.value === TIDE_REST || tidePhase.value === TIDE_SETTLE) {
-      tideTime.value = 0;
-      tidePhase.value = TIDE_PUSH;
-    } else if (tidePhase.value === TIDE_FALL) {
-      tideVelocity.value = Math.max(tideVelocity.value, 0) + tideLaunchSpeed;
-      tidePhase.value = TIDE_FLIGHT;
-    }
+    // Every press is a new wave from the bottom edge, whatever the previous
+    // one was doing (relaunching it mid-air put the crest straight at the
+    // top and the theme jumped).
+    tideAmount.value = 0;
+    tideVelocity.value = 0;
+    tideTime.value = 0;
+    tidePhase.value = TIDE_PUSH;
   };
 
   const bottomDepth = useDerivedValue(() =>
