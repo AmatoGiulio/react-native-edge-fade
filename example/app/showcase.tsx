@@ -23,12 +23,10 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useDerivedValue,
-  useFrameCallback,
   useSharedValue,
   withDelay,
   withTiming,
 } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
@@ -185,96 +183,14 @@ const CLOSED_NAV_SHOW_MS = 160;
 const CHROME_IN_EASE = Easing.bezier(0.16, 1, 0.3, 1);
 const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 
-// Theme change = two overlapping processes.
-// 1. Global transition g(t), measured on the reference video: every surface
-//    (page, text, pill, material tone) changes uniformly in direct sRGB;
-//    Light→Dark 10/50/90% at ~50/130/290 ms, settled ~400 ms; Dark→Light
-//    ~15% faster. One bezier fitted to those points drives it.
-// 2. Light wave V0, the sheet's own material phenomenon: one very wide
-//    exposure wave (gaussian in depth, gain in stops) rises through the FMASK
-//    material. Only the material response's exposure changes; diffusion,
-//    detail and colour hue are untouched. Values are calibration parameters.
-const THEME_EASE = Easing.bezier(0.35, 0, 0.2, 1);
-const THEME_LD = { ms: 420, stops: 0.5 };
-const THEME_DL = { ms: 430, stops: 0.4 };
-// Wave centre travels from below the sheet to past its top fade with a
-// finite launch speed: c(τ) = from + (to - from)·(1 - (1 - τ)^P).
-const LIGHT_WAVE_FROM = -0.6;
-const LIGHT_WAVE_TO = 1.5;
-const LIGHT_WAVE_POWER = 1.6;
-const LIGHT_WAVE_WIDTH = 0.35;
-// Gain ramps in over the first ~60 ms and out over the last 20%.
-const LIGHT_WAVE_RAMP_IN_MS = 60;
-
-// Marea: the theme toggle releases a flame of material from the centre of
-// the sheet. It only rises: a soft push, a free climb, the crest breaks
-// against the top edge of the screen, then it settles back to rest from above
-// (never below it) while the theme changes. The surface amplitude a(t) is
-// normalised to the space above the open panel (1 = the top edge, a wall):
-//   push    : v eases 0 -> v0 over TIDE_PUSH_S (the tap's impulse)
-//   flight  : a'' = -g                   (one parabola, aimed past 1)
-//   impact  : a'' = -g - Ωw²(a-1) - 2ζwΩw a'   (a > 1, the wall absorbs it)
-//   fall    : a'' = -Ωf²a - 2Ωf a'       (critically damped, lands from above)
-// The theme follows the fall: 0 at the start of the descent, 1 at rest.
-// The page background is carried by the wave instead: the new colour appears
-// below the rising surface and completes over TIDE_REVEAL_S after the crest
-// hits the top (native swap of the old background colour).
-const TIDE_V0 = true;
-const TIDE_REACH = 1; // wall = top edge of the screen
-// The surface is born at the bottom edge of the screen (0 = panel top); the
-// material only lifts once it clears the panel.
-const TIDE_ANCHOR = 1;
-const TIDE_CENTER = 0.5; // the wave always rises from the screen centre
-// Base FWHM, fraction of screen width: wider than the screen, so the surface
-// is a broad arched wave pushing the mass, not a tongue (device-tuned).
-const TIDE_WIDTH = 1.63;
-const TIDE_SHARPNESS = 2.02; // ~gaussian arch
-const TIDE_TAPER = 0; // no narrowing toward the top: round crest
-const TIDE_VOLUME = 0; // no returned-volume trough: the flame only rises
-const TIDE_MENISCUS_PX = 0; // replaced by the surface lens (native)
-const TIDE_FLICKER = 0.07; // edge ripple, fraction of the space above panel
-const TIDE_SWAY = 0.05; // lateral sway of the flame, fraction of width
-const TIDE_SWAY_HZ = 1.1;
-const TIDE_BREATH = 0.12; // width breathing while it burns
-const TIDE_BREATH_HZ = 1.7;
-// Free-flight apex, in wall units: the extra energy is what the wall absorbs.
-const TIDE_ENERGY = 1.2;
-const TIDE_TIME_S = 0.55; // gravity time scale (unit parabola rise time)
-const TIDE_PUSH_S = 0.14;
-const TIDE_WALL_OMEGA = 4.5; // wall cushion stiffness (rad/s)
-const TIDE_WALL_DAMPING = 0.7;
-// Fall: the surface drops back under the same gravity (plus the wall
-// cushion while still pressed into the top), then lands with one small
-// rebound instead of a slow damped tail.
-const TIDE_FALL_GRAVITY = 1.6; // x rise gravity
-const TIDE_BOUNCE = 0.16; // rebound speed / impact speed
-// 'lens': the capped mass and the surface lens fall back together (lens on
-// fall from the tuner); 'dissolve': they dissolve in place, only the impact
-// explosion is left.
-const TIDE_FALL_MODE: 'lens' | 'dissolve' = 'dissolve';
-// How high the material lifts, fraction of the space above the panel (the
-// surface lens still reaches the top edge).
-const TIDE_BODY_REACH = 0.35;
-// How much wider the crest spreads per unit of penetration into the wall.
-const TIDE_SPLASH = 10;
-const TIDE_STEP_S = 0.001;
-// New page background completes this long after the crest hits the top.
-const TIDE_REVEAL_S = 0.25;
-const TIDE_PACE = 1 / 0.35;
-const TIDE_REVEAL_OFF_FRAMES = 3;
-// On the way down the mass and its lens dissolve in place over this long:
-// only the impact explosion is left.
-const TIDE_BODY_FADE_S = 0.12;
-const TIDE_BG_LIGHT = '#efeeec';
-const TIDE_BG_DARK = '#121210';
-const TIDE_REST = 0;
-const TIDE_PUSH = 1;
-const TIDE_FLIGHT = 2;
-const TIDE_FALL = 3;
-// After the dissolved surface lands, the impact shell keeps falling through
-// the screen; the transition ends when it has run out.
-const TIDE_SETTLE = 4;
-const TIDE_SHELL_S = 0.96; // native SHELL_LIFETIME_S
+// Theme change: one uniform transition. A single value, themeColour (0 =
+// light, 1 = dark), drives every surface — page background, text, pill and
+// the material's own colour/strength/exposure — so the material's response
+// is what makes the change visible, with no separate wave or overlay. Same
+// curve and duration as the panel's own motion (FIELD_OPEN_MS /
+// REFERENCE_MOTION_EASE), both directions.
+const THEME_BG_LIGHT = '#efeeec';
+const THEME_BG_DARK = '#121210';
 
 // Dark smoke reads too grey/white at the default exposure; darken it while
 // the theme is dark.
@@ -492,217 +408,10 @@ export default function ProgressiveShowcaseRoute() {
   // Theme colour progress: 0 = light, 1 = dark. Surface, text, pill and
   // material-theme progress all read this single value.
   const themeColour = useSharedValue(0);
-  // Light wave clock (linear 0 -> 1 over the transition) and direction
-  // (1 = towards dark).
-  const phaseT = useSharedValue(0);
-  const phaseToDark = useSharedValue(1);
   const expandedDepth = Math.max(
     closedDepth + 150,
     Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
   );
-  // Born at the bottom edge the wave travels the whole screen instead of the
-  // space above the panel: keep the same gravity in px, so the times stretch
-  // by sqrt(ratio) instead of the wave simply going faster.
-  // Device-tuned pace: the wave was liked at reach 0.35 (35% of the screen);
-  // it now travels to the top with that same speed profile in px, so every
-  // time constant stretches by 1 / 0.35.
-  const tideTimeScale = TIDE_PACE;
-  const tideTimeS = TIDE_TIME_S * tideTimeScale;
-  const tideGravity = 2 / (tideTimeS * tideTimeS);
-  const tideLaunchSpeed = Math.sqrt(2 * tideGravity * TIDE_ENERGY);
-  const tidePushS = TIDE_PUSH_S * tideTimeScale;
-  const tideWallOmega = TIDE_WALL_OMEGA / tideTimeScale;
-
-  // Marea surface state (see TIDE_* above).
-  const tideAmount = useSharedValue(0);
-  const tideVelocity = useSharedValue(0);
-  const tideShape = useSharedValue(1);
-  const tideCenter = useSharedValue(TIDE_CENTER);
-  const tidePhase = useSharedValue(TIDE_REST);
-  const tideTime = useSharedValue(0);
-  // Theme carried by the rise: target, value at the press and the highest
-  // the surface has climbed so far (-1 = no transition running). Every
-  // channel (text, chrome, segment, material) completes as the crest hits the
-  // top, so the segment keeps the wave's time.
-  const tideThemeTo = useSharedValue(0);
-  const tideThemeFrom = useSharedValue(0);
-  const tidePeak = useSharedValue(-1);
-  // 1 once the falling surface has landed and rebounded.
-  const tideLanded = useSharedValue(0);
-  // Clock time of the crest hitting the top (-1 = not yet).
-  const tideImpactT = useSharedValue(-1);
-  // Page background carried by the wave: native reveal below the surface
-  // (-1 = off, then 0 -> 1 after the crest hits the top), its direction, and
-  // the React background, which switches once the reveal has covered the
-  // whole view (the swap is then invisible).
-  const tideBody = useSharedValue(1);
-  const tideReveal = useSharedValue(-1);
-  // Frames the native swap stays on after the React background switched, so
-  // the two never disagree for a frame; then it stops touching photos.
-  const tideRevealOff = useSharedValue(-1);
-  const tideRevealTo = useSharedValue(0);
-  const pageBg = useSharedValue(0);
-
-  const commitDarkMode = (nextDark: boolean) => setDarkMode(nextDark);
-
-  useFrameCallback((frame) => {
-    'worklet';
-    if (tidePhase.value === TIDE_REST) return;
-    const dt = Math.min((frame.timeSincePreviousFrame ?? 16) / 1000, 0.05);
-    let a = tideAmount.value;
-    let v = tideVelocity.value;
-    let phase = tidePhase.value;
-    let time = tideTime.value;
-    for (let t = 0; t < dt; t += TIDE_STEP_S) {
-      const h = Math.min(TIDE_STEP_S, dt - t);
-      time += h;
-      if (phase === TIDE_SETTLE) {
-        if (tideImpactT.value < 0 || time - tideImpactT.value >= TIDE_SHELL_S) {
-          phase = TIDE_REST;
-          a = 0;
-          v = 0;
-          break;
-        }
-        continue;
-      }
-      if (phase === TIDE_PUSH) {
-        // Smoothstep velocity ramp: the flame leaves with zero acceleration
-        // jerk and reaches launch speed at the end of the push.
-        const u = Math.min(time / tidePushS, 1);
-        v = tideLaunchSpeed * u * u * (3 - 2 * u);
-        a += v * h;
-        if (u >= 1) phase = TIDE_FLIGHT;
-        continue;
-      }
-      let acc: number;
-      if (phase === TIDE_FLIGHT) {
-        acc = -tideGravity;
-        if (a > 1) {
-          acc -=
-            tideWallOmega * tideWallOmega * (a - 1) +
-            2 * TIDE_WALL_DAMPING * tideWallOmega * v;
-        }
-      } else {
-        // Free fall under gravity; still cushioned while pressed into the top.
-        acc = -tideGravity * TIDE_FALL_GRAVITY;
-        if (a > 1) {
-          acc -=
-            tideWallOmega * tideWallOmega * (a - 1) +
-            2 * TIDE_WALL_DAMPING * tideWallOmega * v;
-        }
-      }
-      v += acc * h;
-      a += v * h;
-      if (phase === TIDE_FLIGHT && v < 0) {
-        if (TIDE_FALL_MODE === 'dissolve') {
-          // No invisible fall to simulate: the surface stays at the top while
-          // it dissolves and the impact shell finishes.
-          if (tideImpactT.value < 0) tideImpactT.value = time;
-          phase = TIDE_SETTLE;
-          v = 0;
-          continue;
-        }
-        phase = TIDE_FALL;
-      } else if (phase === TIDE_FALL && a <= 0) {
-        if (tideLanded.value === 0 && v < 0) {
-          // Landing: one small rebound, then rest.
-          tideLanded.value = 1;
-          a = 0;
-          v = -v * TIDE_BOUNCE;
-        } else if (TIDE_FALL_MODE === 'dissolve') {
-          // Keep a trace of the tide alive (no surface, no mass) so the
-          // impact shell can finish falling through the screen.
-          phase = TIDE_SETTLE;
-          a = 1e-4;
-          v = 0;
-        } else {
-          phase = TIDE_REST;
-          a = 0;
-          v = 0;
-          break;
-        }
-      }
-      if (a >= 1 && tideImpactT.value < 0) tideImpactT.value = time;
-    }
-    a = Math.max(a, 0);
-    // Base width breathes and the tongue tapers as it climbs; the crest
-    // spreads along the top edge while pressed into it.
-    const lit = Math.min(a, 1);
-    tideShape.value = Math.min(
-      1 -
-        TIDE_TAPER * lit +
-        TIDE_BREATH * lit * Math.sin(2 * Math.PI * TIDE_BREATH_HZ * time) +
-        TIDE_SPLASH * Math.max(a - 1, 0),
-      3
-    );
-    tideCenter.value =
-      TIDE_CENTER +
-      TIDE_SWAY * lit * Math.sin(2 * Math.PI * TIDE_SWAY_HZ * time + 0.6);
-    // The theme rides the rise and completes as the crest hits the top.
-    if (tidePeak.value >= 0) {
-      tidePeak.value = Math.max(tidePeak.value, Math.min(a, 1));
-      const u = phase === TIDE_REST ? 1 : tidePeak.value;
-      const from = tideThemeFrom.value;
-      themeColour.value =
-        from + (tideThemeTo.value - from) * u * u * (3 - 2 * u);
-      if (phase === TIDE_REST) {
-        tidePeak.value = -1;
-        scheduleOnRN(commitDarkMode, tideThemeTo.value > 0.5);
-      }
-    }
-    tideBody.value =
-      phase === TIDE_REST
-        ? 1
-        : (phase === TIDE_FALL || phase === TIDE_SETTLE) &&
-            TIDE_FALL_MODE === 'dissolve'
-          ? Math.max(tideBody.value - dt / TIDE_BODY_FADE_S, 0)
-          : tideBody.value;
-    if (tideReveal.value >= 0) {
-      // Completes once the crest has hit the top (or the wave turns back).
-      if (
-        a >= 1 ||
-        phase === TIDE_FALL ||
-        phase >= TIDE_SETTLE ||
-        phase === TIDE_REST
-      ) {
-        tideReveal.value = Math.min(tideReveal.value + dt / TIDE_REVEAL_S, 1);
-      }
-      if (tideReveal.value >= 1 || phase === TIDE_REST) {
-        if (pageBg.value !== tideRevealTo.value) {
-          pageBg.value = tideRevealTo.value;
-          tideRevealOff.value = TIDE_REVEAL_OFF_FRAMES;
-        } else if (tideRevealOff.value > 0) {
-          tideRevealOff.value -= 1;
-        } else {
-          tideReveal.value = -1;
-        }
-      }
-      if (phase === TIDE_REST) tideReveal.value = -1;
-    }
-    tideAmount.value = a;
-    tideVelocity.value = v;
-    tidePhase.value = phase;
-    tideTime.value = time;
-  });
-
-  const pressTide = (nextDark: boolean) => {
-    cancelAnimation(themeColour);
-    tideThemeTo.value = nextDark ? 1 : 0;
-    tideRevealTo.value = nextDark ? 1 : 0;
-    tideReveal.value = 0;
-    tideBody.value = 1;
-    tideThemeFrom.value = themeColour.value;
-    tidePeak.value = 0;
-    tideLanded.value = 0;
-    tideImpactT.value = -1;
-    // Every press is a new wave from the bottom edge, whatever the previous
-    // one was doing (relaunching it mid-air put the crest straight at the
-    // top and the theme jumped).
-    tideAmount.value = 0;
-    tideVelocity.value = 0;
-    tideTime.value = 0;
-    tidePhase.value = TIDE_PUSH;
-  };
 
   const bottomDepth = useDerivedValue(() =>
     interpolate(
@@ -721,24 +430,6 @@ export default function ProgressiveShowcaseRoute() {
       Extrapolation.CLAMP
     )
   );
-  // Light wave V0 channels, gated to the fully open panel.
-  const lightWaveCenter = useDerivedValue(() => {
-    const t = Math.min(Math.max(phaseT.value, 0), 1);
-    return (
-      LIGHT_WAVE_FROM +
-      (LIGHT_WAVE_TO - LIGHT_WAVE_FROM) *
-        (1 - Math.pow(1 - t, LIGHT_WAVE_POWER))
-    );
-  });
-  const lightWaveStops = useDerivedValue(() => {
-    const t = phaseT.value;
-    if (progress.value < 0.999 || t <= 0 || t >= 1) return 0;
-    const c = phaseToDark.value > 0.5 ? THEME_LD : THEME_DL;
-    const ease = (x: number) => x * x * (3 - 2 * x);
-    const rampIn = Math.min(t / (LIGHT_WAVE_RAMP_IN_MS / c.ms), 1);
-    const out = Math.min(Math.max((1 - t) / 0.2, 0), 1);
-    return c.stops * ease(rampIn) * ease(out);
-  });
   // Material strength is part of the global transition: it follows g(t).
   const strengthValue = useDerivedValue(
     () =>
@@ -834,12 +525,11 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
-  // The page background follows the wave (pageBg), not the fall.
   const surfaceStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      TIDE_V0 ? pageBg.value : themeSurfaceProgress.value,
+      themeSurfaceProgress.value,
       [0, 1],
-      [TIDE_BG_LIGHT, TIDE_BG_DARK],
+      [THEME_BG_LIGHT, THEME_BG_DARK],
       'RGB',
       { gamma: 1 }
     ),
@@ -901,19 +591,11 @@ export default function ProgressiveShowcaseRoute() {
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
     setDarkMode(nextDark);
-    const target = nextDark ? 1 : 0;
-
-    const c = nextDark ? THEME_LD : THEME_DL;
     cancelAnimation(themeColour);
-    themeColour.value = withTiming(target, {
-      duration: c.ms,
-      easing: THEME_EASE,
+    themeColour.value = withTiming(nextDark ? 1 : 0, {
+      duration: FIELD_OPEN_MS,
+      easing: REFERENCE_MOTION_EASE,
     });
-
-    cancelAnimation(phaseT);
-    phaseToDark.value = target;
-    phaseT.value = 0;
-    phaseT.value = withTiming(1, { duration: c.ms, easing: Easing.linear });
   };
 
   const togglePanel = () => {
@@ -1052,26 +734,6 @@ export default function ProgressiveShowcaseRoute() {
         progressiveNativeTuner={true}
         // Static per theme: no strength motion on open/close or theme swap.
         progressiveMaterialStrength={strengthValue}
-        progressiveLightWaveCenter={lightWaveCenter}
-        progressiveLightWaveStops={lightWaveStops}
-        progressiveLightWaveWidth={LIGHT_WAVE_WIDTH}
-        progressiveTideAmount={tideAmount}
-        progressiveTideShape={tideShape}
-        progressiveTideCenter={tideCenter}
-        progressiveTideHeight={TIDE_V0 ? TIDE_REACH : 0}
-        progressiveTideWidth={TIDE_WIDTH}
-        progressiveTideVolume={TIDE_VOLUME}
-        progressiveTideMeniscus={TIDE_MENISCUS_PX}
-        progressiveTideSharpness={TIDE_SHARPNESS}
-        progressiveTideFlicker={TIDE_FLICKER}
-        progressiveTideTime={tideTime}
-        progressiveTideAnchor={TIDE_ANCHOR}
-        progressiveTideBody={tideBody}
-        progressiveTideBodyReach={TIDE_BODY_REACH}
-        progressiveTideReveal={tideReveal}
-        progressiveTideRevealTo={tideRevealTo}
-        progressiveTideBgLight={TIDE_BG_LIGHT}
-        progressiveTideBgDark={TIDE_BG_DARK}
         progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}
@@ -1459,8 +1121,7 @@ export default function ProgressiveShowcaseRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: darkMode }}
-            onPressIn={() => TIDE_V0 && pressTide(true)}
-            onPress={() => !TIDE_V0 && setTheme(true)}
+            onPressIn={() => setTheme(true)}
             style={s.themeSegmentHit}
           >
             <CrossfadeText
@@ -1478,8 +1139,7 @@ export default function ProgressiveShowcaseRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: !darkMode }}
-            onPressIn={() => TIDE_V0 && pressTide(false)}
-            onPress={() => !TIDE_V0 && setTheme(false)}
+            onPressIn={() => setTheme(false)}
             style={s.themeSegmentHit}
           >
             <CrossfadeText

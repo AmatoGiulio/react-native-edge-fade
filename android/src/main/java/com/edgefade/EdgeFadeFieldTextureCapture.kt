@@ -11,6 +11,7 @@ import android.hardware.HardwareBuffer
 import android.media.Image
 import android.media.ImageReader
 import android.os.Build
+import android.os.SystemClock
 import android.view.View
 import androidx.annotation.RequiresApi
 
@@ -48,6 +49,9 @@ internal class EdgeFadeFieldTextureCapture {
   private var width = 0
   private var height = 0
   private var current: Frame? = null
+  private var lastRenderMs = 0L
+  private var idleCheckPending = false
+  private var catchUp = false
 
   var shader: BitmapShader? = null
     private set
@@ -63,10 +67,15 @@ internal class EdgeFadeFieldTextureCapture {
     }
 
     val activeRenderer = renderer ?: return shader
-    // No waitForPresent: blocking the UI thread on the GPU every frame cost
-    // ~30% jank. The shader samples the latest completed buffer instead (at
-    // most one frame behind, invisible on a field this diffuse).
-    val sync = activeRenderer.createRenderRequest().setWaitForPresent(false).syncAndDraw()
+    // No waitForPresent while frames keep coming: blocking the UI thread on
+    // the GPU every frame cost ~30% jank. The shader samples the latest
+    // completed buffer instead (one frame behind, invisible in motion). Once
+    // the view goes idle, one catch-up frame waits, so the resting field is
+    // never the stale one (first render, images loaded after it).
+    val wait = catchUp
+    catchUp = false
+    val sync = activeRenderer.createRenderRequest().setWaitForPresent(wait).syncAndDraw()
+    if (!wait) scheduleIdleCatchUp(host)
     val failed = HardwareRenderer.SYNC_LOST_SURFACE_REWARD_IF_FOUND or
       HardwareRenderer.SYNC_CONTEXT_IS_STOPPED or
       HardwareRenderer.SYNC_FRAME_DROPPED
@@ -93,6 +102,28 @@ internal class EdgeFadeFieldTextureCapture {
       filterMode = BitmapShader.FILTER_MODE_LINEAR
     }
     return shader
+  }
+
+  // Idle = no render for IDLE_MS. Counting vsyncs is not enough: one slow
+  // frame mid-animation skips two and would trigger a blocking catch-up.
+  private fun scheduleIdleCatchUp(host: View) {
+    lastRenderMs = SystemClock.uptimeMillis()
+    if (idleCheckPending) return
+    idleCheckPending = true
+    host.postDelayed(object : Runnable {
+      override fun run() {
+        val quiet = SystemClock.uptimeMillis() - lastRenderMs
+        if (quiet < IDLE_MS) {
+          host.postDelayed(this, IDLE_MS - quiet)
+          return
+        }
+        idleCheckPending = false
+        if (renderer != null && host.isAttachedToWindow) {
+          catchUp = true
+          host.invalidate()
+        }
+      }
+    }, IDLE_MS)
   }
 
   fun release() {
@@ -147,5 +178,6 @@ internal class EdgeFadeFieldTextureCapture {
 
   private companion object {
     const val BUFFER_COUNT = 4
+    const val IDLE_MS = 120L
   }
 }
