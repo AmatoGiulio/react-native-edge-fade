@@ -451,6 +451,11 @@ class EdgeFadeViewManager :
     view.progressiveTideTime = value
   }
 
+  @ReactProp(name = "progressiveTideBodyReach", defaultFloat = 1f)
+  override fun setProgressiveTideBodyReach(view: EdgeFadeView, value: Float) {
+    view.progressiveTideBodyReach = value.coerceIn(0f, 1f)
+  }
+
   @ReactProp(name = "progressiveTideBody", defaultFloat = 1f)
   override fun setProgressiveTideBody(view: EdgeFadeView, value: Float) {
     view.progressiveTideBody = value.coerceIn(0f, 1f)

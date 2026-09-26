@@ -15,6 +15,7 @@ import java.lang.ref.WeakReference
 import kotlin.math.ceil
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -78,6 +79,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val SHELL_RADIUS_OVERSCAN = 1.28f
     const val LENS_DISPLACEMENT = 0.10f
     const val LENS_BAND = 0.155f
+    // Top-corner calm radius (fraction of the width) and the bend kept at
+    // the very corner.
+    const val CORNER_CALM_RADIUS = 0.6f
+    const val CORNER_CALM_MIN = 0.15f
     const val LENS_CHROMA = 0.18f
     // No spectral sheen: the glass is lit, shaded and rimmed, not iridescent.
     const val LENS_GLOW = 0f
@@ -1405,10 +1410,16 @@ internal class EdgeFadeProgressiveStripRenderer(
       shellLook = host.effectiveTideShellLook().coerceIn(0f, 2f),
       // Full strength almost as soon as the flame leaves the panel (LENS_RISE);
       // on the way back it fades over the last LENS_FADE of the settle.
-      lensLevel = lensLevel(amount, rising) * lensFall * body,
+      // Light and sheen never exceed the rise level: lens on fall scales the
+      // bend only, not the glint.
+      lensLevel = lensLevel(amount, rising) * min(lensFall, 1f) * body,
       lensPx = host.effectiveTideLens().coerceIn(0f, 3f) * LENS_DISPLACEMENT * w *
         lensLevel(amount, rising) * lensFall * body,
       body = body,
+      // Body lift cap above the panel (reach 1 = up to the top edge: no cap).
+      bodyMaxPx = host.effectiveTideBodyReach().coerceIn(0f, 1f).let { r ->
+        if (r >= 0.999f) 0f else (r * (height - exactBottom)).coerceAtLeast(1f)
+      },
       viewHeight = height.toFloat(),
     )
   }
@@ -1449,6 +1460,30 @@ internal class EdgeFadeProgressiveStripRenderer(
 
   private fun applyTideUniforms(strip: Strip, tide: TideFrame?, host: EdgeFadeView) {
     val scale = strip.scale
+    // Views outside the host (the showcase chrome) bend under the same wave.
+    EdgeFadeTideBus.publish(
+      tide?.let {
+        TideSurface(
+          host = WeakReference(host),
+          amplitudePx = it.amplitudePx,
+          centerPx = it.centerPx,
+          sigma1Px = it.sigma1Px,
+          sigma2Px = it.sigma2Px,
+          beta = it.beta,
+          wallPx = it.wallPx,
+          sharpness = it.sharpness,
+          flickerPx = it.flickerPx,
+          time = it.time,
+          baselineY = it.viewHeight - exactBottom + it.anchorPx,
+          slopeScale = 1f / scale.coerceAtLeast(0.01f),
+          lensPx = it.lensPx,
+          bandPx = LENS_BAND * it.viewWidth,
+          // No split on the chrome: on a transparent layer it only tints the
+          // text green; the feed underneath carries the dispersion.
+          chroma = 0f,
+        )
+      },
+    )
     val reveal = host.progressiveTideReveal
     val light = host.progressiveTideBgLight
     val dark = host.progressiveTideBgDark
@@ -1467,6 +1502,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       strip.fieldMaterial.setFloatUniform("tideAnchor", 0f)
       strip.mask.setFloatUniform("tideBody", 1f)
       strip.fieldMaterial.setFloatUniform("tideBody", 1f)
+      strip.mask.setFloatUniform("tideBodyMax", 0f)
+      strip.fieldMaterial.setFloatUniform("tideBodyMax", 0f)
+      strip.fieldMaterial.setFloatUniform("cornerCalm", 0f, 1f, 1f)
       strip.mask.setFloatUniform("tide", 0f, 0f, 1f, 1f)
       strip.fieldMaterial.setFloatUniform("tide", 0f, 0f, 1f, 1f)
       strip.fieldMaterial.setFloatUniform("meniscus", 0f, 1f)
@@ -1489,6 +1527,11 @@ internal class EdgeFadeProgressiveStripRenderer(
       strip.fieldMaterial.setFloatUniform("tideAnchor", tide.anchorPx)
       strip.mask.setFloatUniform("tideBody", tide.body)
       strip.fieldMaterial.setFloatUniform("tideBody", tide.body)
+      strip.mask.setFloatUniform("tideBodyMax", tide.bodyMaxPx * scale)
+      strip.fieldMaterial.setFloatUniform("tideBodyMax", tide.bodyMaxPx)
+      strip.fieldMaterial.setFloatUniform(
+        "cornerCalm", tide.viewWidth, CORNER_CALM_RADIUS * tide.viewWidth, CORNER_CALM_MIN,
+      )
       strip.fieldMaterial.setFloatUniform(
         "tide",
         tide.amplitudePx,
@@ -1544,6 +1587,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val wallPx: Float,
     val anchorPx: Float,
     val body: Float,
+    val bodyMaxPx: Float,
     val sharpness: Float,
     val flickerPx: Float,
     val time: Float,

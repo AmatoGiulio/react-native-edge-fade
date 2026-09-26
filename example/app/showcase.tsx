@@ -4,6 +4,7 @@ import {
   type StyleProp,
   type TextStyle,
   PixelRatio,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -32,6 +33,12 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
 
 const ProgressiveFade = AnimatedEdgeFadeView as any;
+// Android-only wrapper that bends the chrome (menu, avatar, segment) under
+// the same Marea surface lens as the feed; a plain view elsewhere.
+const TideLensHost: any =
+  Platform.OS === 'android'
+    ? require('../../src/EdgeFadeTideLensNativeComponent').default
+    : View;
 
 const SHOWCASE_IMAGES = {
   beachBand: {
@@ -238,12 +245,26 @@ const TIDE_SWAY_HZ = 1.1;
 const TIDE_BREATH = 0.12; // width breathing while it burns
 const TIDE_BREATH_HZ = 1.7;
 // Free-flight apex, in wall units: the extra energy is what the wall absorbs.
-const TIDE_ENERGY = 1.45;
-const TIDE_TIME_S = 0.6; // gravity time scale (unit parabola rise time)
-const TIDE_PUSH_S = 0.16;
+const TIDE_ENERGY = 1.2;
+const TIDE_TIME_S = 0.55; // gravity time scale (unit parabola rise time)
+const TIDE_PUSH_S = 0.14;
 const TIDE_WALL_OMEGA = 4.5; // wall cushion stiffness (rad/s)
 const TIDE_WALL_DAMPING = 0.7;
-const TIDE_FALL_OMEGA = 6;
+// Fall: the surface drops back under the same gravity (plus the wall
+// cushion while still pressed into the top), then lands with one small
+// rebound instead of a slow damped tail.
+const TIDE_FALL_GRAVITY = 1.6; // x rise gravity
+const TIDE_BOUNCE = 0.16; // rebound speed / impact speed
+// 'lens': the capped mass and the surface lens fall back together (lens on
+// fall from the tuner); 'dissolve': they dissolve in place, only the impact
+// explosion is left.
+const TIDE_FALL_MODE: 'lens' | 'dissolve' = 'lens';
+// How high the material lifts, fraction of the space above the panel (the
+// surface lens still reaches the top edge).
+const TIDE_BODY_REACH = 0.35;
+// Chrome (avatar, menu, segment) bends under the same surface at a fraction
+// of the feed's lens: small elements stretch past their own size otherwise.
+const TIDE_CHROME_LENS = 0.5;
 // How much wider the crest spreads per unit of penetration into the wall.
 const TIDE_SPLASH = 10;
 const TIDE_STEP_S = 0.001;
@@ -487,16 +508,14 @@ export default function ProgressiveShowcaseRoute() {
   // Born at the bottom edge the wave travels the whole screen instead of the
   // space above the panel: keep the same gravity in px, so the times stretch
   // by sqrt(ratio) instead of the wave simply going faster.
-  const tideTimeScale = Math.sqrt(
-    (height - expandedDepth + TIDE_ANCHOR * expandedDepth) /
-      Math.max(height - expandedDepth, 1)
-  );
+  // Constant-gravity stretch for the longer travel from the bottom edge,
+  // left out on purpose: the transition stays brisk.
+  const tideTimeScale = 1;
   const tideTimeS = TIDE_TIME_S * tideTimeScale;
   const tideGravity = 2 / (tideTimeS * tideTimeS);
   const tideLaunchSpeed = Math.sqrt(2 * tideGravity * TIDE_ENERGY);
   const tidePushS = TIDE_PUSH_S * tideTimeScale;
   const tideWallOmega = TIDE_WALL_OMEGA / tideTimeScale;
-  const tideFallOmega = TIDE_FALL_OMEGA / tideTimeScale;
 
   // Marea surface state (see TIDE_* above).
   const tideAmount = useSharedValue(0);
@@ -505,11 +524,15 @@ export default function ProgressiveShowcaseRoute() {
   const tideCenter = useSharedValue(TIDE_CENTER);
   const tidePhase = useSharedValue(TIDE_REST);
   const tideTime = useSharedValue(0);
-  // Theme carried by the fall: target, value at the start of the descent and
-  // the height the descent starts from (-1 = not descending yet).
+  // Theme carried by the rise: target, value at the press and the highest
+  // the surface has climbed so far (-1 = no transition running). Every
+  // channel (text, chrome, segment, material) completes as the crest hits the
+  // top, so the segment keeps the wave's time.
   const tideThemeTo = useSharedValue(0);
   const tideThemeFrom = useSharedValue(0);
-  const tideFallFrom = useSharedValue(-1);
+  const tidePeak = useSharedValue(-1);
+  // 1 once the falling surface has landed and rebounded.
+  const tideLanded = useSharedValue(0);
   // Page background carried by the wave: native reveal below the surface
   // (-1 = off, then 0 -> 1 after the crest hits the top), its direction, and
   // the React background, which switches once the reveal has covered the
@@ -553,19 +576,30 @@ export default function ProgressiveShowcaseRoute() {
             2 * TIDE_WALL_DAMPING * tideWallOmega * v;
         }
       } else {
-        acc = -tideFallOmega * tideFallOmega * a - 2 * tideFallOmega * v;
+        // Free fall under gravity; still cushioned while pressed into the top.
+        acc = -tideGravity * TIDE_FALL_GRAVITY;
+        if (a > 1) {
+          acc -=
+            tideWallOmega * tideWallOmega * (a - 1) +
+            2 * TIDE_WALL_DAMPING * tideWallOmega * v;
+        }
       }
       v += acc * h;
       a += v * h;
       if (phase === TIDE_FLIGHT && v < 0) {
         phase = TIDE_FALL;
-        tideFallFrom.value = Math.max(a, 1e-3);
-        tideThemeFrom.value = themeColour.value;
-      } else if (phase === TIDE_FALL && a < 2e-3 && Math.abs(v) < 2e-2) {
-        phase = TIDE_REST;
-        a = 0;
-        v = 0;
-        break;
+      } else if (phase === TIDE_FALL && a <= 0) {
+        if (tideLanded.value === 0 && v < 0) {
+          // Landing: one small rebound, then rest.
+          tideLanded.value = 1;
+          a = 0;
+          v = -v * TIDE_BOUNCE;
+        } else {
+          phase = TIDE_REST;
+          a = 0;
+          v = 0;
+          break;
+        }
       }
     }
     a = Math.max(a, 0);
@@ -582,24 +616,23 @@ export default function ProgressiveShowcaseRoute() {
     tideCenter.value =
       TIDE_CENTER +
       TIDE_SWAY * lit * Math.sin(2 * Math.PI * TIDE_SWAY_HZ * time + 0.6);
-    // The theme is deposited by the fall and completes at rest.
-    if (tideFallFrom.value > 0) {
-      const fall =
-        phase === TIDE_REST
-          ? 1
-          : Math.min(Math.max(1 - a / tideFallFrom.value, 0), 1);
+    // The theme rides the rise and completes as the crest hits the top.
+    if (tidePeak.value >= 0) {
+      tidePeak.value = Math.max(tidePeak.value, Math.min(a, 1));
+      const u = phase === TIDE_REST ? 1 : tidePeak.value;
       const from = tideThemeFrom.value;
-      themeColour.value = from + (tideThemeTo.value - from) * fall;
+      themeColour.value =
+        from + (tideThemeTo.value - from) * u * u * (3 - 2 * u);
       if (phase === TIDE_REST) {
-        tideFallFrom.value = -1;
+        tidePeak.value = -1;
         scheduleOnRN(commitDarkMode, tideThemeTo.value > 0.5);
       }
     }
     tideBody.value =
-      phase === TIDE_FALL
-        ? Math.max(tideBody.value - dt / TIDE_BODY_FADE_S, 0)
-        : phase === TIDE_REST
-          ? 1
+      phase === TIDE_REST
+        ? 1
+        : phase === TIDE_FALL && TIDE_FALL_MODE === 'dissolve'
+          ? Math.max(tideBody.value - dt / TIDE_BODY_FADE_S, 0)
           : tideBody.value;
     if (tideReveal.value >= 0) {
       // Completes once the crest has hit the top (or the wave turns back).
@@ -630,12 +663,14 @@ export default function ProgressiveShowcaseRoute() {
     tideRevealTo.value = nextDark ? 1 : 0;
     tideReveal.value = 0;
     tideBody.value = 1;
+    tideThemeFrom.value = themeColour.value;
+    tidePeak.value = 0;
+    tideLanded.value = 0;
     // A new press while the flame is still up keeps its height and speed.
     if (tidePhase.value === TIDE_REST) {
       tideTime.value = 0;
       tidePhase.value = TIDE_PUSH;
     } else if (tidePhase.value === TIDE_FALL) {
-      tideFallFrom.value = -1;
       tideVelocity.value = Math.max(tideVelocity.value, 0) + tideLaunchSpeed;
       tidePhase.value = TIDE_FLIGHT;
     }
@@ -1004,6 +1039,7 @@ export default function ProgressiveShowcaseRoute() {
         progressiveTideTime={tideTime}
         progressiveTideAnchor={TIDE_ANCHOR}
         progressiveTideBody={tideBody}
+        progressiveTideBodyReach={TIDE_BODY_REACH}
         progressiveTideReveal={tideReveal}
         progressiveTideRevealTo={tideRevealTo}
         progressiveTideBgLight={TIDE_BG_LIGHT}
@@ -1207,230 +1243,236 @@ export default function ProgressiveShowcaseRoute() {
         </Text>
       </Pressable>
 
-      <Animated.View
-        pointerEvents={open ? 'auto' : 'none'}
-        style={[StyleSheet.absoluteFill, s.openBackdrop, backdropStyle]}
+      <TideLensHost
+        pointerEvents="box-none"
+        tideLensStrength={TIDE_CHROME_LENS}
+        style={StyleSheet.absoluteFill}
       >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close perfection menu"
-          onPress={togglePanel}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-
-      <Animated.View
-        pointerEvents={open ? 'none' : 'box-none'}
-        style={[StyleSheet.absoluteFill, s.chromeLayer, closedNavStyle]}
-      >
-        <Text
-          style={[
-            s.closedNavLabel,
-            {
-              position: 'absolute',
-              left: W * REF_LAYOUT.closedNav.viewLeft,
-              top: closedNavLabelTop,
-              fontSize: closedNavLabelFontSize,
-              lineHeight: closedNavLabelLineHeight,
-            },
-          ]}
+        <Animated.View
+          pointerEvents={open ? 'auto' : 'none'}
+          style={[StyleSheet.absoluteFill, s.openBackdrop, backdropStyle]}
         >
-          View
-        </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close perfection menu"
+            onPress={togglePanel}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open perfection menu"
-          onPress={togglePanel}
-          hitSlop={18}
-          style={[
-            s.closedNavCenter,
-            { top: iconTop, height: closedNavCenterHeight },
-          ]}
+        <Animated.View
+          pointerEvents={open ? 'none' : 'box-none'}
+          style={[StyleSheet.absoluteFill, s.chromeLayer, closedNavStyle]}
         >
-          <View
-            style={[
-              s.perfectionIcon,
-              {
-                width: iconWidth,
-                height: iconHeight,
-                borderRadius: iconBorderRadius,
-              },
-            ]}
-          >
-            <View
-              style={[
-                s.perfectionInner,
-                {
-                  width: iconWidth * icon.innerWidthScale,
-                  height: iconHeight * icon.innerHeightScale,
-                  borderRadius: iconBorderRadius * 0.5,
-                },
-              ]}
-            />
-          </View>
           <Text
             style={[
               s.closedNavLabel,
               {
+                position: 'absolute',
+                left: W * REF_LAYOUT.closedNav.viewLeft,
+                top: closedNavLabelTop,
                 fontSize: closedNavLabelFontSize,
                 lineHeight: closedNavLabelLineHeight,
               },
             ]}
           >
-            Perfection
+            View
           </Text>
-        </Pressable>
-      </Animated.View>
 
-      <Text
-        pointerEvents="none"
-        style={[
-          s.closedNavLabel,
-          s.persistentSettings,
-          {
-            right: W * REF_LAYOUT.closedNav.settingsRight,
-            top: persistentSettingsTop,
-            fontSize: closedNavLabelFontSize,
-            lineHeight: closedNavLabelLineHeight,
-          },
-        ]}
-      >
-        Settings
-      </Text>
-
-      <Animated.View
-        pointerEvents={open ? 'box-none' : 'none'}
-        style={[StyleSheet.absoluteFill, s.chromeLayer]}
-      >
-        <Animated.View
-          pointerEvents="box-none"
-          style={[StyleSheet.absoluteFill, openMenuStyle]}
-        >
-          <Image
-            source={SHOWCASE_IMAGES.profile.source}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open perfection menu"
+            onPress={togglePanel}
+            hitSlop={18}
             style={[
-              s.menuAvatar,
-              {
-                left: W * om.avatarLeft,
-                top: menuAvatarTop,
-                width: menuAvatarSize,
-                height: menuAvatarSize,
-                borderRadius: menuAvatarSize / 2,
-              },
-            ]}
-            contentFit="cover"
-          />
-
-          <Animated.Text
-            style={[
-              s.menuLink,
-              {
-                left: W * om.linkLeft,
-                top: menuLinkCenters[0] - menuLinkLineHeight / 2,
-                fontSize: menuLinkFontSize,
-                lineHeight: menuLinkLineHeight,
-              },
+              s.closedNavCenter,
+              { top: iconTop, height: closedNavCenterHeight },
             ]}
           >
-            Subscription
-          </Animated.Text>
-          <Animated.Text
-            style={[
-              s.menuLink,
-              {
-                left: W * om.linkLeft,
-                top: menuLinkCenters[1] - menuLinkLineHeight / 2,
-                fontSize: menuLinkFontSize,
-                lineHeight: menuLinkLineHeight,
-              },
-            ]}
-          >
-            Extension
-          </Animated.Text>
-          <Animated.Text
-            style={[
-              s.menuLink,
-              {
-                left: W * om.linkLeft,
-                top: menuLinkCenters[2] - menuLinkLineHeight / 2,
-                fontSize: menuLinkFontSize,
-                lineHeight: menuLinkLineHeight,
-              },
-            ]}
-          >
-            About
-          </Animated.Text>
+            <View
+              style={[
+                s.perfectionIcon,
+                {
+                  width: iconWidth,
+                  height: iconHeight,
+                  borderRadius: iconBorderRadius,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  s.perfectionInner,
+                  {
+                    width: iconWidth * icon.innerWidthScale,
+                    height: iconHeight * icon.innerHeightScale,
+                    borderRadius: iconBorderRadius * 0.5,
+                  },
+                ]}
+              />
+            </View>
+            <Text
+              style={[
+                s.closedNavLabel,
+                {
+                  fontSize: closedNavLabelFontSize,
+                  lineHeight: closedNavLabelLineHeight,
+                },
+              ]}
+            >
+              Perfection
+            </Text>
+          </Pressable>
         </Animated.View>
 
-        <Animated.View
+        <Text
+          pointerEvents="none"
           style={[
-            s.themeSegment,
+            s.closedNavLabel,
+            s.persistentSettings,
             {
-              left: W * om.theme.left,
-              top: themeSegmentTop,
-              width: segmentWidth,
-              height: segmentHeight,
-              borderRadius: segmentHeight / 2,
-              padding: segmentInset,
+              right: W * REF_LAYOUT.closedNav.settingsRight,
+              top: persistentSettingsTop,
+              fontSize: closedNavLabelFontSize,
+              lineHeight: closedNavLabelLineHeight,
             },
-            segmentTrackStyle,
-            segmentOpacityStyle,
           ]}
         >
+          Settings
+        </Text>
+
+        <Animated.View
+          pointerEvents={open ? 'box-none' : 'none'}
+          style={[StyleSheet.absoluteFill, s.chromeLayer]}
+        >
           <Animated.View
-            pointerEvents="none"
+            pointerEvents="box-none"
+            style={[StyleSheet.absoluteFill, openMenuStyle]}
+          >
+            <Image
+              source={SHOWCASE_IMAGES.profile.source}
+              style={[
+                s.menuAvatar,
+                {
+                  left: W * om.avatarLeft,
+                  top: menuAvatarTop,
+                  width: menuAvatarSize,
+                  height: menuAvatarSize,
+                  borderRadius: menuAvatarSize / 2,
+                },
+              ]}
+              contentFit="cover"
+            />
+
+            <Animated.Text
+              style={[
+                s.menuLink,
+                {
+                  left: W * om.linkLeft,
+                  top: menuLinkCenters[0] - menuLinkLineHeight / 2,
+                  fontSize: menuLinkFontSize,
+                  lineHeight: menuLinkLineHeight,
+                },
+              ]}
+            >
+              Subscription
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                s.menuLink,
+                {
+                  left: W * om.linkLeft,
+                  top: menuLinkCenters[1] - menuLinkLineHeight / 2,
+                  fontSize: menuLinkFontSize,
+                  lineHeight: menuLinkLineHeight,
+                },
+              ]}
+            >
+              Extension
+            </Animated.Text>
+            <Animated.Text
+              style={[
+                s.menuLink,
+                {
+                  left: W * om.linkLeft,
+                  top: menuLinkCenters[2] - menuLinkLineHeight / 2,
+                  fontSize: menuLinkFontSize,
+                  lineHeight: menuLinkLineHeight,
+                },
+              ]}
+            >
+              About
+            </Animated.Text>
+          </Animated.View>
+
+          <Animated.View
             style={[
-              s.themeSegmentPill,
+              s.themeSegment,
               {
-                left: segmentInset,
-                top: segmentInset,
-                height: segmentHeight - segmentInset * 2,
-                borderRadius: (segmentHeight - segmentInset * 2) / 2,
+                left: W * om.theme.left,
+                top: themeSegmentTop,
+                width: segmentWidth,
+                height: segmentHeight,
+                borderRadius: segmentHeight / 2,
+                padding: segmentInset,
               },
-              segmentPillStyle,
+              segmentTrackStyle,
+              segmentOpacityStyle,
             ]}
-          />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: darkMode }}
-            onPressIn={() => TIDE_V0 && pressTide(true)}
-            onPress={() => !TIDE_V0 && setTheme(true)}
-            style={s.themeSegmentHit}
           >
-            <CrossfadeText
-              progress={themeControlProgress}
-              colors={['rgba(91,86,79,0.88)', '#f6f3ee']}
+            <Animated.View
+              pointerEvents="none"
               style={[
-                s.themeSegmentLabel,
-                { fontSize: themeSegmentLabelFontSize },
+                s.themeSegmentPill,
+                {
+                  left: segmentInset,
+                  top: segmentInset,
+                  height: segmentHeight - segmentInset * 2,
+                  borderRadius: (segmentHeight - segmentInset * 2) / 2,
+                },
+                segmentPillStyle,
               ]}
-            >
-              Dark
-            </CrossfadeText>
-          </Pressable>
+            />
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: !darkMode }}
-            onPressIn={() => TIDE_V0 && pressTide(false)}
-            onPress={() => !TIDE_V0 && setTheme(false)}
-            style={s.themeSegmentHit}
-          >
-            <CrossfadeText
-              progress={themeControlProgress}
-              colors={['#171513', 'rgba(206,201,194,0.72)']}
-              style={[
-                s.themeSegmentLabel,
-                { fontSize: themeSegmentLabelFontSize },
-              ]}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: darkMode }}
+              onPressIn={() => TIDE_V0 && pressTide(true)}
+              onPress={() => !TIDE_V0 && setTheme(true)}
+              style={s.themeSegmentHit}
             >
-              Light
-            </CrossfadeText>
-          </Pressable>
+              <CrossfadeText
+                progress={themeControlProgress}
+                colors={['rgba(91,86,79,0.88)', '#f6f3ee']}
+                style={[
+                  s.themeSegmentLabel,
+                  { fontSize: themeSegmentLabelFontSize },
+                ]}
+              >
+                Dark
+              </CrossfadeText>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: !darkMode }}
+              onPressIn={() => TIDE_V0 && pressTide(false)}
+              onPress={() => !TIDE_V0 && setTheme(false)}
+              style={s.themeSegmentHit}
+            >
+              <CrossfadeText
+                progress={themeControlProgress}
+                colors={['#171513', 'rgba(206,201,194,0.72)']}
+                style={[
+                  s.themeSegmentLabel,
+                  { fontSize: themeSegmentLabelFontSize },
+                ]}
+              >
+                Light
+              </CrossfadeText>
+            </Pressable>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
+      </TideLensHost>
     </View>
   );
 }

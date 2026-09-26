@@ -308,6 +308,10 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerTideLensFallOverride = it
       host.nativeTuneChanged()
     }
+    addSlider(body, "mass reach", 0f, 1f, host.effectiveTideBodyReach(), "") {
+      host.tunerTideBodyReachOverride = it
+      host.nativeTuneChanged()
+    }
     addSlider(body, "conserved volume", 0f, 1f, host.effectiveTideVolume(), "") {
       host.tunerTideVolumeOverride = it
       host.nativeTuneChanged()

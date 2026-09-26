@@ -143,6 +143,11 @@ interface NativeProps extends ViewProps {
    */
   progressiveTideBody?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
   /**
+   * How high the Marea body lifts, as a fraction of the space above the
+   * panel (1 = up to the top edge); the surface lens still reaches the top.
+   */
+  progressiveTideBodyReach?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
+  /**
    * Marea background reveal (animated): the page background colour is
    * swapped for the new theme's below the surface; 0..1 completes it over the
    * whole view, -1 = off.

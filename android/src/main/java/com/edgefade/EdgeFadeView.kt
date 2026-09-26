@@ -126,6 +126,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Presence of the Marea body and surface lens (the impact shell is not
   // affected): 0 dissolves the mass without it falling back.
   internal var progressiveTideBody: Float = 1f
+  // How high the Marea body lifts, fraction of the space above the panel
+  // (1 = up to the top edge).
+  internal var progressiveTideBodyReach: Float = 1f
+  internal var tunerTideBodyReachOverride: Float? = null
   // 0 = the Marea surface is born at the panel top, 1 = at the bottom edge.
   internal var progressiveTideAnchor: Float = 0f
   // Background reveal below the surface: -1 off, 0..1 completion over the
@@ -366,6 +370,8 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1.84f
   // Multiplier on the surface lens while the flame falls back (1 = same as
   // the rise).
+  internal fun effectiveTideBodyReach(): Float =
+    tunerTideBodyReachOverride ?: progressiveTideBodyReach
   internal fun effectiveTideLensFall(): Float = tunerTideLensFallOverride ?: 2.25f
   internal fun effectiveTideMeniscusEnabled(): Boolean = tunerTideMeniscusEnabledOverride ?: true
   internal fun effectiveTideMeniscus(): Float =
@@ -444,6 +450,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     tunerTideRippleOverride = null
     tunerTideShellLookOverride = null
     tunerTideLensFallOverride = null
+    tunerTideBodyReachOverride = null
     tunerTideLensOverride = null
     nativeTuneChanged()
   }

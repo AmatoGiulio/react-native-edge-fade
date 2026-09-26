@@ -219,6 +219,15 @@ internal object BlurLabShaders {
     uniform float tideAnchor;
     // Presence of the lifted body (0 dissolves it in place).
     uniform float tideBody;
+    // Highest the body lifts above the panel (same units, <= 0 = no cap):
+    // the wave can reach the top while the mass stays low.
+    uniform float tideBodyMax;
+
+    float capLift(float l) {
+      if (tideBodyMax <= 0.0 || l <= 0.0) return l;
+      float k = 0.3 * tideBodyMax;
+      return tideBodyMax - k * log(1.0 + exp((tideBodyMax - l) / k));
+    }
 
     // Travelling ripples along the tongue, in units of the core sigma, so the
     // flame edge licks up and down; strongest on the body (sqrt g1).
@@ -297,7 +306,7 @@ internal object BlurLabShaders {
       float n = 0.55 * sin(xn * 6.2831 * 1.15 + waveTime * 1.3) +
         0.30 * sin(xn * 6.2831 * 2.35 - waveTime * 0.9 + 1.7) +
         0.15 * sin(xn * 6.2831 * 4.1 + waveTime * 2.1 + 0.4);
-      float tideLift = tideAnchor > 0.0 ? max(tideAt(p.x) - tideAnchor, 0.0) : tideAt(p.x);
+      float tideLift = capLift(tideAnchor > 0.0 ? max(tideAt(p.x) - tideAnchor, 0.0) : tideAt(p.x));
       float depthB = edges.y <= 0.0 ? edges.y : max(edges.y + dome + waveAmp * n + tideLift, 0.0);
       float bottomPos = position(viewSize.y - p.y, depthB);
 
@@ -452,6 +461,24 @@ internal object BlurLabShaders {
     uniform float tideAnchor;
     // Presence of the lifted body (0 dissolves it in place).
     uniform float tideBody;
+    // Highest the body lifts above the panel, screen px (<= 0 = no cap).
+    uniform float tideBodyMax;
+    // Top-corner calm: x = view width px (0 = off), y = radius px, z = the
+    // bend kept right at the corners. The arched surface and the impact shell
+    // sweep the top corners diagonally; this keeps them from over-curving.
+    uniform float3 cornerCalm;
+
+    float capLift(float l) {
+      if (tideBodyMax <= 0.0 || l <= 0.0) return l;
+      float k = 0.3 * tideBodyMax;
+      return tideBodyMax - k * log(1.0 + exp((tideBodyMax - l) / k));
+    }
+
+    float cornerCalmAt(float2 s) {
+      if (cornerCalm.x <= 0.0) return 1.0;
+      float d = min(length(s), length(s - float2(cornerCalm.x, 0.0)));
+      return mix(cornerCalm.z, 1.0, smoothstep(0.0, max(cornerCalm.y, 1.0), d));
+    }
     // Page background reveal: x = completion over the whole view (-1 = off);
     // below the surface the old background colour is swapped for the new one.
     uniform float bgReveal;
@@ -567,8 +594,8 @@ internal object BlurLabShaders {
       float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
       float raw = tideRaw(coord.x);
       float h = tideClamp(raw);
-      float lift = (tideAnchor > 0.0 ? max(h - tideAnchor, 0.0) : h) +
-        tidePile * max(raw - h, 0.0);
+      float lift = capLift((tideAnchor > 0.0 ? max(h - tideAnchor, 0.0) : h) +
+        tidePile * max(raw - h, 0.0));
       return (maskGeom.z - screenY - lift) / max(maskGeom.w, 1.0);
     }
 
@@ -585,7 +612,9 @@ internal object BlurLabShaders {
     // Swap the old page background for the new one, keyed on the exact old
     // colour so photos, text and chrome are left alone.
     float3 revealBg(float3 c, float r) {
-      float k = 1.0 - smoothstep(0.012, 0.035, distance(c, bgFrom));
+      // The page is one flat colour: match it almost exactly, so the near-
+      // black or near-white pixels of photos are not swapped (speckles).
+      float k = 1.0 - smoothstep(0.005, 0.014, distance(c, bgFrom));
       return c + (bgTo - bgFrom) * (k * r);
     }
 
@@ -678,6 +707,9 @@ internal object BlurLabShaders {
           opticFrost = passed * fade * rippleSrc.z * shellLook;
         }
         if (meniscus.x != 0.0 && tide.x != 0.0) disp.y += meniscusShift(coord) / scale;
+        float calm = cornerCalmAt(s);
+        disp *= calm;
+        ca *= calm;
         float2 rc = coord + disp * scale;
         if (disp.x != 0.0 || disp.y != 0.0) {
           sharp = content.eval(rc);
