@@ -79,7 +79,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     const val LENS_DISPLACEMENT = 0.10f
     const val LENS_BAND = 0.155f
     const val LENS_CHROMA = 0.18f
-    const val LENS_GLOW = 0.2f
+    // No spectral sheen: the glass is lit, shaded and rimmed, not iridescent.
+    const val LENS_GLOW = 0f
     const val LENS_RISE = 0.08f
     const val LENS_FADE = 0.3f
     const val LENS_FALL_BLEND_S = 0.12f
@@ -620,7 +621,7 @@ internal class EdgeFadeProgressiveStripRenderer(
                   host.progressiveLightWaveStops.coerceIn(-1f, 1f),
                 )
                 strip.fieldMaterial.setFloatUniform("lightWaveWidth", host.progressiveLightWaveWidth)
-                applyTideUniforms(strip, tide)
+                applyTideUniforms(strip, tide, host)
                 strip.fieldOut.setRenderEffect(
                   RenderEffect.createRuntimeShaderEffect(strip.fieldMaterial, "content"),
                 )
@@ -1355,8 +1356,9 @@ internal class EdgeFadeProgressiveStripRenderer(
       return null
     }
     val lensFall = 1f + (host.effectiveTideLensFall().coerceIn(0f, 3f) - 1f) * lensFallMix
+    val body = host.progressiveTideBody.coerceIn(0f, 1f)
     val w = width.toFloat()
-    val sigmaDome = host.effectiveTideWidth().coerceIn(0.1f, 1.2f) * w / 2.3548f
+    val sigmaDome = host.effectiveTideWidth().coerceIn(0.1f, 4f) * w / 2.3548f
     val shape = host.progressiveTideShape.coerceIn(0f, 3f)
     val sigma1 =
       (sigmaDome * (TIDE_PRESS_WIDTH_RATIO + (1f - TIDE_PRESS_WIDTH_RATIO) * shape))
@@ -1389,10 +1391,11 @@ internal class EdgeFadeProgressiveStripRenderer(
       beta = beta,
       meniscusPerPx = host.effectiveTideMeniscus() / heightPx,
       meniscusBandPx = TIDE_MENISCUS_BAND * w,
-      wallPx = (height - exactBottom).coerceAtLeast(1f),
+      wallPx = tideWallPx(host, height, exactBottom),
+      anchorPx = tideAnchorPx(host, exactBottom),
       sharpness = sharp,
       flickerPx = host.effectiveTideFlicker().coerceIn(0f, 0.3f) *
-        (height - exactBottom).coerceAtLeast(0f) * amount.coerceIn(0f, 1f),
+        tideWallPx(host, height, exactBottom) * amount.coerceIn(0f, 1f),
       time = BlurLabGeometry.finite(host.progressiveTideTime),
       viewWidth = w,
       impactX = impactX,
@@ -1402,19 +1405,28 @@ internal class EdgeFadeProgressiveStripRenderer(
       shellLook = host.effectiveTideShellLook().coerceIn(0f, 2f),
       // Full strength almost as soon as the flame leaves the panel (LENS_RISE);
       // on the way back it fades over the last LENS_FADE of the settle.
-      lensLevel = lensLevel(amount, rising) * lensFall,
+      lensLevel = lensLevel(amount, rising) * lensFall * body,
       lensPx = host.effectiveTideLens().coerceIn(0f, 3f) * LENS_DISPLACEMENT * w *
-        lensLevel(amount, rising) * lensFall,
+        lensLevel(amount, rising) * lensFall * body,
+      body = body,
       viewHeight = height.toFloat(),
     )
   }
 
   /**
-   * Dome height in px: the reach is measured in the space above the panel,
-   * so 1 puts the surface exactly on the top edge of the view.
+   * Dome height in px: the reach is measured from the surface's birth line
+   * (the panel top, or lower with an anchor) to the top edge of the view, so
+   * 1 puts the surface exactly on the top edge.
    */
   private fun tideHeightPx(host: EdgeFadeView, height: Int, bottom: Float): Float =
-    host.effectiveTideHeight().coerceIn(0f, 1.5f) * (height - bottom).coerceAtLeast(0f)
+    host.effectiveTideHeight().coerceIn(0f, 1.5f) * tideWallPx(host, height, bottom)
+
+  /** Birth line below the panel top, px (0 = the surface is born there). */
+  private fun tideAnchorPx(host: EdgeFadeView, bottom: Float): Float =
+    host.progressiveTideAnchor.coerceIn(0f, 1f) * bottom.coerceAtLeast(0f)
+
+  private fun tideWallPx(host: EdgeFadeView, height: Int, bottom: Float): Float =
+    ((height - bottom).coerceAtLeast(0f) + tideAnchorPx(host, bottom)).coerceAtLeast(1f)
 
   /**
    * Raster room above the band for the highest dome plus its meniscus. Only
@@ -1435,9 +1447,26 @@ internal class EdgeFadeProgressiveStripRenderer(
   private var impactStartNs = 0L
   private var impactX = 0f
 
-  private fun applyTideUniforms(strip: Strip, tide: TideFrame?) {
+  private fun applyTideUniforms(strip: Strip, tide: TideFrame?, host: EdgeFadeView) {
     val scale = strip.scale
+    val reveal = host.progressiveTideReveal
+    val light = host.progressiveTideBgLight
+    val dark = host.progressiveTideBgDark
+    val toDark = host.progressiveTideRevealTo >= 0.5f
+    val from = if (toDark) light else dark
+    val to = if (toDark) dark else light
+    strip.fieldMaterial.setFloatUniform("bgReveal", if (reveal < 0f) -1f else reveal)
+    strip.fieldMaterial.setFloatUniform(
+      "bgFrom", Color.red(from) / 255f, Color.green(from) / 255f, Color.blue(from) / 255f,
+    )
+    strip.fieldMaterial.setFloatUniform(
+      "bgTo", Color.red(to) / 255f, Color.green(to) / 255f, Color.blue(to) / 255f,
+    )
     if (tide == null) {
+      strip.mask.setFloatUniform("tideAnchor", 0f)
+      strip.fieldMaterial.setFloatUniform("tideAnchor", 0f)
+      strip.mask.setFloatUniform("tideBody", 1f)
+      strip.fieldMaterial.setFloatUniform("tideBody", 1f)
       strip.mask.setFloatUniform("tide", 0f, 0f, 1f, 1f)
       strip.fieldMaterial.setFloatUniform("tide", 0f, 0f, 1f, 1f)
       strip.fieldMaterial.setFloatUniform("meniscus", 0f, 1f)
@@ -1456,6 +1485,10 @@ internal class EdgeFadeProgressiveStripRenderer(
       strip.mask.setFloatUniform("tideWall", tide.wallPx * scale)
       strip.mask.setFloatUniform("tideSharp", tide.sharpness)
       strip.mask.setFloatUniform("tideFlicker", tide.flickerPx * scale, tide.time)
+      strip.mask.setFloatUniform("tideAnchor", tide.anchorPx * scale)
+      strip.fieldMaterial.setFloatUniform("tideAnchor", tide.anchorPx)
+      strip.mask.setFloatUniform("tideBody", tide.body)
+      strip.fieldMaterial.setFloatUniform("tideBody", tide.body)
       strip.fieldMaterial.setFloatUniform(
         "tide",
         tide.amplitudePx,
@@ -1509,6 +1542,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val meniscusPerPx: Float,
     val meniscusBandPx: Float,
     val wallPx: Float,
+    val anchorPx: Float,
+    val body: Float,
     val sharpness: Float,
     val flickerPx: Float,
     val time: Float,

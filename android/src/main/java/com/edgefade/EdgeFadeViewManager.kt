@@ -428,7 +428,7 @@ class EdgeFadeViewManager :
 
   @ReactProp(name = "progressiveTideWidth", defaultFloat = 0.5f)
   override fun setProgressiveTideWidth(view: EdgeFadeView, value: Float) {
-    view.progressiveTideWidth = value.coerceIn(0.1f, 1.2f)
+    view.progressiveTideWidth = value.coerceIn(0.1f, 4f)
   }
 
   @ReactProp(name = "progressiveTideVolume", defaultFloat = 1f)
@@ -449,6 +449,39 @@ class EdgeFadeViewManager :
   @ReactProp(name = "progressiveTideTime", defaultFloat = 0f)
   override fun setProgressiveTideTime(view: EdgeFadeView, value: Float) {
     view.progressiveTideTime = value
+  }
+
+  @ReactProp(name = "progressiveTideBody", defaultFloat = 1f)
+  override fun setProgressiveTideBody(view: EdgeFadeView, value: Float) {
+    view.progressiveTideBody = value.coerceIn(0f, 1f)
+  }
+
+  @ReactProp(name = "progressiveTideAnchor", defaultFloat = 0f)
+  override fun setProgressiveTideAnchor(view: EdgeFadeView, value: Float) {
+    view.progressiveTideAnchor = value.coerceIn(0f, 1f)
+    view.postInvalidateOnAnimation()
+  }
+
+  @ReactProp(name = "progressiveTideReveal", defaultFloat = -1f)
+  override fun setProgressiveTideReveal(view: EdgeFadeView, value: Float) {
+    view.progressiveTideReveal = if (value < 0f) -1f else value.coerceAtMost(1f)
+    view.postInvalidateOnAnimation()
+  }
+
+  @ReactProp(name = "progressiveTideRevealTo", defaultFloat = 0f)
+  override fun setProgressiveTideRevealTo(view: EdgeFadeView, value: Float) {
+    view.progressiveTideRevealTo = value.coerceIn(0f, 1f)
+    view.postInvalidateOnAnimation()
+  }
+
+  @ReactProp(name = "progressiveTideBgLight", customType = "Color")
+  override fun setProgressiveTideBgLight(view: EdgeFadeView, value: Int?) {
+    view.progressiveTideBgLight = value ?: Color.rgb(239, 238, 236)
+  }
+
+  @ReactProp(name = "progressiveTideBgDark", customType = "Color")
+  override fun setProgressiveTideBgDark(view: EdgeFadeView, value: Int?) {
+    view.progressiveTideBgDark = value ?: Color.rgb(18, 18, 16)
   }
 
   @ReactProp(name = "progressiveTideMeniscus", defaultFloat = 0f)

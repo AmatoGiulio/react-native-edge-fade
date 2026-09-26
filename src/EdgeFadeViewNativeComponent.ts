@@ -132,6 +132,27 @@ interface NativeProps extends ViewProps {
   progressiveTideFlicker?: CodegenTypes.Float;
   /** Marea flicker clock in seconds (animated). */
   progressiveTideTime?: CodegenTypes.Float;
+  /**
+   * Where the Marea surface is born: 0 = panel top, 1 = bottom edge of the
+   * view. The material body only lifts once the surface clears the panel.
+   */
+  progressiveTideAnchor?: CodegenTypes.Float;
+  /**
+   * Presence of the Marea body and surface lens (animated, 0..1): 0
+   * dissolves the mass in place; the impact shell is not affected.
+   */
+  progressiveTideBody?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
+  /**
+   * Marea background reveal (animated): the page background colour is
+   * swapped for the new theme's below the surface; 0..1 completes it over the
+   * whole view, -1 = off.
+   */
+  progressiveTideReveal?: CodegenTypes.WithDefault<CodegenTypes.Float, -1>;
+  /** Reveal direction (animated): 0 = to the light, 1 = to the dark bg. */
+  progressiveTideRevealTo?: CodegenTypes.Float;
+  /** Page background colours the reveal swaps between. */
+  progressiveTideBgLight?: ColorValue;
+  progressiveTideBgDark?: ColorValue;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

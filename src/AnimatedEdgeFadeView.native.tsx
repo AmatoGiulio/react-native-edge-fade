@@ -88,7 +88,10 @@ function useEdgeFadeAnimatedProps(
   tideAmountSV: SharedValueLike<number> | null,
   tideShapeSV: SharedValueLike<number> | null,
   tideCenterSV: SharedValueLike<number> | null,
-  tideTimeSV: SharedValueLike<number> | null
+  tideTimeSV: SharedValueLike<number> | null,
+  tideRevealSV: SharedValueLike<number> | null,
+  tideRevealToSV: SharedValueLike<number> | null,
+  tideBodySV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -151,6 +154,9 @@ function useEdgeFadeAnimatedProps(
     if (tideShapeSV) out.progressiveTideShape = tideShapeSV.value;
     if (tideCenterSV) out.progressiveTideCenter = tideCenterSV.value;
     if (tideTimeSV) out.progressiveTideTime = tideTimeSV.value;
+    if (tideRevealSV) out.progressiveTideReveal = tideRevealSV.value;
+    if (tideRevealToSV) out.progressiveTideRevealTo = tideRevealToSV.value;
+    if (tideBodySV) out.progressiveTideBody = tideBodySV.value;
     return out;
   });
 }
@@ -281,6 +287,18 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
   const tideShapeSV = isSharedValue(tideShapeProp)
     ? (tideShapeProp as SharedValueLike<number>)
     : null;
+  const tideBodyProp = (props as any).progressiveTideBody;
+  const tideBodySV = isSharedValue(tideBodyProp)
+    ? (tideBodyProp as SharedValueLike<number>)
+    : null;
+  const tideRevealProp = (props as any).progressiveTideReveal;
+  const tideRevealSV = isSharedValue(tideRevealProp)
+    ? (tideRevealProp as SharedValueLike<number>)
+    : null;
+  const tideRevealToProp = (props as any).progressiveTideRevealTo;
+  const tideRevealToSV = isSharedValue(tideRevealToProp)
+    ? (tideRevealToProp as SharedValueLike<number>)
+    : null;
   const tideTimeProp = (props as any).progressiveTideTime;
   const tideTimeSV = isSharedValue(tideTimeProp)
     ? (tideTimeProp as SharedValueLike<number>)
@@ -356,6 +374,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveTideShape: _tideShape,
     progressiveTideCenter: _tideCenter,
     progressiveTideTime: _tideTime,
+    progressiveTideReveal: _tideReveal,
+    progressiveTideRevealTo: _tideRevealTo,
+    progressiveTideBody: _tideBody,
     style,
     children,
     ...viewProps
@@ -383,6 +404,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     progressiveTideShape?: number | SharedValueLike<number>;
     progressiveTideCenter?: number | SharedValueLike<number>;
     progressiveTideTime?: number | SharedValueLike<number>;
+    progressiveTideReveal?: number | SharedValueLike<number>;
+    progressiveTideRevealTo?: number | SharedValueLike<number>;
+    progressiveTideBody?: number | SharedValueLike<number>;
   };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
@@ -423,7 +447,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     tideAmountSV,
     tideShapeSV,
     tideCenterSV,
-    tideTimeSV
+    tideTimeSV,
+    tideRevealSV,
+    tideRevealToSV,
+    tideBodySV
   );
 
   return (
@@ -479,6 +506,9 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
       progressiveTideShape={tideShapeSV ? 0 : _tideShape}
       progressiveTideCenter={tideCenterSV ? 0.5 : _tideCenter}
       progressiveTideTime={tideTimeSV ? 0 : _tideTime}
+      progressiveTideReveal={tideRevealSV ? -1 : _tideReveal}
+      progressiveTideRevealTo={tideRevealToSV ? 0 : _tideRevealTo}
+      progressiveTideBody={tideBodySV ? 1 : _tideBody}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}

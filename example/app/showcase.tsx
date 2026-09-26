@@ -216,12 +216,20 @@ const LIGHT_WAVE_RAMP_IN_MS = 60;
 //   impact  : a'' = -g - Ωw²(a-1) - 2ζwΩw a'   (a > 1, the wall absorbs it)
 //   fall    : a'' = -Ωf²a - 2Ωf a'       (critically damped, lands from above)
 // The theme follows the fall: 0 at the start of the descent, 1 at rest.
+// The page background is carried by the wave instead: the new colour appears
+// below the rising surface and completes over TIDE_REVEAL_S after the crest
+// hits the top (native swap of the old background colour).
 const TIDE_V0 = true;
 const TIDE_REACH = 1; // wall = top edge of the screen
-const TIDE_CENTER = 0.5; // the flame always rises from the screen centre
-const TIDE_WIDTH = 1.1; // base FWHM, fraction of screen width
-const TIDE_SHARPNESS = 1.7; // core exponent: 2 = round dome, lower = flame tip
-const TIDE_TAPER = 0.12; // how much narrower the tongue gets at the top
+// The surface is born at the bottom edge of the screen (0 = panel top); the
+// material only lifts once it clears the panel.
+const TIDE_ANCHOR = 1;
+const TIDE_CENTER = 0.5; // the wave always rises from the screen centre
+// Base FWHM, fraction of screen width: wider than the screen, so the surface
+// is a broad arched wave pushing the mass, not a tongue (device-tuned).
+const TIDE_WIDTH = 1.55;
+const TIDE_SHARPNESS = 2.02; // ~gaussian arch
+const TIDE_TAPER = 0; // no narrowing toward the top: round crest
 const TIDE_VOLUME = 0; // no returned-volume trough: the flame only rises
 const TIDE_MENISCUS_PX = 0; // replaced by the surface lens (native)
 const TIDE_FLICKER = 0.07; // edge ripple, fraction of the space above panel
@@ -238,9 +246,15 @@ const TIDE_WALL_DAMPING = 0.7;
 const TIDE_FALL_OMEGA = 6;
 // How much wider the crest spreads per unit of penetration into the wall.
 const TIDE_SPLASH = 10;
-const TIDE_GRAVITY = 2 / (TIDE_TIME_S * TIDE_TIME_S);
-const TIDE_LAUNCH_SPEED = Math.sqrt(2 * TIDE_GRAVITY * TIDE_ENERGY);
 const TIDE_STEP_S = 0.001;
+// New page background completes this long after the crest hits the top.
+const TIDE_REVEAL_S = 0.25;
+const TIDE_REVEAL_OFF_FRAMES = 3;
+// On the way down the mass and its lens dissolve in place over this long:
+// only the impact explosion is left.
+const TIDE_BODY_FADE_S = 0.12;
+const TIDE_BG_LIGHT = '#efeeec';
+const TIDE_BG_DARK = '#121210';
 const TIDE_REST = 0;
 const TIDE_PUSH = 1;
 const TIDE_FLIGHT = 2;
@@ -466,6 +480,24 @@ export default function ProgressiveShowcaseRoute() {
   // (1 = towards dark).
   const phaseT = useSharedValue(0);
   const phaseToDark = useSharedValue(1);
+  const expandedDepth = Math.max(
+    closedDepth + 150,
+    Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
+  );
+  // Born at the bottom edge the wave travels the whole screen instead of the
+  // space above the panel: keep the same gravity in px, so the times stretch
+  // by sqrt(ratio) instead of the wave simply going faster.
+  const tideTimeScale = Math.sqrt(
+    (height - expandedDepth + TIDE_ANCHOR * expandedDepth) /
+      Math.max(height - expandedDepth, 1)
+  );
+  const tideTimeS = TIDE_TIME_S * tideTimeScale;
+  const tideGravity = 2 / (tideTimeS * tideTimeS);
+  const tideLaunchSpeed = Math.sqrt(2 * tideGravity * TIDE_ENERGY);
+  const tidePushS = TIDE_PUSH_S * tideTimeScale;
+  const tideWallOmega = TIDE_WALL_OMEGA / tideTimeScale;
+  const tideFallOmega = TIDE_FALL_OMEGA / tideTimeScale;
+
   // Marea surface state (see TIDE_* above).
   const tideAmount = useSharedValue(0);
   const tideVelocity = useSharedValue(0);
@@ -478,6 +510,17 @@ export default function ProgressiveShowcaseRoute() {
   const tideThemeTo = useSharedValue(0);
   const tideThemeFrom = useSharedValue(0);
   const tideFallFrom = useSharedValue(-1);
+  // Page background carried by the wave: native reveal below the surface
+  // (-1 = off, then 0 -> 1 after the crest hits the top), its direction, and
+  // the React background, which switches once the reveal has covered the
+  // whole view (the swap is then invisible).
+  const tideBody = useSharedValue(1);
+  const tideReveal = useSharedValue(-1);
+  // Frames the native swap stays on after the React background switched, so
+  // the two never disagree for a frame; then it stops touching photos.
+  const tideRevealOff = useSharedValue(-1);
+  const tideRevealTo = useSharedValue(0);
+  const pageBg = useSharedValue(0);
 
   const commitDarkMode = (nextDark: boolean) => setDarkMode(nextDark);
 
@@ -495,22 +538,22 @@ export default function ProgressiveShowcaseRoute() {
       if (phase === TIDE_PUSH) {
         // Smoothstep velocity ramp: the flame leaves with zero acceleration
         // jerk and reaches launch speed at the end of the push.
-        const u = Math.min(time / TIDE_PUSH_S, 1);
-        v = TIDE_LAUNCH_SPEED * u * u * (3 - 2 * u);
+        const u = Math.min(time / tidePushS, 1);
+        v = tideLaunchSpeed * u * u * (3 - 2 * u);
         a += v * h;
         if (u >= 1) phase = TIDE_FLIGHT;
         continue;
       }
       let acc: number;
       if (phase === TIDE_FLIGHT) {
-        acc = -TIDE_GRAVITY;
+        acc = -tideGravity;
         if (a > 1) {
           acc -=
-            TIDE_WALL_OMEGA * TIDE_WALL_OMEGA * (a - 1) +
-            2 * TIDE_WALL_DAMPING * TIDE_WALL_OMEGA * v;
+            tideWallOmega * tideWallOmega * (a - 1) +
+            2 * TIDE_WALL_DAMPING * tideWallOmega * v;
         }
       } else {
-        acc = -TIDE_FALL_OMEGA * TIDE_FALL_OMEGA * a - 2 * TIDE_FALL_OMEGA * v;
+        acc = -tideFallOmega * tideFallOmega * a - 2 * tideFallOmega * v;
       }
       v += acc * h;
       a += v * h;
@@ -552,6 +595,29 @@ export default function ProgressiveShowcaseRoute() {
         scheduleOnRN(commitDarkMode, tideThemeTo.value > 0.5);
       }
     }
+    tideBody.value =
+      phase === TIDE_FALL
+        ? Math.max(tideBody.value - dt / TIDE_BODY_FADE_S, 0)
+        : phase === TIDE_REST
+          ? 1
+          : tideBody.value;
+    if (tideReveal.value >= 0) {
+      // Completes once the crest has hit the top (or the wave turns back).
+      if (a >= 1 || phase === TIDE_FALL || phase === TIDE_REST) {
+        tideReveal.value = Math.min(tideReveal.value + dt / TIDE_REVEAL_S, 1);
+      }
+      if (tideReveal.value >= 1 || phase === TIDE_REST) {
+        if (pageBg.value !== tideRevealTo.value) {
+          pageBg.value = tideRevealTo.value;
+          tideRevealOff.value = TIDE_REVEAL_OFF_FRAMES;
+        } else if (tideRevealOff.value > 0) {
+          tideRevealOff.value -= 1;
+        } else {
+          tideReveal.value = -1;
+        }
+      }
+      if (phase === TIDE_REST) tideReveal.value = -1;
+    }
     tideAmount.value = a;
     tideVelocity.value = v;
     tidePhase.value = phase;
@@ -561,21 +627,20 @@ export default function ProgressiveShowcaseRoute() {
   const pressTide = (nextDark: boolean) => {
     cancelAnimation(themeColour);
     tideThemeTo.value = nextDark ? 1 : 0;
+    tideRevealTo.value = nextDark ? 1 : 0;
+    tideReveal.value = 0;
+    tideBody.value = 1;
     // A new press while the flame is still up keeps its height and speed.
     if (tidePhase.value === TIDE_REST) {
       tideTime.value = 0;
       tidePhase.value = TIDE_PUSH;
     } else if (tidePhase.value === TIDE_FALL) {
       tideFallFrom.value = -1;
-      tideVelocity.value = Math.max(tideVelocity.value, 0) + TIDE_LAUNCH_SPEED;
+      tideVelocity.value = Math.max(tideVelocity.value, 0) + tideLaunchSpeed;
       tidePhase.value = TIDE_FLIGHT;
     }
   };
 
-  const expandedDepth = Math.max(
-    closedDepth + 150,
-    Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
-  );
   const bottomDepth = useDerivedValue(() =>
     interpolate(
       progress.value,
@@ -706,11 +771,12 @@ export default function ProgressiveShowcaseRoute() {
     ),
   }));
 
+  // The page background follows the wave (pageBg), not the fall.
   const surfaceStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
-      themeSurfaceProgress.value,
+      TIDE_V0 ? pageBg.value : themeSurfaceProgress.value,
       [0, 1],
-      ['#efeeec', '#121210'],
+      [TIDE_BG_LIGHT, TIDE_BG_DARK],
       'RGB',
       { gamma: 1 }
     ),
@@ -936,6 +1002,12 @@ export default function ProgressiveShowcaseRoute() {
         progressiveTideSharpness={TIDE_SHARPNESS}
         progressiveTideFlicker={TIDE_FLICKER}
         progressiveTideTime={tideTime}
+        progressiveTideAnchor={TIDE_ANCHOR}
+        progressiveTideBody={tideBody}
+        progressiveTideReveal={tideReveal}
+        progressiveTideRevealTo={tideRevealTo}
+        progressiveTideBgLight={TIDE_BG_LIGHT}
+        progressiveTideBgDark={TIDE_BG_DARK}
         progressiveMaterialColor={LIGHT_MATERIAL_COLOR}
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}

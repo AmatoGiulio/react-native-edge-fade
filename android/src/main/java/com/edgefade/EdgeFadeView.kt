@@ -123,6 +123,17 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // clock in seconds (animated).
   internal var progressiveTideFlicker: Float = 0f
   internal var progressiveTideTime: Float = 0f
+  // Presence of the Marea body and surface lens (the impact shell is not
+  // affected): 0 dissolves the mass without it falling back.
+  internal var progressiveTideBody: Float = 1f
+  // 0 = the Marea surface is born at the panel top, 1 = at the bottom edge.
+  internal var progressiveTideAnchor: Float = 0f
+  // Background reveal below the surface: -1 off, 0..1 completion over the
+  // whole view; direction 0 = to light, 1 = to dark.
+  internal var progressiveTideReveal: Float = -1f
+  internal var progressiveTideRevealTo: Float = 0f
+  internal var progressiveTideBgLight: Int = Color.rgb(239, 238, 236)
+  internal var progressiveTideBgDark: Int = Color.rgb(18, 18, 16)
 
   // Showcase-only native runtime tuner. These values are not public API and
   // default to the JS props so the clean optical baseline stays unchanged.
@@ -348,14 +359,14 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Impact ripples and surface lens, 1 = the tuned showcase strength.
   // Showcase defaults tuned on device (2026-09-25): bend 1.53, visibility
   // 0.18, lens 1.01.
-  internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 1.53f
+  internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 2.63f
   // Visibility of the impact shell's light, sheen and wake, separate from
   // its bend.
-  internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 0.18f
-  internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1.01f
+  internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 0f
+  internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1.84f
   // Multiplier on the surface lens while the flame falls back (1 = same as
   // the rise).
-  internal fun effectiveTideLensFall(): Float = tunerTideLensFallOverride ?: 1f
+  internal fun effectiveTideLensFall(): Float = tunerTideLensFallOverride ?: 2.25f
   internal fun effectiveTideMeniscusEnabled(): Boolean = tunerTideMeniscusEnabledOverride ?: true
   internal fun effectiveTideMeniscus(): Float =
     if (effectiveTideMeniscusEnabled()) tunerTideMeniscusOverride ?: progressiveTideMeniscus else 0f

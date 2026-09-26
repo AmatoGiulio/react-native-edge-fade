@@ -280,7 +280,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.tunerTideHeightOverride = it
       host.nativeTuneChanged()
     }
-    addSlider(body, "dome width", 0.15f, 1.2f, host.effectiveTideWidth(), "·W") {
+    addSlider(body, "dome width", 0.15f, 4f, host.effectiveTideWidth(), "·W") {
       host.tunerTideWidthOverride = it
       host.nativeTuneChanged()
     }

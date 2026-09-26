@@ -213,6 +213,12 @@ internal object BlurLabShaders {
     uniform float tideSharp;
     // Flame flicker: x = amplitude (same units as tide.x), y = time (s).
     uniform float2 tideFlicker;
+    // Height of the panel top above the surface's birth line (same units):
+    // the material only lifts once the surface clears the panel. 0 = born at
+    // the panel top (surface and body move together).
+    uniform float tideAnchor;
+    // Presence of the lifted body (0 dissolves it in place).
+    uniform float tideBody;
 
     // Travelling ripples along the tongue, in units of the core sigma, so the
     // flame edge licks up and down; strongest on the body (sqrt g1).
@@ -291,7 +297,8 @@ internal object BlurLabShaders {
       float n = 0.55 * sin(xn * 6.2831 * 1.15 + waveTime * 1.3) +
         0.30 * sin(xn * 6.2831 * 2.35 - waveTime * 0.9 + 1.7) +
         0.15 * sin(xn * 6.2831 * 4.1 + waveTime * 2.1 + 0.4);
-      float depthB = edges.y <= 0.0 ? edges.y : max(edges.y + dome + waveAmp * n + tideAt(p.x), 0.0);
+      float tideLift = tideAnchor > 0.0 ? max(tideAt(p.x) - tideAnchor, 0.0) : tideAt(p.x);
+      float depthB = edges.y <= 0.0 ? edges.y : max(edges.y + dome + waveAmp * n + tideLift, 0.0);
       float bottomPos = position(viewSize.y - p.y, depthB);
 
       float leftPos = position(p.x, edges.z);
@@ -299,6 +306,12 @@ internal object BlurLabShaders {
 
       float top = topPos < 0.0 ? 0.0 : sampleTop(topPos);
       float bottom = bottomPos < 0.0 ? 0.0 : sampleBottom(bottomPos);
+      // A dissolving body fades toward the resting mask in place (no fall).
+      if (tideBody < 1.0 && tideLift != 0.0 && edges.y > 0.0) {
+        float restPos = position(viewSize.y - p.y, max(edges.y + dome + waveAmp * n, 0.0));
+        float rest = restPos < 0.0 ? 0.0 : sampleBottom(restPos);
+        bottom = mix(rest, bottom, tideBody);
+      }
       float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
       float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
 
@@ -434,6 +447,16 @@ internal object BlurLabShaders {
       return tideFlicker.x * sqrt(g1) * n;
     }
     uniform float tidePile;
+    // Screen px from the surface's birth line up to the panel top (0 = born
+    // at the panel top).
+    uniform float tideAnchor;
+    // Presence of the lifted body (0 dissolves it in place).
+    uniform float tideBody;
+    // Page background reveal: x = completion over the whole view (-1 = off);
+    // below the surface the old background colour is swapped for the new one.
+    uniform float bgReveal;
+    uniform float3 bgFrom;
+    uniform float3 bgTo;
     uniform float2 meniscus;
     // Impact shell (fieldmask), screen px: rippleSrc x = impact x on the top
     // edge, y = age s, z = strength (0 = off), w = view width; rippleShape x =
@@ -544,7 +567,8 @@ internal object BlurLabShaders {
       float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
       float raw = tideRaw(coord.x);
       float h = tideClamp(raw);
-      float lift = h + tidePile * max(raw - h, 0.0);
+      float lift = (tideAnchor > 0.0 ? max(h - tideAnchor, 0.0) : h) +
+        tidePile * max(raw - h, 0.0);
       return (maskGeom.z - screenY - lift) / max(maskGeom.w, 1.0);
     }
 
@@ -553,22 +577,38 @@ internal object BlurLabShaders {
     float meniscusShift(float2 coord) {
       float h = tideAt(coord.x);
       float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
-      float surfaceY = maskGeom.z - (maskGeom.w + h);
+      float surfaceY = maskGeom.z - maskGeom.w + tideAnchor - h;
       float d = (surfaceY - screenY) / max(meniscus.y, 1.0);
       return meniscus.x * h * exp(-0.5 * d * d) * maskGeom.y;
+    }
+
+    // Swap the old page background for the new one, keyed on the exact old
+    // colour so photos, text and chrome are left alone.
+    float3 revealBg(float3 c, float r) {
+      float k = 1.0 - smoothstep(0.012, 0.035, distance(c, bgFrom));
+      return c + (bgTo - bgFrom) * (k * r);
     }
 
     // fieldmask coverage: 0 -> 1 from the panel top (+ offset) over
     // curveHeight * 1.25 (defaults 0 -> 0.50). smoothstep keeps zero slope at
     // the boundary (no line); the 1.6 power brings the body forward.
-    float fmCoverage(float2 coord) {
-      float t = 1.0 - fmDepthUp(coord);
+    float fmCoverageAt(float depthUp) {
+      float t = 1.0 - depthUp;
       float curveHeight = clamp(materialCurveHeight, 0.25, 1.5);
       float m = clamp(
         (t - materialCurveOffset) / max(curveHeight * 1.25 * maskSpanScale, 0.01),
         0.0, 1.0);
       float eased = m * m * (3.0 - 2.0 * m);
       return clamp(materialOverlayMix, 0.0, 1.0) * (1.0 - pow(1.0 - eased, 1.6));
+    }
+
+    float fmCoverage(float2 coord) {
+      float lifted = fmCoverageAt(fmDepthUp(coord));
+      if (tideBody >= 1.0 || tide.x == 0.0) return lifted;
+      // A dissolving body fades toward the resting coverage in place.
+      float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
+      float rest = fmCoverageAt((maskGeom.z - screenY) / max(maskGeom.w, 1.0));
+      return mix(rest, lifted, tideBody);
     }
 
     half4 main(float2 coord) {
@@ -594,7 +634,7 @@ internal object BlurLabShaders {
           float dh = (tideAt(coord.x + e) - tideAt(coord.x - e)) / (2.0 * e);
           float norm = sqrt(1.0 + dh * dh);
           float2 dir = float2(-dh, -1.0) / norm;
-          float surfaceY = maskGeom.z - (maskGeom.w + hs);
+          float surfaceY = maskGeom.z - maskGeom.w + tideAnchor - hs;
           float w = max(lensFront.y, 1.0);
           float x = (surfaceY - s.y) / norm;
           float lens = exp(-(x * x) / (2.0 * w * w));
@@ -633,7 +673,6 @@ internal object BlurLabShaders {
           opticSlope += -dir * (grad * w * 0.9) * k * shellLook;
           opticShell = max(opticShell, lens * k * shellLook);
           opticRim += exp(-(x * x) / (2.0 * (w * 0.45) * (w * 0.45))) * k * shellLook;
-          opticGlow = max(opticGlow, 0.55 * rippleSrc.z * shellLook);
           opticHue = 0.42 + 0.24 * sin(ang * 2.0 + dist * 0.008 + p * 2.5);
           float passed = smoothstep(front - w * 2.4, front - w * 2.4 - rippleSrc.w * 0.9, dist);
           opticFrost = passed * fade * rippleSrc.z * shellLook;
@@ -651,6 +690,20 @@ internal object BlurLabShaders {
         // Frosted wake: the scene behind the shell dissolves into the
         // diffused colour field, then clears as the shell fades.
         sharp.rgb = mix(sharp.rgb, blurred.rgb, half(clamp(opticFrost * 0.7, 0.0, 1.0)));
+        // New page background below the rising surface (and everywhere once
+        // the reveal completes).
+        if (bgReveal >= 0.0) {
+          float reveal = bgReveal;
+          if (tide.x != 0.0) {
+            float surf = maskGeom.z - maskGeom.w + tideAnchor - tideAt(coord.x);
+            float soft = max(lensFront.y * 0.35, 12.0);
+            reveal = max(reveal, smoothstep(-soft, soft, s.y - surf));
+          }
+          if (reveal > 0.0) {
+            sharp.rgb = half3(revealBg(float3(sharp.rgb), reveal));
+            blurred.rgb = half3(revealBg(float3(blurred.rgb), reveal));
+          }
+        }
       }
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0 || materialStrength <= 0.0) {
