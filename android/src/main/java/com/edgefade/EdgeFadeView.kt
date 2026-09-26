@@ -363,10 +363,10 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   // Impact ripples and surface lens, 1 = the tuned showcase strength.
   // Showcase defaults tuned on device (2026-09-25): bend 1.53, visibility
   // 0.18, lens 1.01.
-  internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 2.63f
+  internal fun effectiveTideRipple(): Float = tunerTideRippleOverride ?: 0f
   // Visibility of the impact shell's light, sheen and wake, separate from
   // its bend.
-  internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 0f
+  internal fun effectiveTideShellLook(): Float = tunerTideShellLookOverride ?: 0.37f
   internal fun effectiveTideLens(): Float = tunerTideLensOverride ?: 1.84f
   // Multiplier on the surface lens while the flame falls back (1 = same as
   // the rise).
