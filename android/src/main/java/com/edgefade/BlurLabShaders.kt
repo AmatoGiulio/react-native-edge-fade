@@ -554,12 +554,12 @@ internal object BlurLabShaders {
       return fract((p3.x + p3.y) * p3.z);
     }
 
-    float ditherNoise(float2 coord) {
+    float ditherNoise(float2 coord, float lsb) {
       // Interleaved gradient noise (Jimenez): unlike a sin-hash, this stays
       // precision-safe at the large screen-space coords a mobile GPU's mediump
       // float sees, where sin-hash collapses into visible integer plateaus.
-      // Two staggered samples give a triangular PDF, +-1.5 LSB.
-      return (ign(coord) + ign(coord + float2(47.0, 17.0)) - 1.0) * (1.5 / 255.0);
+      // Two staggered samples give a triangular PDF, +-lsb.
+      return (ign(coord) + ign(coord + float2(47.0, 17.0)) - 1.0) * (lsb / 255.0);
     }
 
     // fieldmask: normalised panel depth measured upward (0 at the bottom
@@ -814,7 +814,8 @@ internal object BlurLabShaders {
       // colour field upscale exposes, strongest in dark mode. Only reached
       // past the intensity/materialStrength early return above, so identity
       // regions (intensity<=0) stay pixel-exact.
-      result = clamp(result + ditherNoise(coord), 0.0, 1.0);
+      // fieldmask dithers once, after its final mix (below).
+      if (fieldMaskMode < 0.5) result = clamp(result + ditherNoise(coord, 1.5), 0.0, 1.0);
 
       if (materialOverlayMode > 0.5) {
         if (fieldMaskMode > 0.5) {
@@ -829,7 +830,9 @@ internal object BlurLabShaders {
           // layer, so the coverage ramp is never quantised by blending.
           float3 mixed = mix(float3(sharp.rgb), result, coverage);
           mixed = opticShade(mixed, opticSlope, opticShell, opticRim, opticHue, opticGlow);
-          mixed += ditherNoise(coord + float2(13.0, 29.0));
+          // The only quantisation step left: +-1 LSB triangular is enough to
+          // break 8-bit contours without reading as grain at full res.
+          mixed += ditherNoise(coord + float2(13.0, 29.0), 1.0);
           return half4(clamp(mixed, 0.0, 1.0), 1.0);
         }
         float coverage =

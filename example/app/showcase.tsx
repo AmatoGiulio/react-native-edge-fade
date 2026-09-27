@@ -25,6 +25,7 @@ import Animated, {
   useDerivedValue,
   useSharedValue,
   withDelay,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
@@ -67,11 +68,11 @@ const DEFAULT_BLUR_RADIUS_PX = 150;
 // these values only tune the post-blur material response.
 // Dark strength; light uses LIGHT_MATERIAL_STRENGTH (follows g(t)).
 const DEFAULT_MATERIAL_STRENGTH = 1;
-const LIGHT_MATERIAL_STRENGTH = 0.45;
+const LIGHT_MATERIAL_STRENGTH = 0.32;
 const DEFAULT_MATERIAL_EXPOSURE = 0.98;
 const DEFAULT_MATERIAL_SURFACE = 0.78;
 const DEFAULT_MATERIAL_SURFACE_PROGRESSION = 0.95;
-const LIGHT_MATERIAL_COLOR = '#c6c2c4';
+const LIGHT_MATERIAL_COLOR = '#c8c3ca';
 // Near-black smoke anchor: colour shapes come from the source field, not from
 // a silver/grey material tint.
 const DARK_MATERIAL_COLOR = '#010101';
@@ -80,9 +81,13 @@ const DEFAULT_MATERIAL_COLOR_FIELD_MIX = 1;
 const DEFAULT_MATERIAL_COLOR_FIELD_SCALE = 0.2;
 const DEFAULT_MATERIAL_COLOR_FIELD_BLUR_RADIUS_PX = 320;
 const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GATE = 0.04;
-const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1.2;
+const DEFAULT_MATERIAL_COLOR_FIELD_CHROMA_GAIN = 1;
 const DEFAULT_MATERIAL_COLOR_FIELD_LUMA_MIX = 0.8;
-const DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT = 1;
+// Neutral page pixels weigh less than image colours in the field average,
+// so card colours fill the page gaps between them: at full weight the gap
+// under the photo pair diffused as a pale band next to the saturated card
+// below, instead of one continuous mass.
+const DEFAULT_MATERIAL_COLOR_FIELD_NEUTRAL_WEIGHT = 0.35;
 const DEFAULT_MATERIAL_CURVE_OFFSET = 0;
 // Field-only render: the body reads like a pure smoke/milk wash, no card structure.
 const DEFAULT_MATERIAL_CURVE_HEIGHT = 0.4;
@@ -192,9 +197,24 @@ const CHROME_OUT_EASE = Easing.bezier(0.4, 0, 0.6, 1);
 const THEME_BG_LIGHT = '#efeeec';
 const THEME_BG_DARK = '#121210';
 
+// Press and let go: pressing charges, releasing discharges.
+// - press   : only the pill gives under the finger; the screen itself stays
+//             untouched, as in the reference (dimming the material on press
+//             read as the whole screen going opaque).
+// - release : the theme flows and the pill springs back with a barely
+//             visible overshoot. The material moves in lockstep with the page
+//             (a strength swell made it lead going dark and lag going light).
+const PRESS_HOLD_MS = 90;
+const PRESS_PILL_SCALE = 0.96;
+const PILL_SPRING = { damping: 12, stiffness: 400, mass: 0.6 };
+
 // Dark smoke reads too grey/white at the default exposure; darken it while
 // the theme is dark.
 const DARK_MATERIAL_EXPOSURE = 0.7;
+// Dark smoke is near neutral (content colour mostly removed) while the light
+// pearl keeps it: neutrality follows the theme, so the light theme still lets
+// the content's colour through.
+const DARK_MATERIAL_NEUTRALITY = 0.7;
 
 const REFERENCE_BLUR_CURVE = {
   type: 'stops' as const,
@@ -408,6 +428,8 @@ export default function ProgressiveShowcaseRoute() {
   // Theme colour progress: 0 = light, 1 = dark. Surface, text, pill and
   // material-theme progress all read this single value.
   const themeColour = useSharedValue(0);
+  // Press and let go (see PRESS_*): the pill's squash.
+  const pillScale = useSharedValue(1);
   const expandedDepth = Math.max(
     closedDepth + 150,
     Math.min(width * expandedScale, MAX_EXPANDED_DEPTH)
@@ -441,6 +463,9 @@ export default function ProgressiveShowcaseRoute() {
   const themeControlProgress = themeSurfaceProgress;
   const themePillProgress = themeSurfaceProgress;
   // Darkens with the global theme transition g(t).
+  const materialNeutralityValue = useDerivedValue(
+    () => DARK_MATERIAL_NEUTRALITY * themeSurfaceProgress.value
+  );
   const materialExposureValue = useDerivedValue(
     () =>
       DEFAULT_MATERIAL_EXPOSURE +
@@ -571,6 +596,7 @@ export default function ProgressiveShowcaseRoute() {
           [segmentHalf, 0]
         ),
       },
+      { scale: pillScale.value },
     ],
     backgroundColor: interpolateColor(
       themeControlProgress.value,
@@ -587,6 +613,19 @@ export default function ProgressiveShowcaseRoute() {
       { gamma: 1 }
     ),
   }));
+
+  const pressTheme = (nextDark: boolean) => {
+    if (nextDark === darkMode) return;
+    pillScale.value = withTiming(PRESS_PILL_SCALE, {
+      duration: PRESS_HOLD_MS,
+      easing: Easing.out(Easing.quad),
+    });
+  };
+
+  // Fires on every lift, before onPress: a cancelled press just relaxes.
+  const relaxPress = () => {
+    pillScale.value = withSpring(1, PILL_SPRING);
+  };
 
   const setTheme = (nextDark: boolean) => {
     if (nextDark === darkMode) return;
@@ -738,6 +777,7 @@ export default function ProgressiveShowcaseRoute() {
         progressiveMaterialColorDark={DARK_MATERIAL_COLOR}
         progressiveMaterialThemeProgress={themeSurfaceProgress}
         progressiveMaterialExposure={materialExposureValue}
+        progressiveMaterialNeutrality={materialNeutralityValue}
         progressiveMaterialSurface={DEFAULT_MATERIAL_SURFACE}
         progressiveMaterialSurfaceProgression={
           DEFAULT_MATERIAL_SURFACE_PROGRESSION
@@ -1121,7 +1161,9 @@ export default function ProgressiveShowcaseRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: darkMode }}
-            onPressIn={() => setTheme(true)}
+            onPressIn={() => pressTheme(true)}
+            onPressOut={relaxPress}
+            onPress={() => setTheme(true)}
             style={s.themeSegmentHit}
           >
             <CrossfadeText
@@ -1139,7 +1181,9 @@ export default function ProgressiveShowcaseRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: !darkMode }}
-            onPressIn={() => setTheme(false)}
+            onPressIn={() => pressTheme(false)}
+            onPressOut={relaxPress}
+            onPress={() => setTheme(false)}
             style={s.themeSegmentHit}
           >
             <CrossfadeText

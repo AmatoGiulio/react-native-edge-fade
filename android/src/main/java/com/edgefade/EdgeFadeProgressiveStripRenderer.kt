@@ -733,8 +733,13 @@ internal class EdgeFadeProgressiveStripRenderer(
         // rasterizing/blurring this strip drops ~4x versus the former
         // full-res raster. Legacy experimental backends keep their previous
         // half-res behaviour; agsl-debug-field stays full-res as before.
+        // fieldmask composites the sharp scene and the material in one opaque
+        // pass over the band, so a half-res raster softened the content under
+        // the panel and upscaled the dither into a visible 2 px grain. The
+        // expensive part (the colour field) has its own low-res node.
         strip.scale =
           if (strip.crossfadeEntrance) 0.5f
+          else if (next.debugStage == "fieldmask") 1f
           else if (highQualityAndroidxGradient) 1f
           else if (next.materialActive) 0.5f
           else 1f
