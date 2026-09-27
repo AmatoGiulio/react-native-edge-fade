@@ -55,18 +55,8 @@ interface NativeProps extends ViewProps {
    * sheet reach full density earlier across the edge band.
    */
   progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
-  /**
-   * Internal "focus" theme transition: 0..1 amount of backdrop replaced by
-   * the veil colour. 0 is a no-op.
-   */
-  progressiveMaterialVeil?: CodegenTypes.Float;
-  /** Internal "focus" theme transition: 0..1 chroma removal. 0 is a no-op. */
+  /** Internal 0..1 chroma removal on the material response. 0 is a no-op. */
   progressiveMaterialNeutrality?: CodegenTypes.Float;
-  /**
-   * Internal "focus" theme transition: 0..1 luminance range compression
-   * toward the veil luminance. 0 is a no-op.
-   */
-  progressiveMaterialLumaFlatten?: CodegenTypes.Float;
   /** Internal low-frequency RGB field before the material tone response. */
   progressiveMaterialColorFieldEnabled?: boolean;
   /** 0 = normal material only, 1 = full low-frequency colour-field influence. */
@@ -92,72 +82,6 @@ interface NativeProps extends ViewProps {
   progressiveMaterialCurveOffset?: CodegenTypes.Float;
   /** Curve height applied to the material response band (0.25..1.5). */
   progressiveMaterialCurveHeight?: CodegenTypes.Float;
-  /**
-   * Internal living bottom-front warp: noise displacement (px, 0..400).
-   * 0 reproduces the flat pre-wave front exactly.
-   */
-  progressiveWaveAmplitude?: CodegenTypes.Float;
-  /** Internal living bottom-front parabolic dome height (px, -600..600). */
-  progressiveWaveDome?: CodegenTypes.Float;
-  /** Internal living bottom-front noise phase (seconds), animated per frame. */
-  progressiveWaveTime?: CodegenTypes.Float;
-  /** Internal light "bloom" band intensity at the front (0..1.5). */
-  progressiveFrontGlow?: CodegenTypes.Float;
-  /**
-   * Internal debug-stage cross-fade. 0 = current rendering (byte-identical),
-   * 1 = visually identical to the "agsl-debug-field" debug stage (sharp scene
-   * and material strip clipped out, only the colour-field overlay remains).
-   * Intermediate values cross-fade. Per-frame animatable.
-   */
-  progressiveFieldBlend?: CodegenTypes.Float;
-  // Light wave V0 (showcase): exposure wave centre in panel depth (0 bottom
-  // -> 1 top), gain in stops (0 = off) and gaussian sigma in depth units.
-  progressiveLightWaveCenter?: CodegenTypes.Float;
-  progressiveLightWaveStops?: CodegenTypes.Float;
-  progressiveLightWaveWidth?: CodegenTypes.Float;
-  // Marea V0 (showcase): signed normalised surface amplitude, press->dome
-  // shape blend, x centre (0..1), dome reach (space above the panel, 1 = top
-  // edge, 0 = off), dome FWHM (fraction of view width), conserved volume (0..1) and
-  // meniscus drag in px at full dome (0 = off).
-  progressiveTideAmount?: CodegenTypes.Float;
-  progressiveTideShape?: CodegenTypes.Float;
-  progressiveTideCenter?: CodegenTypes.Float;
-  progressiveTideHeight?: CodegenTypes.Float;
-  progressiveTideWidth?: CodegenTypes.Float;
-  progressiveTideVolume?: CodegenTypes.Float;
-  progressiveTideMeniscus?: CodegenTypes.Float;
-  /** Marea core profile exponent: 2 = gaussian dome, lower = flame tip. */
-  progressiveTideSharpness?: CodegenTypes.Float;
-  /** Marea flame flicker amplitude (fraction of the space above the panel). */
-  progressiveTideFlicker?: CodegenTypes.Float;
-  /** Marea flicker clock in seconds (animated). */
-  progressiveTideTime?: CodegenTypes.Float;
-  /**
-   * Where the Marea surface is born: 0 = panel top, 1 = bottom edge of the
-   * view. The material body only lifts once the surface clears the panel.
-   */
-  progressiveTideAnchor?: CodegenTypes.Float;
-  /**
-   * Presence of the Marea body and surface lens (animated, 0..1): 0
-   * dissolves the mass in place; the impact shell is not affected.
-   */
-  progressiveTideBody?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
-  /**
-   * How high the Marea body lifts, as a fraction of the space above the
-   * panel (1 = up to the top edge); the surface lens still reaches the top.
-   */
-  progressiveTideBodyReach?: CodegenTypes.WithDefault<CodegenTypes.Float, 1>;
-  /**
-   * Marea background reveal (animated): the page background colour is
-   * swapped for the new theme's below the surface; 0..1 completes it over the
-   * whole view, -1 = off.
-   */
-  progressiveTideReveal?: CodegenTypes.WithDefault<CodegenTypes.Float, -1>;
-  /** Reveal direction (animated): 0 = to the light, 1 = to the dark bg. */
-  progressiveTideRevealTo?: CodegenTypes.Float;
-  /** Page background colours the reveal swaps between. */
-  progressiveTideBgLight?: ColorValue;
-  progressiveTideBgDark?: ColorValue;
   /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
   frostSaturation?: CodegenTypes.Float;
   /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */

@@ -68,10 +68,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private val context: Context = host.context
   private val density = host.resources.displayMetrics.density
   private var popup: PopupWindow? = null
-  private var backendStatusView: TextView? = null
   private var expanded = false
-  private var slotA: Snapshot? = null
-  private var slotB: Snapshot? = null
 
   // syncToEdgeBounds() is driven from EdgeFadeView.syncNativeTunerBounds(),
   // which onAfterUpdateTransaction's fast path now calls every animated
@@ -149,7 +146,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     lastSyncedBounds = null
     popup?.dismiss()
     popup = null
-    backendStatusView = null
   }
 
   private fun buildContent(): View {
@@ -197,143 +193,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     }
     scroll.addView(body, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     outer.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(4) })
-
-    addSection(body, "RENDER")
-    addChoice(
-      body,
-      "renderer",
-      listOf("JS/default", "AndroidX gradient", "AGSL baseline", "AndroidX shader"),
-      listOf<String?>(null, "androidx-gradient", "agsl", "androidx"),
-      host.tunerBackendOverride,
-    ) {
-      host.tunerBackendOverride = it
-      host.nativeTuneChanged()
-      refreshBackendStatus()
-      host.postDelayed({ rebuildExpanded() }, 40L)
-    }
-
-    backendStatusView = TextView(context).apply {
-      text = backendStatusText()
-      setTextColor(0xff8e8e96.toInt())
-      textSize = 10f
-      setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-      setPadding(dp(4), dp(4), dp(4), dp(8))
-    }.also(body::addView)
-
-    addActions(body, listOf(
-      "LOAD LIKED AX" to {
-        host.tunerBackendOverride = "androidx-gradient"
-        host.tunerBlurRadiusOverride = 150f
-        host.tunerProgressionOverride = 0.90f
-        host.tunerGradientSpanOverride = 1.00f
-        host.tunerBottomScaleOverride = 1.00f
-        host.tunerBottomOffsetDpOverride = 0f
-        host.tunerMaterialEnabledOverride = true
-        host.tunerMaterialStrengthOverride = 0.43f
-        host.tunerMaterialExposureOverride = 0.68f
-        host.tunerMaterialSurfaceOverride = 0.69f
-        host.tunerMaterialSurfaceProgressionOverride = 0.66f
-        host.tunerMaterialCurveSyncOverride = false
-        host.tunerMaterialCurveHeightOverride = 1f
-        host.tunerMaterialCurveOffsetOverride = 0f
-        host.nativeTuneChanged()
-        host.postDelayed({ rebuildExpanded() }, 40L)
-      },
-      "LOAD CHROMA TEST" to {
-        host.tunerBackendOverride = "androidx-gradient"
-        host.tunerBlurRadiusOverride = 150f
-        host.tunerProgressionOverride = 1f
-        host.tunerGradientSpanOverride = 0.92f
-        host.tunerBottomScaleOverride = 1.35f
-        host.tunerBottomOffsetDpOverride = 34.08f
-        host.tunerCurveProfileOverride = "soft"
-        host.tunerCurvePowerOverride = 3f
-        host.tunerMaterialEnabledOverride = true
-        host.tunerMaterialStrengthOverride = 0.77f
-        host.tunerMaterialExposureOverride = 0.71f
-        host.tunerMaterialSurfaceOverride = 0.45f
-        host.tunerMaterialSurfaceProgressionOverride = 0.26f
-        host.tunerMaterialCurveSyncOverride = false
-        host.tunerMaterialCurveHeightOverride = 1.14f
-        host.tunerMaterialCurveOffsetOverride = 0.07f
-        host.tunerMaterialColorFieldEnabledOverride = true
-        host.tunerMaterialColorFieldMixOverride = 0.68f
-        host.tunerMaterialColorFieldScaleOverride = 0.08f
-        host.tunerMaterialColorFieldBlurRadiusPxOverride = 160f
-        host.tunerMaterialColorFieldChromaGateOverride = 0.035f
-        host.tunerMaterialColorFieldChromaGainOverride = 1.35f
-        host.tunerMaterialColorFieldLumaMixOverride = 0.10f
-        host.tunerMaterialColorLightOverride = Color.rgb(0xD4, 0xD4, 0xD4)
-        host.tunerMaterialColorDarkOverride = Color.rgb(0x01, 0x01, 0x01)
-        host.nativeTuneChanged()
-        host.postDelayed({ rebuildExpanded() }, 40L)
-      },
-    ))
-
-    addSwitch(body, "panel bounds", host.tunerShowBounds) {
-      host.tunerShowBounds = it
-      host.nativeTuneChanged()
-    }
-
-    addSection(body, "TIDE")
-    addSlider(body, "dome reach", 0f, 1.5f, host.effectiveTideHeight(), "↑") {
-      host.tunerTideHeightOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "dome width", 0.15f, 4f, host.effectiveTideWidth(), "·W") {
-      host.tunerTideWidthOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "flame tip", 1f, 2.5f, host.effectiveTideSharpness(), "") {
-      host.tunerTideSharpnessOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "flicker", 0f, 0.3f, host.effectiveTideFlicker(), "") {
-      host.tunerTideFlickerOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "shell bend", 0f, 3f, host.effectiveTideRipple(), "×") {
-      host.tunerTideRippleOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "shell visibility", 0f, 2f, host.effectiveTideShellLook(), "×") {
-      host.tunerTideShellLookOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "surface lens", 0f, 3f, host.effectiveTideLens(), "×") {
-      host.tunerTideLensOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "lens on fall", 0f, 3f, host.effectiveTideLensFall(), "×") {
-      host.tunerTideLensFallOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "mass reach", 0f, 1f, host.effectiveTideBodyReach(), "") {
-      host.tunerTideBodyReachOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "conserved volume", 0f, 1f, host.effectiveTideVolume(), "") {
-      host.tunerTideVolumeOverride = it
-      host.nativeTuneChanged()
-    }
-    addSwitch(body, "meniscus", host.effectiveTideMeniscusEnabled()) {
-      host.tunerTideMeniscusEnabledOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "meniscus drag", 0f, 40f, host.tunerTideMeniscusOverride ?: host.progressiveTideMeniscus, "px") {
-      host.tunerTideMeniscusOverride = it
-      host.nativeTuneChanged()
-    }
-
-    addSection(body, "GEOMETRY")
-    addSlider(body, "bottom height ×", 0.35f, 1.35f, host.tunerBottomScaleOverride ?: 1f, "×") {
-      host.tunerBottomScaleOverride = it
-      host.nativeTuneChanged()
-    }
-    addSlider(body, "bottom offset", -120f, 120f, host.tunerBottomOffsetDpOverride ?: 0f, "dp") {
-      host.tunerBottomOffsetDpOverride = it
-      host.nativeTuneChanged()
-    }
 
     addSection(body, "GAUSSIAN")
     addSlider(body, "radius", 0f, 150f, host.effectiveBlurRadius(), "px") {
@@ -520,13 +379,7 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       host.nativeTuneChanged()
     }
 
-    addSection(body, "A/B")
-    addActions(body, listOf(
-      "SAVE A" to { slotA = capture() },
-      "LOAD A" to { slotA?.let(::applySnapshot) },
-      "SAVE B" to { slotB = capture() },
-      "LOAD B" to { slotB?.let(::applySnapshot) },
-    ))
+    addSection(body, "CONFIG")
     addActions(body, listOf(
       "COPY" to { copyConfig() },
       "RESET" to {
@@ -535,13 +388,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
       },
     ))
 
-    body.addView(TextView(context).apply {
-      text = "FULL/CAP/GAUSS badge is outside this panel · RESET = JS props"
-      setTextColor(0xff8e8e96.toInt())
-      textSize = 10f
-      setTypeface(Typeface.MONOSPACE, Typeface.NORMAL)
-      setPadding(dp(4), dp(8), dp(4), 0)
-    })
     return outer
   }
 
@@ -554,18 +400,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
   private fun rebuildExpanded() {
     dismiss()
     host.post { show(true) }
-  }
-
-  private fun backendStatusText(): String {
-    val requested = host.effectiveProgressiveBackend()
-    val active = EdgeFadeProgressiveBlurEffect.activeBackendName(host)
-    return "requested=$requested · active=$active"
-  }
-
-  private fun refreshBackendStatus() {
-    host.postDelayed({
-      backendStatusView?.text = backendStatusText()
-    }, 32L)
   }
 
   private fun capture() = Snapshot(
@@ -597,38 +431,6 @@ internal class EdgeFadeNativeTuner(private val host: EdgeFadeView) {
     host.effectiveMaterialColorDark(),
     host.tunerShowBounds,
   )
-
-  private fun applySnapshot(s: Snapshot) {
-    host.tunerBackendOverride = s.backend
-    host.tunerBlurRadiusOverride = s.radius
-    host.tunerProgressionOverride = s.progression
-    host.tunerGradientSpanOverride = s.gradientSpan
-    host.tunerBottomScaleOverride = s.bottomScale
-    host.tunerBottomOffsetDpOverride = s.bottomOffsetDp
-    host.tunerCurveProfileOverride = s.curveProfile
-    host.tunerCurvePowerOverride = s.curvePower
-    host.tunerMaterialEnabledOverride = s.materialEnabled
-    host.tunerMaterialStrengthOverride = s.strength
-    host.tunerMaterialExposureOverride = s.exposure
-    host.tunerMaterialSurfaceOverride = s.surface
-    host.tunerMaterialSurfaceProgressionOverride = s.surfaceProgression
-    host.tunerMaterialCurveSyncOverride = s.materialCurveSync
-    host.tunerMaterialCurveHeightOverride = s.materialCurveHeight
-    host.tunerMaterialCurveOffsetOverride = s.materialCurveOffset
-    host.tunerMaterialColorFieldEnabledOverride = s.colorFieldEnabled
-    host.tunerMaterialColorFieldMixOverride = s.colorFieldMix
-    host.tunerMaterialColorFieldScaleOverride = s.colorFieldScale
-    host.tunerMaterialColorFieldBlurRadiusPxOverride = s.colorFieldBlurRadiusPx
-    host.tunerMaterialColorFieldChromaGateOverride = s.colorFieldChromaGate
-    host.tunerMaterialColorFieldChromaGainOverride = s.colorFieldChromaGain
-    host.tunerMaterialColorFieldLumaMixOverride = s.colorFieldLumaMix
-    host.tunerMaterialColorFieldNeutralWeightOverride = s.colorFieldNeutralWeight
-    host.tunerMaterialColorLightOverride = s.materialLightColor
-    host.tunerMaterialColorDarkOverride = s.materialDarkColor
-    host.tunerShowBounds = s.bounds
-    host.nativeTuneChanged()
-    rebuildExpanded()
-  }
 
   private fun copyConfig() {
     val s = capture()

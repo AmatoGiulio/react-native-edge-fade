@@ -198,64 +198,6 @@ internal object BlurLabShaders {
     uniform float curveBottom[32];
     uniform float curveLeft[32];
     uniform float curveRight[32];
-    // Living bottom-front warp. All default to 0, which makes depthB
-    // collapse back to edges.y exactly (byte-identical to the pre-wave mask).
-    uniform float waveAmp;
-    uniform float waveDome;
-    uniform float waveTime;
-    // Marea V0 surface deformation (raster px): x = amplitude, y = centre x,
-    // z = core sigma, w = outer sigma; tideBeta scales the outer gaussian so
-    // the signed area stays balanced. amplitude 0 is a no-op.
-    uniform float4 tide;
-    uniform float tideBeta;
-    uniform float tideWall;
-    // Core profile exponent: 2 = gaussian dome, lower = pointed flame tip.
-    uniform float tideSharp;
-    // Flame flicker: x = amplitude (same units as tide.x), y = time (s).
-    uniform float2 tideFlicker;
-    // Height of the panel top above the surface's birth line (same units):
-    // the material only lifts once the surface clears the panel. 0 = born at
-    // the panel top (surface and body move together).
-    uniform float tideAnchor;
-    // Presence of the lifted body (0 dissolves it in place).
-    uniform float tideBody;
-    // Highest the body lifts above the panel (same units, <= 0 = no cap):
-    // the wave can reach the top while the mass stays low.
-    uniform float tideBodyMax;
-
-    float capLift(float l) {
-      if (tideBodyMax <= 0.0 || l <= 0.0) return l;
-      float k = 0.3 * tideBodyMax;
-      return tideBodyMax - k * log(1.0 + exp((tideBodyMax - l) / k));
-    }
-
-    // Travelling ripples along the tongue, in units of the core sigma, so the
-    // flame edge licks up and down; strongest on the body (sqrt g1).
-    float tideFlickerAt(float d, float g1) {
-      if (tideFlicker.x == 0.0) return 0.0;
-      float u = d / tide.z;
-      float t = tideFlicker.y;
-      float n = 0.55 * sin(u * 1.9 + t * 5.1) +
-        0.30 * sin(u * 3.7 - t * 7.3 + 1.7) +
-        0.15 * sin(u * 6.1 + t * 11.0 + 0.4);
-      return tideFlicker.x * sqrt(g1) * n;
-    }
-
-    // tideWall (same units, > 0) is the top edge of the view: the crest
-    // cannot pass it, so it flattens and spreads against it (smooth min).
-    float tideAt(float x) {
-      if (tide.x == 0.0) return 0.0;
-      float d = x - tide.y;
-      float g1 = exp(-0.5 * pow(abs(d) / tide.z, tideSharp));
-      float g2 = exp(-0.5 * d * d / (tide.w * tide.w));
-      float h = tide.x * (g1 - tideBeta * g2) + tideFlickerAt(d, g1);
-      if (tideWall <= 0.0) return h;
-      float k = 0.04 * tideWall;
-      float over = (tideWall - h) / k;
-      if (over > 20.0) return h;
-      return tideWall - k * log(1.0 + exp(over));
-    }
-
     float sampleTop(float t) {
       float x = clamp(t, 0.0, 1.0) * 31.0;
       for (int i = 0; i < 31; i++) {
@@ -296,31 +238,13 @@ internal object BlurLabShaders {
     half4 main(float2 local) {
       float2 p = local + origin;
       float topPos = position(p.y, edges.x);
-
-      // Organic bottom front: a parabolic dome (centre higher than sides)
-      // plus a three-octave noise displacement, both in depth px. depthB
-      // collapses to edges.y when waveDome/waveAmp are 0, so the identity
-      // mask is pixel-unchanged.
-      float xn = p.x / max(viewSize.x, 1.0);
-      float dome = waveDome * (1.0 - (2.0 * xn - 1.0) * (2.0 * xn - 1.0));
-      float n = 0.55 * sin(xn * 6.2831 * 1.15 + waveTime * 1.3) +
-        0.30 * sin(xn * 6.2831 * 2.35 - waveTime * 0.9 + 1.7) +
-        0.15 * sin(xn * 6.2831 * 4.1 + waveTime * 2.1 + 0.4);
-      float tideLift = capLift(tideAnchor > 0.0 ? max(tideAt(p.x) - tideAnchor, 0.0) : tideAt(p.x));
-      float depthB = edges.y <= 0.0 ? edges.y : max(edges.y + dome + waveAmp * n + tideLift, 0.0);
-      float bottomPos = position(viewSize.y - p.y, depthB);
+      float bottomPos = position(viewSize.y - p.y, edges.y);
 
       float leftPos = position(p.x, edges.z);
       float rightPos = position(viewSize.x - p.x, edges.w);
 
       float top = topPos < 0.0 ? 0.0 : sampleTop(topPos);
       float bottom = bottomPos < 0.0 ? 0.0 : sampleBottom(bottomPos);
-      // A dissolving body fades toward the resting mask in place (no fall).
-      if (tideBody < 1.0 && tideLift != 0.0 && edges.y > 0.0) {
-        float restPos = position(viewSize.y - p.y, max(edges.y + dome + waveAmp * n, 0.0));
-        float rest = restPos < 0.0 ? 0.0 : sampleBottom(restPos);
-        bottom = mix(rest, bottom, tideBody);
-      }
       float left = leftPos < 0.0 ? 0.0 : sampleLeft(leftPos);
       float right = rightPos < 0.0 ? 0.0 : sampleRight(rightPos);
 
@@ -426,118 +350,8 @@ internal object BlurLabShaders {
     uniform float4 maskGeom;
     // Scales the fieldmask dissolve span (1 at rest, < 1 during the theme lift).
     uniform float maskSpanScale;
-    // Light wave V0 (fieldmask): a wide exposure wave through the material.
-    // Centre in panel depth (0 bottom, 1 top), gain in stops (0 = off) and
-    // gaussian sigma in depth units. Diffusion/detail are never touched.
-    uniform float lightWaveCenter;
-    uniform float lightWaveStops;
-    uniform float lightWaveWidth;
-    // Marea V0 (fieldmask): x = amplitude in screen px, y = centre x, z = core
-    // sigma, w = outer sigma (raster px); tideBeta balances the signed area.
-    // meniscus: x = drag px per px of surface height, y = band sigma px.
-    // amplitude 0 is a no-op.
-    uniform float4 tide;
-    uniform float tideBeta;
-    uniform float tideWall;
-    // Core profile exponent: 2 = gaussian dome, lower = pointed flame tip.
-    uniform float tideSharp;
-    // Flame flicker: x = amplitude (same units as tide.x), y = time (s).
-    uniform float2 tideFlicker;
-
-    // Travelling ripples along the tongue, in units of the core sigma, so the
-    // flame edge licks up and down; strongest on the body (sqrt g1).
-    float tideFlickerAt(float d, float g1) {
-      if (tideFlicker.x == 0.0) return 0.0;
-      float u = d / tide.z;
-      float t = tideFlicker.y;
-      float n = 0.55 * sin(u * 1.9 + t * 5.1) +
-        0.30 * sin(u * 3.7 - t * 7.3 + 1.7) +
-        0.15 * sin(u * 6.1 + t * 11.0 + 0.4);
-      return tideFlicker.x * sqrt(g1) * n;
-    }
-    uniform float tidePile;
-    // Screen px from the surface's birth line up to the panel top (0 = born
-    // at the panel top).
-    uniform float tideAnchor;
-    // Presence of the lifted body (0 dissolves it in place).
-    uniform float tideBody;
-    // Highest the body lifts above the panel, screen px (<= 0 = no cap).
-    uniform float tideBodyMax;
-    // Top-corner calm: x = view width px (0 = off), y = radius px, z = the
-    // bend kept right at the corners. The arched surface and the impact shell
-    // sweep the top corners diagonally; this keeps them from over-curving.
-    uniform float3 cornerCalm;
-
-    float capLift(float l) {
-      if (tideBodyMax <= 0.0 || l <= 0.0) return l;
-      float k = 0.3 * tideBodyMax;
-      return tideBodyMax - k * log(1.0 + exp((tideBodyMax - l) / k));
-    }
-
-    float cornerCalmAt(float2 s) {
-      if (cornerCalm.x <= 0.0) return 1.0;
-      float d = min(length(s), length(s - float2(cornerCalm.x, 0.0)));
-      return mix(cornerCalm.z, 1.0, smoothstep(0.0, max(cornerCalm.y, 1.0), d));
-    }
-    // Page background reveal: x = completion over the whole view (-1 = off);
-    // below the surface the old background colour is swapped for the new one.
-    uniform float bgReveal;
-    uniform float3 bgFrom;
-    uniform float3 bgTo;
-    uniform float2 meniscus;
-    // Impact shell (fieldmask), screen px: rippleSrc x = impact x on the top
-    // edge, y = age s, z = strength (0 = off), w = view width; rippleShape x =
-    // expansion time s, y = band sigma px, z = displacement px, w = max radius.
-    uniform float4 rippleSrc;
-    uniform float4 rippleShape;
-    // Lens riding the flame surface (fieldmask), screen px: x = displacement,
-    // y = band sigma, z = chromatic split, w = iridescent glow.
-    uniform float4 lensFront;
-    // 0..1 presence of the flame lens: scales its bend, light and sheen
-    // together so it fades out as one piece while the flame settles.
-    uniform float lensLevel;
-    // How much of the impact shell is seen (light, rim, sheen, frosted
-    // wake), independent of how much it bends: 0 = pure refraction.
-    uniform float shellLook;
-    // Strip source left edge in screen px (raster -> screen x).
-    uniform float srcLeft;
-
-    half3 opticSpectrum(float t) {
-      return half3(0.5 + 0.5 * cos(6.2831853 * (t + float3(0.0, 0.33, 0.67))));
-    }
-
-    // Glass-dome lighting shared by the flame lens and the impact shell
-    // (chessboard wave-shader): a normal built from the dome slope gives a lit
-    // near flank, a shaded far flank, a sharp glint and a fresnel lip, plus an
-    // analogous green-blue-purple sheen on the crest.
-    float3 opticShade(float3 col, float2 slope, float shell, float rim, float hue, float glow) {
-      if (shell + rim <= 0.0005) return col;
-      float3 n = normalize(float3(slope, 1.0));
-      float3 l = normalize(float3(-0.5, -0.78, 0.6));
-      float3 hv = normalize(l + float3(0.0, 0.0, 1.0));
-      float diff = dot(n, l);
-      float spec = pow(max(dot(n, hv), 0.0), 60.0);
-      // Added light only fills the headroom above the pixel, so a light
-      // theme reads the glass through its shaded flank and tint instead of
-      // clipping to white; a dark theme gets the full glint and sheen.
-      float room = 1.0 - dot(col, float3(0.2126, 0.7152, 0.0722));
-      float3 irid = float3(opticSpectrum(hue));
-      col *= 1.0 - clamp(-diff, 0.0, 1.0) * shell * 0.45;
-      col += float3(0.82, 0.88, 1.0) * (clamp(diff, 0.0, 1.0) * shell * 0.32 * room);
-      col += float3(spec * shell * 1.4 * (0.25 + 0.75 * room));
-      col += float3(0.85, 0.9, 1.0) * (rim * 0.18 * room);
-      col = mix(col, col * (0.6 + 0.8 * irid), clamp(shell * glow, 0.0, 1.0));
-      col += irid * (shell * glow * 0.6 * room);
-      return clamp(col, 0.0, 1.0);
-    }
-    // "Focus" theme transition: replaces backdrop colour with veilColor.
-    // All three default to 0, which leaves `result` byte-identical.
-    uniform float materialVeil;        // 0..1 amount of backdrop replaced by the veil colour
-    uniform float materialNeutrality;  // 0..1 chroma removal
-    uniform float materialLumaFlatten; // 0..1 luminance range compression toward the veil luminance
-    uniform float3 veilColor;
-    // Light "bloom" band at the front of the mask. 0 is a no-op.
-    uniform float frontGlow;
+    // 0..1 chroma removal on the material response; 0 leaves `result` as is.
+    uniform float materialNeutrality;
     // Screen-space px of the full (unscaled) blur radius for a half-res
     // androidx-gradient strip whose sharp content is drawn underneath rather
     // than clipped out (see EdgeFadeProgressiveStripRenderer.crossfadeEntrance).
@@ -564,58 +378,9 @@ internal object BlurLabShaders {
 
     // fieldmask: normalised panel depth measured upward (0 at the bottom
     // edge, 1 at the panel top).
-    // tideWall (same units, > 0) is the top edge of the view: the crest
-    // cannot pass it, so it flattens and spreads against it (smooth min).
-    float tideRaw(float x) {
-      if (tide.x == 0.0) return 0.0;
-      float d = x - tide.y;
-      float g1 = exp(-0.5 * pow(abs(d) / tide.z, tideSharp));
-      float g2 = exp(-0.5 * d * d / (tide.w * tide.w));
-      return tide.x * (g1 - tideBeta * g2) + tideFlickerAt(d, g1);
-    }
-
-    float tideClamp(float h) {
-      if (tideWall <= 0.0) return h;
-      float k = 0.04 * tideWall;
-      float over = (tideWall - h) / k;
-      if (over > 20.0) return h;
-      return tideWall - k * log(1.0 + exp(over));
-    }
-
-    float tideAt(float x) {
-      return tideClamp(tideRaw(x));
-    }
-
-    // The tide lifts the whole material body (not a stretch of its ramp), so
-    // the dense part travels with the surface like a rising mass. Where the
-    // crest is pressed into the top edge the surface stops but the body keeps
-    // coming (tidePile x the penetration): the material piles up against it.
     float fmDepthUp(float2 coord) {
       float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
-      float raw = tideRaw(coord.x);
-      float h = tideClamp(raw);
-      float lift = capLift((tideAnchor > 0.0 ? max(h - tideAnchor, 0.0) : h) +
-        tidePile * max(raw - h, 0.0));
-      return (maskGeom.z - screenY - lift) / max(maskGeom.w, 1.0);
-    }
-
-    // Meniscus: the sharp scene next to the surface is dragged along with its
-    // local height (raster px, positive = sample below = content moves up).
-    float meniscusShift(float2 coord) {
-      float h = tideAt(coord.x);
-      float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
-      float surfaceY = maskGeom.z - maskGeom.w + tideAnchor - h;
-      float d = (surfaceY - screenY) / max(meniscus.y, 1.0);
-      return meniscus.x * h * exp(-0.5 * d * d) * maskGeom.y;
-    }
-
-    // Swap the old page background for the new one, keyed on the exact old
-    // colour so photos, text and chrome are left alone.
-    float3 revealBg(float3 c, float r) {
-      // The page is one flat colour: match it almost exactly, so the near-
-      // black or near-white pixels of photos are not swapped (speckles).
-      float k = 1.0 - smoothstep(0.005, 0.014, distance(c, bgFrom));
-      return c + (bgTo - bgFrom) * (k * r);
+      return (maskGeom.z - screenY) / max(maskGeom.w, 1.0);
     }
 
     // fieldmask coverage: 0 -> 1 from the panel top (+ offset) over
@@ -632,118 +397,18 @@ internal object BlurLabShaders {
     }
 
     float fmCoverage(float2 coord) {
-      float lifted = fmCoverageAt(fmDepthUp(coord));
-      if (tideBody >= 1.0 || tide.x == 0.0) return lifted;
-      // A dissolving body fades toward the resting coverage in place.
-      float screenY = (coord.y + maskGeom.x) / max(maskGeom.y, 0.0001);
-      float rest = fmCoverageAt((maskGeom.z - screenY) / max(maskGeom.w, 1.0));
-      return mix(rest, lifted, tideBody);
+      return fmCoverageAt(fmDepthUp(coord));
     }
 
     half4 main(float2 coord) {
       half4 blurred = content.eval(coord);
       half4 sharp = blurred;
-      float2 opticSlope = float2(0.0);
-      float opticShell = 0.0;
-      float opticRim = 0.0;
-      float opticHue = 0.42;
-      float opticGlow = 0.0;
-      float opticFrost = 0.0;
-      if (fieldMaskMode > 0.5) {
-        float scale = max(maskGeom.y, 0.0001);
-        float2 s = float2(coord.x / scale + srcLeft, (coord.y + maskGeom.x) / scale);
-        float2 disp = float2(0.0);
-        float2 ca = float2(0.0);
-        // Lens riding the flame surface: a gaussian dome across the signed
-        // distance to the surface, measured along its true normal, magnifies
-        // what the rising front passes over.
-        if (lensFront.x != 0.0 && tide.x != 0.0) {
-          float e = 2.0 * scale;
-          float hs = tideAt(coord.x);
-          float dh = (tideAt(coord.x + e) - tideAt(coord.x - e)) / (2.0 * e);
-          float norm = sqrt(1.0 + dh * dh);
-          float2 dir = float2(-dh, -1.0) / norm;
-          float surfaceY = maskGeom.z - maskGeom.w + tideAnchor - hs;
-          float w = max(lensFront.y, 1.0);
-          float x = (surfaceY - s.y) / norm;
-          float lens = exp(-(x * x) / (2.0 * w * w));
-          float grad = -(x / (w * w)) * lens;
-          float bend = grad * w * lensFront.x;
-          disp += dir * bend;
-          ca += dir * abs(bend) * lensFront.z;
-          opticSlope += -dir * (grad * w * 0.9) * lensLevel;
-          opticShell = max(opticShell, lens * lensLevel);
-          opticRim += exp(-(x * x) / (2.0 * (w * 0.45) * (w * 0.45))) * lensLevel;
-          opticGlow = lensFront.w;
-          opticHue = 0.42 + 0.24 * sin(s.x * 0.006 + x * 0.01 + tideFlicker.y * 2.5);
-        }
-        // Impact shell: one thick glass dome expanding from the point where
-        // the crest hit the top edge, bursting out and decelerating, with a
-        // frosted wake that lags behind it and clears as it passes.
-        if (rippleSrc.z > 0.0 && rippleSrc.y >= 0.0) {
-          float p = rippleSrc.y / max(rippleShape.x, 0.001);
-          float2 v = s - float2(rippleSrc.x, 0.0);
-          float dist = max(length(v), 0.001);
-          float2 dir = v / dist;
-          float ang = atan(v.y, v.x);
-          float wob = 1.0 + 0.04 * (sin(ang * 3.0) * 0.6 + sin(ang * 2.0 + 1.7) * 0.4);
-          float released = smoothstep(0.0, 0.08, p);
-          // Softer ease: after the burst the shell visibly travels down the
-          // screen instead of leaving it in a few frames.
-          float fe = 1.0 - pow(1.0 - clamp(p, 0.0, 1.0), 1.6);
-          float front = rippleShape.w * fe * wob;
-          float w = max(rippleShape.y, 1.0);
-          float x = dist - front;
-          float lens = exp(-(x * x) / (2.0 * w * w));
-          float fade = 1.0 - smoothstep(0.75, 1.2, p);
-          float k = released * fade * rippleSrc.z;
-          float grad = -(x / (w * w)) * lens;
-          float bend = grad * w * rippleShape.z * k;
-          disp += dir * bend;
-          ca += dir * abs(bend) * lensFront.z;
-          opticSlope += -dir * (grad * w * 0.9) * k * shellLook;
-          opticShell = max(opticShell, lens * k * shellLook);
-          opticRim += exp(-(x * x) / (2.0 * (w * 0.45) * (w * 0.45))) * k * shellLook;
-          opticHue = 0.42 + 0.24 * sin(ang * 2.0 + dist * 0.008 + p * 2.5);
-          float passed = smoothstep(front - w * 2.4, front - w * 2.4 - rippleSrc.w * 0.9, dist);
-          opticFrost = passed * fade * rippleSrc.z * shellLook;
-        }
-        if (meniscus.x != 0.0 && tide.x != 0.0) disp.y += meniscusShift(coord) / scale;
-        float calm = cornerCalmAt(s);
-        disp *= calm;
-        ca *= calm;
-        float2 rc = coord + disp * scale;
-        if (disp.x != 0.0 || disp.y != 0.0) {
-          sharp = content.eval(rc);
-          if (ca.x != 0.0 || ca.y != 0.0) {
-            sharp.r = content.eval(rc + ca * scale).r;
-            sharp.b = content.eval(rc - ca * scale).b;
-          }
-        }
-        blurred = field.eval(rc);
-        // Frosted wake: the scene behind the shell dissolves into the
-        // diffused colour field, then clears as the shell fades.
-        sharp.rgb = mix(sharp.rgb, blurred.rgb, half(clamp(opticFrost * 0.7, 0.0, 1.0)));
-        // New page background below the rising surface (and everywhere once
-        // the reveal completes).
-        if (bgReveal >= 0.0) {
-          float reveal = bgReveal;
-          if (tide.x != 0.0) {
-            float surf = maskGeom.z - maskGeom.w + tideAnchor - tideAt(coord.x);
-            float soft = max(lensFront.y * 0.35, 12.0);
-            reveal = max(reveal, smoothstep(-soft, soft, s.y - surf));
-          }
-          if (reveal > 0.0) {
-            sharp.rgb = half3(revealBg(float3(sharp.rgb), reveal));
-            blurred.rgb = half3(revealBg(float3(blurred.rgb), reveal));
-          }
-        }
-      }
+      // fieldmask: the sharp scene comes from content, the diffused colour
+      // field from its own low-res capture.
+      if (fieldMaskMode > 0.5) blurred = field.eval(coord);
       float intensity = clamp(mask.eval(coord).a, 0.0, 1.0);
       if (intensity <= 0.0 || materialStrength <= 0.0) {
-        if (fieldMaskMode > 0.5) {
-          return half4(opticShade(float3(sharp.rgb), opticSlope, opticShell, opticRim, opticHue, opticGlow), 1.0);
-        }
+        if (fieldMaskMode > 0.5) return half4(sharp.rgb, 1.0);
         return materialOverlayMode > 0.5 ? half4(0.0) : blurred;
       }
 
@@ -791,24 +456,15 @@ internal object BlurLabShaders {
       transmission /= 1.0 + density * 2.0 * magnitude;
       float3 result = clamp(float3(outputLuma) + chroma * transmission, 0.0, 1.0);
 
-      // Front bloom: a band centred just past the optical entrance, lifting
-      // light and boosting colour. frontGlow=0 leaves result untouched.
-      float band = smoothstep(0.02, 0.22, intensity) * (1.0 - smoothstep(0.30, 0.75, intensity));
-      float g = clamp(frontGlow, 0.0, 1.5) * band;
-      result = clamp(result + g * (0.22 * (1.0 - result) * light + 0.35 * chroma), 0.0, 1.0);
-
-      // "Focus" theme veil: progressively replaces backdrop chroma/luma/colour
-      // with veilColor, gated by the same intensity ramp as material density.
-      // materialVeil/Neutrality/LumaFlatten default to 0, so this block is a
-      // no-op until the theme transition animates them.
-      float veilCoverage = clamp(intensity * 4.0, 0.0, 1.0);
-      float vLuma = dot(veilColor, float3(0.2126, 0.7152, 0.0722));
-      float rLuma = dot(result, float3(0.2126, 0.7152, 0.0722));
-      float3 rChroma = result - float3(rLuma);
-      rChroma *= 1.0 - clamp(materialNeutrality, 0.0, 1.0) * veilCoverage;
-      rLuma = mix(rLuma, vLuma, clamp(materialLumaFlatten, 0.0, 1.0) * 0.85 * veilCoverage);
-      result = clamp(float3(rLuma) + rChroma, 0.0, 1.0);
-      result = mix(result, veilColor, clamp(materialVeil, 0.0, 1.0) * veilCoverage);
+      // Chroma removal, gated by the same intensity ramp as material density.
+      // materialNeutrality 0 leaves result untouched.
+      if (materialNeutrality > 0.0) {
+        float neutralCoverage = clamp(intensity * 4.0, 0.0, 1.0);
+        float rLuma = dot(result, float3(0.2126, 0.7152, 0.0722));
+        float3 rChroma = (result - float3(rLuma)) *
+          (1.0 - clamp(materialNeutrality, 0.0, 1.0) * neutralCoverage);
+        result = clamp(float3(rLuma) + rChroma, 0.0, 1.0);
+      }
 
       // 8-bit dither: breaks up the banding/contour artifacts the low-res
       // colour field upscale exposes, strongest in dark mode. Only reached
@@ -820,16 +476,9 @@ internal object BlurLabShaders {
       if (materialOverlayMode > 0.5) {
         if (fieldMaskMode > 0.5) {
           float coverage = fmCoverage(coord);
-          // Light wave V0: exposure gain on the material response only (the
-          // scene mix below keeps the same coverage, the field its diffusion).
-          if (lightWaveStops != 0.0) {
-            float d = (fmDepthUp(coord) - lightWaveCenter) / max(lightWaveWidth, 0.01);
-            result = clamp(result * exp2(lightWaveStops * exp(-0.5 * d * d)), 0.0, 1.0);
-          }
           // Opaque single-pass mix with the sharp scene: no translucent 8-bit
           // layer, so the coverage ramp is never quantised by blending.
           float3 mixed = mix(float3(sharp.rgb), result, coverage);
-          mixed = opticShade(mixed, opticSlope, opticShell, opticRim, opticHue, opticGlow);
           // The only quantisation step left: +-1 LSB triangular is enough to
           // break 8-bit contours without reading as grain at full res.
           mixed += ditherNoise(coord + float2(13.0, 29.0), 1.0);
@@ -839,9 +488,6 @@ internal object BlurLabShaders {
           clamp(materialOverlayMix, 0.0, 1.0) *
           clamp(densityCurve, 0.0, 1.0) *
           float(blurred.a);
-        coverage = clamp(coverage + g * 0.35 * float(blurred.a), 0.0, 1.0);
-        // The veil hides the colour field entirely as it takes over.
-        coverage *= 1.0 - clamp(materialVeil, 0.0, 1.0) * veilCoverage;
         return half4(result * coverage, coverage);
       }
 

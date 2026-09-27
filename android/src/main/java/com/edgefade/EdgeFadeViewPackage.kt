@@ -8,7 +8,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class EdgeFadeViewPackage : BaseReactPackage() {
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return listOf(EdgeFadeViewManager(), BlurLabViewManager(), EdgeFadeTideLensViewManager())
+    return listOf(EdgeFadeViewManager(), BlurLabViewManager())
   }
 
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? = null

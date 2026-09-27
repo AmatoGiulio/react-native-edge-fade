@@ -253,22 +253,12 @@ class EdgeFadeViewManager :
     view.progressiveMaterialSurfaceProgression = value.coerceIn(0.15f, 1f)
   }
 
-  // Per-frame animated ("focus" theme transition) — excluded from
-  // progressiveStructureDirty, same as progressiveMaterialExposure.
-  @ReactProp(name = "progressiveMaterialVeil", defaultFloat = 0f)
-  override fun setProgressiveMaterialVeil(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialVeil = value.coerceIn(0f, 1f)
-  }
 
   @ReactProp(name = "progressiveMaterialNeutrality", defaultFloat = 0f)
   override fun setProgressiveMaterialNeutrality(view: EdgeFadeView, value: Float) {
     view.progressiveMaterialNeutrality = value.coerceIn(0f, 1f)
   }
 
-  @ReactProp(name = "progressiveMaterialLumaFlatten", defaultFloat = 0f)
-  override fun setProgressiveMaterialLumaFlatten(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialLumaFlatten = value.coerceIn(0f, 1f)
-  }
 
   @ReactProp(name = "progressiveMaterialColorFieldEnabled", defaultBoolean = false)
   override fun setProgressiveMaterialColorFieldEnabled(view: EdgeFadeView, value: Boolean) {
@@ -331,60 +321,13 @@ class EdgeFadeViewManager :
     view.progressiveMaterialCurveHeight = value.coerceIn(0.25f, 1.5f)
   }
 
-  // Per-frame animated (open/close, living wave) — excluded from
-  // progressiveStructureDirty.
-  @ReactProp(name = "progressiveWaveAmplitude", defaultFloat = 0f)
-  override fun setProgressiveWaveAmplitude(view: EdgeFadeView, value: Float) {
-    view.progressiveWaveAmplitude = value.coerceIn(0f, 400f)
-  }
 
-  @ReactProp(name = "progressiveWaveDome", defaultFloat = 0f)
-  override fun setProgressiveWaveDome(view: EdgeFadeView, value: Float) {
-    view.progressiveWaveDome = value.coerceIn(-600f, 600f)
-  }
 
-  @ReactProp(name = "progressiveWaveTime", defaultFloat = 0f)
-  override fun setProgressiveWaveTime(view: EdgeFadeView, value: Float) {
-    view.progressiveWaveTime = value
-    // Animated on the UI thread like progressiveMaterialThemeProgress; the
-    // cheap updateLivingUniforms() path needs a scheduled frame to pick it up.
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveFrontGlow", defaultFloat = 0f)
-  override fun setProgressiveFrontGlow(view: EdgeFadeView, value: Float) {
-    view.progressiveFrontGlow = value.coerceIn(0f, 1.5f)
-    view.postInvalidateOnAnimation()
-  }
 
-  // Per-frame animated (debug-stage cross-fade) — excluded from
-  // progressiveStructureDirty, same reasoning as progressiveMaterialThemeProgress:
-  // the renderer's own draw() reads this directly every frame, so a scheduled
-  // frame is all that's needed to keep it from lagging behind the scene.
-  @ReactProp(name = "progressiveFieldBlend", defaultFloat = 0f)
-  override fun setProgressiveFieldBlend(view: EdgeFadeView, value: Float) {
-    view.progressiveFieldBlend = value.coerceIn(0f, 1f)
-    view.postInvalidateOnAnimation()
-  }
 
-  // Light wave V0: per-frame, read by the renderer at draw time.
-  @ReactProp(name = "progressiveLightWaveCenter", defaultFloat = 0f)
-  override fun setProgressiveLightWaveCenter(view: EdgeFadeView, value: Float) {
-    view.progressiveLightWaveCenter = value
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveLightWaveStops", defaultFloat = 0f)
-  override fun setProgressiveLightWaveStops(view: EdgeFadeView, value: Float) {
-    view.progressiveLightWaveStops = value
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveLightWaveWidth", defaultFloat = 0f)
-  override fun setProgressiveLightWaveWidth(view: EdgeFadeView, value: Float) {
-    view.progressiveLightWaveWidth = value
-    view.postInvalidateOnAnimation()
-  }
 
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) {
@@ -403,96 +346,22 @@ class EdgeFadeViewManager :
   @ReactProp(name = "frostProgression", defaultFloat = 1f)
   override fun setFrostProgression(view: EdgeFadeView, value: Float) { view.frostProgression = value }
 
-  // Marea V0 (showcase). amount/shape/center animate every frame; the
-  // configuration values are read by the renderer each prepare()/draw(), so
-  // none of them is structural.
-  @ReactProp(name = "progressiveTideAmount", defaultFloat = 0f)
-  override fun setProgressiveTideAmount(view: EdgeFadeView, value: Float) {
-    view.progressiveTideAmount = value.coerceIn(-2f, 2f)
-  }
 
-  @ReactProp(name = "progressiveTideShape", defaultFloat = 0f)
-  override fun setProgressiveTideShape(view: EdgeFadeView, value: Float) {
-    view.progressiveTideShape = value.coerceIn(0f, 3f)
-  }
 
-  @ReactProp(name = "progressiveTideCenter", defaultFloat = 0.5f)
-  override fun setProgressiveTideCenter(view: EdgeFadeView, value: Float) {
-    view.progressiveTideCenter = value.coerceIn(0f, 1f)
-  }
 
-  @ReactProp(name = "progressiveTideHeight", defaultFloat = 0f)
-  override fun setProgressiveTideHeight(view: EdgeFadeView, value: Float) {
-    view.progressiveTideHeight = value.coerceIn(0f, 1.5f)
-  }
 
-  @ReactProp(name = "progressiveTideWidth", defaultFloat = 0.5f)
-  override fun setProgressiveTideWidth(view: EdgeFadeView, value: Float) {
-    view.progressiveTideWidth = value.coerceIn(0.1f, 4f)
-  }
 
-  @ReactProp(name = "progressiveTideVolume", defaultFloat = 1f)
-  override fun setProgressiveTideVolume(view: EdgeFadeView, value: Float) {
-    view.progressiveTideVolume = value.coerceIn(0f, 1f)
-  }
 
-  @ReactProp(name = "progressiveTideSharpness", defaultFloat = 2f)
-  override fun setProgressiveTideSharpness(view: EdgeFadeView, value: Float) {
-    view.progressiveTideSharpness = value.coerceIn(1f, 3f)
-  }
 
-  @ReactProp(name = "progressiveTideFlicker", defaultFloat = 0f)
-  override fun setProgressiveTideFlicker(view: EdgeFadeView, value: Float) {
-    view.progressiveTideFlicker = value.coerceIn(0f, 0.3f)
-  }
 
-  @ReactProp(name = "progressiveTideTime", defaultFloat = 0f)
-  override fun setProgressiveTideTime(view: EdgeFadeView, value: Float) {
-    view.progressiveTideTime = value
-  }
 
-  @ReactProp(name = "progressiveTideBodyReach", defaultFloat = 1f)
-  override fun setProgressiveTideBodyReach(view: EdgeFadeView, value: Float) {
-    view.progressiveTideBodyReach = value.coerceIn(0f, 1f)
-  }
 
-  @ReactProp(name = "progressiveTideBody", defaultFloat = 1f)
-  override fun setProgressiveTideBody(view: EdgeFadeView, value: Float) {
-    view.progressiveTideBody = value.coerceIn(0f, 1f)
-  }
 
-  @ReactProp(name = "progressiveTideAnchor", defaultFloat = 0f)
-  override fun setProgressiveTideAnchor(view: EdgeFadeView, value: Float) {
-    view.progressiveTideAnchor = value.coerceIn(0f, 1f)
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveTideReveal", defaultFloat = -1f)
-  override fun setProgressiveTideReveal(view: EdgeFadeView, value: Float) {
-    view.progressiveTideReveal = if (value < 0f) -1f else value.coerceAtMost(1f)
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveTideRevealTo", defaultFloat = 0f)
-  override fun setProgressiveTideRevealTo(view: EdgeFadeView, value: Float) {
-    view.progressiveTideRevealTo = value.coerceIn(0f, 1f)
-    view.postInvalidateOnAnimation()
-  }
 
-  @ReactProp(name = "progressiveTideBgLight", customType = "Color")
-  override fun setProgressiveTideBgLight(view: EdgeFadeView, value: Int?) {
-    view.progressiveTideBgLight = value ?: Color.rgb(239, 238, 236)
-  }
 
-  @ReactProp(name = "progressiveTideBgDark", customType = "Color")
-  override fun setProgressiveTideBgDark(view: EdgeFadeView, value: Int?) {
-    view.progressiveTideBgDark = value ?: Color.rgb(18, 18, 16)
-  }
 
-  @ReactProp(name = "progressiveTideMeniscus", defaultFloat = 0f)
-  override fun setProgressiveTideMeniscus(view: EdgeFadeView, value: Float) {
-    view.progressiveTideMeniscus = value.coerceIn(0f, 60f)
-  }
 
   companion object {
     const val NAME = "EdgeFadeView"

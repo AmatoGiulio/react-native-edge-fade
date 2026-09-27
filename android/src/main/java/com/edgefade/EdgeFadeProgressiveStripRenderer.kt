@@ -13,11 +13,6 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
-import kotlin.math.abs
-import kotlin.math.exp
-import kotlin.math.min
-import kotlin.math.pow
-import kotlin.math.sqrt
 
 /**
  * Exact API 33+ progressive renderer used by the public EdgeFadeView.
@@ -47,50 +42,15 @@ internal class EdgeFadeProgressiveStripRenderer(
     // ramp) — the seam is hidden by cross-fading instead of avoided by
     // rendering at full resolution.
 
-    // ponytail: bottom/waveAmplitude/waveDome animate every frame (open/close,
-    // living wave). Quantizing the STRUCTURAL reserve they need to a coarse
+    // ponytail: bottom animates every frame (open/close). Quantizing the STRUCTURAL reserve they need to a coarse
     // bucket means band/raster/RenderEffect rebuilds happen only every
     // ~GEOMETRY_RESERVE_QUANT_PX of travel instead of every frame; the exact
-    // values still reach the shader every frame via the cheap uniform path
+    // value still reaches the shader every frame via the cheap uniform path
     // below. A previous reserveBottom is reused (not requantized) as long as
     // the exact bottom stays within the last 3 quanta below it, so a slow
     // scroll/animation crossing a quantum boundary doesn't thrash between two
     // reserves.
     const val GEOMETRY_RESERVE_QUANT_PX = 128f
-    // Marea V0: the press dimple is narrower than the dome it launches; the
-    // outer (returned-volume) gaussian is wider than the core.
-    const val TIDE_PRESS_WIDTH_RATIO = 0.35f
-    const val TIDE_OUTER_SIGMA_RATIO = 2.5f
-    const val TIDE_AREA_SAMPLES = 128
-    const val TIDE_MENISCUS_BAND = 0.035f
-    const val TIDE_RESERVE_OVERSHOOT = 1.35f
-    // Deepest trough the conserved volume may dig, as a fraction of the
-    // panel depth.
-    const val TIDE_MAX_MOAT = 0.12f
-    // Body travel per px of crest penetration into the top edge.
-    const val TIDE_PILE = 4f
-    // Impact shell and flame lens, after the chessboard wave-shader (band
-    // 64 pt, amplitude 50 pt, chroma 0.28 on a ~411 pt wide screen), as
-    // fractions of the view width.
-    // The impact shell is what falls through the screen after the crest
-    // dissolves: brisk, decelerating, fading as it spreads.
-    const val SHELL_EXPAND_S = 0.8f
-    const val SHELL_LIFETIME_S = 1.2f * SHELL_EXPAND_S
-    const val SHELL_BAND = 0.155f
-    const val SHELL_DISPLACEMENT = 0.12f
-    const val SHELL_RADIUS_OVERSCAN = 1.02f
-    const val LENS_DISPLACEMENT = 0.10f
-    const val LENS_BAND = 0.155f
-    // Top-corner calm radius (fraction of the width) and the bend kept at
-    // the very corner.
-    const val CORNER_CALM_RADIUS = 0.6f
-    const val CORNER_CALM_MIN = 0.15f
-    const val LENS_CHROMA = 0.18f
-    // No spectral sheen: the glass is lit, shaded and rimmed, not iridescent.
-    const val LENS_GLOW = 0f
-    const val LENS_RISE = 0.08f
-    const val LENS_FADE = 0.3f
-    const val LENS_FALL_BLEND_S = 0.12f
   }
 
   private data class Key(
@@ -99,8 +59,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     val top: Float,
     // Structural reserve bound for the bottom band (quantized, see
     // GEOMETRY_RESERVE_QUANT_PX) — NOT the exact animated bottom. The exact
-    // bottom (plus waveAmplitude/waveDome) is tracked outside Key in
-    // exactBottom/exactWaveAmplitude/exactWaveDome and pushed to shader
+    // bottom is tracked outside Key in exactBottom and pushed to shader
     // uniforms every frame without forcing a rebuild.
     val reserveBottom: Float,
     val left: Float,
@@ -196,18 +155,11 @@ internal class EdgeFadeProgressiveStripRenderer(
   private var strips = emptyList<Strip>()
   private var materialThemeProgress = Float.NaN
 
-  // Cheap per-frame uniforms, excluded from Key so animating them never
-  // triggers a full configure() — mirrors materialThemeProgress above.
-  private var livingWaveTime = Float.NaN
-  private var livingFrontGlow = Float.NaN
-
   // Exact per-frame geometry values (unlike Key.reserveBottom, which is
   // quantized). Updated every frame via updateGeometryUniforms(); configure()
   // also reads these directly so a structural rebuild always uses the exact
   // current value.
   private var exactBottom = Float.NaN
-  private var exactWaveAmplitude = Float.NaN
-  private var exactWaveDome = Float.NaN
 
   // Exact per-frame material/mask uniform values, excluded from Key so
   // animating strength/exposure/surface/progression/colorFieldMix during
@@ -219,9 +171,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   private var exactMaterialExposure = Float.NaN
   private var exactMaterialSurface = Float.NaN
   private var exactMaterialSurfaceProgression = Float.NaN
-  private var exactMaterialVeil = Float.NaN
   private var exactMaterialNeutrality = Float.NaN
-  private var exactMaterialLumaFlatten = Float.NaN
   private var exactMaterialCurveHeight = Float.NaN
   private var exactMaterialCurveOffset = Float.NaN
   private var exactColorFieldMix = Float.NaN
@@ -264,17 +214,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (exactBackend.startsWith("androidx") && !AndroidxBlurAdapter.available) return false
 
     val exactBottomNext = BlurLabGeometry.edge(host.effectiveFadeBottom(), height)
-    val exactWaveAmplitudeNext =
-      BlurLabGeometry.finite(host.progressiveWaveAmplitude).coerceIn(0f, 400f)
-    val exactWaveDomeNext =
-      BlurLabGeometry.finite(host.progressiveWaveDome).coerceIn(-600f, 600f)
-    val waveExtraNext = (maxOf(exactWaveDomeNext, 0f) + exactWaveAmplitudeNext)
-      .coerceIn(0f, height.toFloat())
-    // The tide reserve only widens the raster band; the exact geometry
-    // bottom (androidx-gradient stops) stays independent of it.
-    val geometryBottomNext =
-      (exactBottomNext + waveExtraNext + tideReserve(host, width, height, exactBottomNext))
-        .coerceAtMost(height.toFloat())
+    val geometryBottomNext = exactBottomNext.coerceAtMost(height.toFloat())
     // Hysteresis: reuse the previous reserve (no band/raster/RenderEffect
     // rebuild) as long as the exact geometry bottom is still covered by it
     // and hasn't retreated more than 3 quanta below it. This keeps a slow
@@ -313,12 +253,8 @@ internal class EdgeFadeProgressiveStripRenderer(
     val exactMaterialSurfaceProgressionNext =
       BlurLabGeometry.finite(host.effectiveMaterialSurfaceProgression(), 0.7f)
         .coerceIn(0.15f, 1f)
-    val exactMaterialVeilNext =
-      BlurLabGeometry.finite(host.effectiveMaterialVeil()).coerceIn(0f, 1f)
     val exactMaterialNeutralityNext =
       BlurLabGeometry.finite(host.effectiveMaterialNeutrality()).coerceIn(0f, 1f)
-    val exactMaterialLumaFlattenNext =
-      BlurLabGeometry.finite(host.effectiveMaterialLumaFlatten()).coerceIn(0f, 1f)
     val exactMaterialCurveHeightNext =
       BlurLabGeometry.finite(host.effectiveMaterialCurveHeight(), 1f).coerceIn(0.25f, 1.5f)
     val exactMaterialCurveOffsetNext =
@@ -369,13 +305,10 @@ internal class EdgeFadeProgressiveStripRenderer(
 
     val nextThemeProgress =
       BlurLabGeometry.finite(host.progressiveMaterialThemeProgress).coerceIn(0f, 1f)
-    val nextWaveTime = BlurLabGeometry.finite(host.progressiveWaveTime)
-    val nextFrontGlow = BlurLabGeometry.finite(host.progressiveFrontGlow).coerceIn(0f, 1.5f)
 
     if (key == next) {
       updateMaterialTheme(next, nextThemeProgress)
-      updateLivingUniforms(next, nextWaveTime, nextFrontGlow)
-      updateGeometryUniforms(next, exactBottomNext, exactWaveAmplitudeNext, exactWaveDomeNext)
+      updateGeometryUniforms(next, exactBottomNext)
       updateMaterialUniforms(
         next,
         exactProgressionNext,
@@ -383,9 +316,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         exactMaterialExposureNext,
         exactMaterialSurfaceNext,
         exactMaterialSurfaceProgressionNext,
-        exactMaterialVeilNext,
         exactMaterialNeutralityNext,
-        exactMaterialLumaFlattenNext,
         exactMaterialCurveHeightNext,
         exactMaterialCurveOffsetNext,
         exactColorFieldMixNext,
@@ -402,19 +333,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
 
     materialThemeProgress = nextThemeProgress
-    livingWaveTime = nextWaveTime
-    livingFrontGlow = nextFrontGlow
     exactBottom = exactBottomNext
-    exactWaveAmplitude = exactWaveAmplitudeNext
-    exactWaveDome = exactWaveDomeNext
     exactProgression = exactProgressionNext
     exactMaterialStrength = exactMaterialStrengthNext
     exactMaterialExposure = exactMaterialExposureNext
     exactMaterialSurface = exactMaterialSurfaceNext
     exactMaterialSurfaceProgression = exactMaterialSurfaceProgressionNext
-    exactMaterialVeil = exactMaterialVeilNext
     exactMaterialNeutrality = exactMaterialNeutralityNext
-    exactMaterialLumaFlatten = exactMaterialLumaFlattenNext
     exactMaterialCurveHeight = exactMaterialCurveHeightNext
     exactMaterialCurveOffset = exactMaterialCurveOffsetNext
     exactColorFieldMix = exactColorFieldMixNext
@@ -430,7 +355,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         "material=${next.materialEnabled} active=${next.materialActive} strength=$exactMaterialStrength exposure=$exactMaterialExposure " +
         "kernelRadius=${next.radius} " +
         "surface=$exactMaterialSurface surfaceProg=$exactMaterialSurfaceProgression " +
-        "veil=$exactMaterialVeil neutrality=$exactMaterialNeutrality lumaFlatten=$exactMaterialLumaFlatten " +
+        "neutrality=$exactMaterialNeutrality " +
         "materialCurveHeight=$exactMaterialCurveHeight materialCurveOffset=$exactMaterialCurveOffset " +
         "colorField=${next.materialColorFieldEnabled} colorFieldActive=${next.colorFieldActive} colorFieldMix=$exactColorFieldMix " +
         "colorFieldScale=${next.materialColorFieldScale} " +
@@ -439,9 +364,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         "chromaGain=$exactChromaGain " +
         "lumaMix=$exactLumaMix " +
         "neutralWeight=$exactNeutralWeight " +
-        "reserveBottom=${next.reserveBottom} " +
-        "waveAmplitude=$exactWaveAmplitude waveDome=$exactWaveDome " +
-        "waveTime=$livingWaveTime frontGlow=$livingFrontGlow",
+        "reserveBottom=${next.reserveBottom}",
     )
 
     if (next.radius <= 0f) {
@@ -485,21 +408,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       }
 
       val currentKey = key ?: return false
-      val tide = tideFrame(host, host.width, host.height)
-
-      // progressiveFieldBlend cross-fades a crossfadeEntrance strip's sharp
-      // content and material draw toward the "agsl-debug-field" look (colour
-      // field only) — see EdgeFadeView.effectiveFieldBlend. It is a pure
-      // draw()-time alpha, not a renderer Key/shader uniform, so it is read
-      // directly every frame and only applies to the production
-      // "material" stage, where crossfadeEntrance strips exist. 0 keeps
-      // every branch below byte-identical to the pre-fieldBlend behaviour.
-      val fieldBlend =
-        if (currentKey.debugStage == "material") {
-          BlurLabGeometry.finite(host.effectiveFieldBlend()).coerceIn(0f, 1f)
-        } else {
-          0f
-        }
 
       tracePhase("EdgeFade.progressive.drawSharp") {
         val sharpSave = canvas.save()
@@ -508,8 +416,6 @@ internal class EdgeFadeProgressiveStripRenderer(
           // instead of being clipped out — the material shader itself fades
           // its coverage in near the entrance (entranceRadiusPx), cross-fading
           // against this sharp layer instead of requiring a full-res raster.
-          // fieldBlend keeps it too: the FMASK look it blends into has the
-          // sharp scene underneath.
           //
           // "fieldmask" draws the sharp scene underneath everywhere: the
           // panel mask is applied only to the already-processed field output
@@ -540,18 +446,9 @@ internal class EdgeFadeProgressiveStripRenderer(
           }
         }
 
-        // Cross-fade the material strip itself toward the field-only look in
-        // lockstep with the sharp layer above; reset to fully opaque whenever
-        // fieldBlend is inactive so no stale alpha survives a debug-stage
-        // switch (strips are reused by band.edge across configure() calls).
-        val fading = strip.crossfadeEntrance && fieldBlend > 0f
-        strip.node.setAlpha(if (fading) 1f - fieldBlend else 1f)
-        val skipMaterialDraw = fading && fieldBlend >= 1f
-
         if (
           currentKey.debugStage != "field" &&
-          currentKey.debugStage != "fieldmask" &&
-          !skipMaterialDraw
+          currentKey.debugStage != "fieldmask"
         ) {
           tracePhase("EdgeFade.progressive.drawStrip.${edgeName(strip.band.edge)}") {
             val output = strip.output
@@ -621,14 +518,9 @@ internal class EdgeFadeProgressiveStripRenderer(
                   },
                 )
                 strip.fieldMaterial.setInputShader("field", fieldShader)
-                // Light wave V0: draw-time values (the effect is rebuilt below).
-                strip.fieldMaterial.setFloatUniform("lightWaveCenter", host.progressiveLightWaveCenter)
-                strip.fieldMaterial.setFloatUniform(
-                  "lightWaveStops",
-                  host.progressiveLightWaveStops.coerceIn(-1f, 1f),
-                )
-                strip.fieldMaterial.setFloatUniform("lightWaveWidth", host.progressiveLightWaveWidth)
-                applyTideUniforms(strip, tide, host)
+                // The composite holds a snapshot of its child shader: re-bind
+                // the mask so this frame's mask uniforms reach it.
+                strip.fieldMaterial.setInputShader("mask", strip.mask)
                 strip.fieldOut.setRenderEffect(
                   RenderEffect.createRuntimeShaderEffect(strip.fieldMaterial, "content"),
                 )
@@ -818,9 +710,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       floatArrayOf(key.top * scale, exactBottom * scale, key.left * scale, key.right * scale),
     )
     strip.mask.setFloatUniform("progression", exactProgression)
-    strip.mask.setFloatUniform("waveAmp", exactWaveAmplitude * scale)
-    strip.mask.setFloatUniform("waveDome", exactWaveDome * scale)
-    strip.mask.setFloatUniform("waveTime", livingWaveTime)
     strip.mask.setFloatUniform("curveTop", curves.top)
     strip.mask.setFloatUniform("curveBottom", curves.bottom)
     strip.mask.setFloatUniform("curveLeft", curves.left)
@@ -898,16 +787,12 @@ internal class EdgeFadeProgressiveStripRenderer(
         "materialSurfaceProgression",
         exactMaterialSurfaceProgression,
       )
-      strip.material.setFloatUniform("materialVeil", exactMaterialVeil)
       strip.material.setFloatUniform("materialNeutrality", exactMaterialNeutrality)
-      strip.material.setFloatUniform("materialLumaFlatten", exactMaterialLumaFlatten)
-      setVeilColor(strip.material, veilColor(key))
       strip.material.setFloatUniform("materialCurveHeight", exactMaterialCurveHeight)
       strip.material.setFloatUniform("materialCurveOffset", exactMaterialCurveOffset)
       strip.material.setFloatUniform("materialOverlayMode", 0f)
       strip.material.setFloatUniform("materialOverlayMix", 0f)
       strip.material.setFloatUniform("fieldMaskMode", 0f)
-      strip.material.setFloatUniform("frontGlow", livingFrontGlow)
       strip.material.setFloatUniform(
         "entranceRadiusPx",
         if (strip.crossfadeEntrance) strip.kernelRadius / strip.scale else 0f,
@@ -974,10 +859,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       "materialSurfaceProgression",
       exactMaterialSurfaceProgression,
     )
-    strip.fieldMaterial.setFloatUniform("materialVeil", exactMaterialVeil)
     strip.fieldMaterial.setFloatUniform("materialNeutrality", exactMaterialNeutrality)
-    strip.fieldMaterial.setFloatUniform("materialLumaFlatten", exactMaterialLumaFlatten)
-    setVeilColor(strip.fieldMaterial, veilColor(key))
     strip.fieldMaterial.setFloatUniform("materialCurveHeight", exactMaterialCurveHeight)
     strip.fieldMaterial.setFloatUniform("materialCurveOffset", exactMaterialCurveOffset)
     strip.fieldMaterial.setFloatUniform("materialOverlayMode", 1f)
@@ -988,7 +870,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     )
     setMaskGeom(strip, key.height)
     strip.fieldMaterial.setFloatUniform("maskSpanScale", 1f)
-    strip.fieldMaterial.setFloatUniform("frontGlow", livingFrontGlow)
 
     val lowResBlur =
       (key.materialColorFieldBlurRadiusPx * scale).coerceAtLeast(0.5f)
@@ -1023,13 +904,10 @@ internal class EdgeFadeProgressiveStripRenderer(
     if (!key.materialEnabled || !key.materialActive) return
 
     val color = mixColor(key.materialColor, key.materialColorDark, progress)
-    val veil = veilColor(key)
     val lumaPivot = computeLumaPivot(key)
     for (strip in strips) {
       setMaterialColor(strip.material, color)
       setMaterialColor(strip.fieldMaterial, color)
-      setVeilColor(strip.material, veil)
-      setVeilColor(strip.fieldMaterial, veil)
       if (key.materialColorFieldEnabled && key.colorFieldActive) {
         strip.fieldSourceShader.setFloatUniform("lumaPivot", lumaPivot)
       }
@@ -1037,39 +915,12 @@ internal class EdgeFadeProgressiveStripRenderer(
     effectsDirty = true
   }
 
-  /**
-   * Cheap per-frame update for the living bottom-front noise phase and bloom
-   * intensity. Neither affects band/raster geometry (unlike waveAmplitude and
-   * waveDome), so this only re-sets shader uniforms and re-applies the
-   * already-built RenderEffect chain — no configure()/reconfigure.
-   */
-  private fun updateLivingUniforms(key: Key, time: Float, glow: Float) {
-    if (time == livingWaveTime && glow == livingFrontGlow) return
-    livingWaveTime = time
-    livingFrontGlow = glow
-    if (strips.isEmpty()) return
-
-    for (strip in strips) {
-      strip.mask.setFloatUniform("waveTime", time)
-      if (key.materialEnabled && key.materialActive) {
-        strip.material.setFloatUniform("frontGlow", glow)
-        if (key.materialColorFieldEnabled && key.colorFieldActive) {
-          strip.fieldMaterial.setFloatUniform("frontGlow", glow)
-        }
-      }
-    }
-    effectsDirty = true
-  }
-
   /** Exact (unquantized) bottom band depth for the current frame. */
-  private fun currentGeometryBottom(height: Int): Float {
-    val waveExtra = (maxOf(exactWaveDome, 0f) + exactWaveAmplitude).coerceIn(0f, height.toFloat())
-    return (exactBottom + waveExtra).coerceAtMost(height.toFloat())
-  }
+  private fun currentGeometryBottom(height: Int): Float =
+    exactBottom.coerceAtMost(height.toFloat())
 
   /**
-   * Cheap per-frame update for the animated bottom depth / wave amplitude /
-   * wave dome. Band/raster geometry (Key.reserveBottom) only changes every
+   * Cheap per-frame update for the animated bottom depth. Band/raster geometry (Key.reserveBottom) only changes every
    * ~GEOMETRY_RESERVE_QUANT_PX of travel, so most frames land here instead of
    * configure(): just push the exact values to the mask uniforms.
    *
@@ -1078,18 +929,9 @@ internal class EdgeFadeProgressiveStripRenderer(
    * spec is rebuilt from the exact depth every time it changes, but nothing
    * else (bands, curves, strip objects, logging) is touched.
    */
-  private fun updateGeometryUniforms(
-    key: Key,
-    bottom: Float,
-    waveAmplitude: Float,
-    waveDome: Float,
-  ) {
-    if (bottom == exactBottom && waveAmplitude == exactWaveAmplitude && waveDome == exactWaveDome) {
-      return
-    }
+  private fun updateGeometryUniforms(key: Key, bottom: Float) {
+    if (bottom == exactBottom) return
     exactBottom = bottom
-    exactWaveAmplitude = waveAmplitude
-    exactWaveDome = waveDome
     if (strips.isEmpty()) return
 
     val curves = this.curves ?: return
@@ -1101,8 +943,6 @@ internal class EdgeFadeProgressiveStripRenderer(
         "edges",
         floatArrayOf(key.top * scale, bottom * scale, key.left * scale, key.right * scale),
       )
-      strip.mask.setFloatUniform("waveAmp", waveAmplitude * scale)
-      strip.mask.setFloatUniform("waveDome", waveDome * scale)
       setMaskGeom(strip, key.height)
 
       if (key.backend == "agsl" && key.materialActive) {
@@ -1150,8 +990,8 @@ internal class EdgeFadeProgressiveStripRenderer(
   /**
    * Cheap per-frame update for the material/mask uniforms that animate every
    * frame during open/close/theme motion (frostProgression, materialStrength,
-   * materialExposure, materialSurface[Progression], materialVeil/Neutrality/
-   * LumaFlatten, materialCurve[Height/Offset], materialColorFieldMix,
+   * materialExposure, materialSurface[Progression], materialNeutrality,
+   * materialCurve[Height/Offset], materialColorFieldMix,
    * chromaGate/Gain, lumaMix, neutralWeight).
    * None of these change band/raster geometry or the androidx-gradient
    * RenderEffect shape (that only depends on materialActive, gradientSpan
@@ -1165,9 +1005,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     materialExposure: Float,
     materialSurface: Float,
     materialSurfaceProgression: Float,
-    materialVeil: Float,
     materialNeutrality: Float,
-    materialLumaFlatten: Float,
     materialCurveHeight: Float,
     materialCurveOffset: Float,
     colorFieldMix: Float,
@@ -1182,9 +1020,7 @@ internal class EdgeFadeProgressiveStripRenderer(
       materialExposure == exactMaterialExposure &&
       materialSurface == exactMaterialSurface &&
       materialSurfaceProgression == exactMaterialSurfaceProgression &&
-      materialVeil == exactMaterialVeil &&
       materialNeutrality == exactMaterialNeutrality &&
-      materialLumaFlatten == exactMaterialLumaFlatten &&
       materialCurveHeight == exactMaterialCurveHeight &&
       materialCurveOffset == exactMaterialCurveOffset &&
       colorFieldMix == exactColorFieldMix &&
@@ -1200,9 +1036,7 @@ internal class EdgeFadeProgressiveStripRenderer(
     exactMaterialExposure = materialExposure
     exactMaterialSurface = materialSurface
     exactMaterialSurfaceProgression = materialSurfaceProgression
-    exactMaterialVeil = materialVeil
     exactMaterialNeutrality = materialNeutrality
-    exactMaterialLumaFlatten = materialLumaFlatten
     exactMaterialCurveHeight = materialCurveHeight
     exactMaterialCurveOffset = materialCurveOffset
     exactColorFieldMix = colorFieldMix
@@ -1229,9 +1063,7 @@ internal class EdgeFadeProgressiveStripRenderer(
         strip.material.setFloatUniform("materialExposure", materialExposure)
         strip.material.setFloatUniform("materialSurface", materialSurface)
         strip.material.setFloatUniform("materialSurfaceProgression", materialSurfaceProgression)
-        strip.material.setFloatUniform("materialVeil", materialVeil)
         strip.material.setFloatUniform("materialNeutrality", materialNeutrality)
-        strip.material.setFloatUniform("materialLumaFlatten", materialLumaFlatten)
         strip.material.setFloatUniform("materialCurveHeight", materialCurveHeight)
         strip.material.setFloatUniform("materialCurveOffset", materialCurveOffset)
       }
@@ -1249,9 +1081,7 @@ internal class EdgeFadeProgressiveStripRenderer(
           "materialSurfaceProgression",
           materialSurfaceProgression,
         )
-        strip.fieldMaterial.setFloatUniform("materialVeil", materialVeil)
         strip.fieldMaterial.setFloatUniform("materialNeutrality", materialNeutrality)
-        strip.fieldMaterial.setFloatUniform("materialLumaFlatten", materialLumaFlatten)
         strip.fieldMaterial.setFloatUniform("materialCurveHeight", materialCurveHeight)
         strip.fieldMaterial.setFloatUniform("materialCurveOffset", materialCurveOffset)
         strip.fieldMaterial.setFloatUniform("materialOverlayMix", colorFieldMix)
@@ -1263,7 +1093,7 @@ internal class EdgeFadeProgressiveStripRenderer(
   /**
    * `logChange` is true only when called from a structural configure() (via
    * configureStrip); the cheap per-frame paths (updateMaterialTheme,
-   * updateLivingUniforms, updateGeometryUniforms, updateMaterialUniforms)
+   * updateGeometryUniforms, updateMaterialUniforms)
    * pass false so animating a frame never writes a log line — see
    * EdgeFadeField logging requirement.
    */
@@ -1332,290 +1162,6 @@ internal class EdgeFadeProgressiveStripRenderer(
     }
   }
 
-  /**
-   * Marea V0 surface for this frame, or null when the tide is off or at rest.
-   * The profile is g1 - beta * g2 (core and outer gaussian around the press
-   * point): beta balances the signed area over the visible width, so with
-   * volume = 1 every px of material pushed down reappears around it and vice
-   * versa. The amplitude is normalised so the centre reaches amount * height.
-   */
-  private fun tideFrame(host: EdgeFadeView, width: Int, height: Int): TideFrame? {
-    val heightPx = tideHeightPx(host, height, exactBottom)
-    val amount = BlurLabGeometry.finite(host.progressiveTideAmount)
-    // The crest reaching the top edge (amount crosses 1 upward) is the impact
-    // that launches the ripples; a new press re-arms it.
-    if (amount >= 1f && previousTideAmount < 1f) {
-      impactStartNs = System.nanoTime()
-      impactX = host.progressiveTideCenter.coerceIn(0f, 1f) * width
-    }
-    // Direction only flips on real motion: a frame drawn without a new prop
-    // repeats the amount and must not read as rising.
-    if (amount > previousTideAmount + 1e-4f) tideRising = true
-    else if (amount < previousTideAmount - 1e-4f) tideRising = false
-    val rising = tideRising
-    previousTideAmount = amount
-    // Rise -> fall blend for the lens-on-fall multiplier, eased over
-    // LENS_FALL_BLEND_S so the switch at the apex is not a step.
-    val now = System.nanoTime()
-    val dt = if (lastTideFrameNs == 0L) 0f else ((now - lastTideFrameNs) / 1e9f).coerceIn(0f, 0.1f)
-    lastTideFrameNs = now
-    val fallTarget = if (rising) 0f else 1f
-    lensFallMix += (fallTarget - lensFallMix) * (1f - exp(-dt / LENS_FALL_BLEND_S))
-    if (heightPx <= 0f || amount == 0f || width <= 0) {
-      impactStartNs = 0L
-      lensFallMix = 0f
-      tideRising = true
-      return null
-    }
-    val lensFall = 1f + (host.effectiveTideLensFall().coerceIn(0f, 3f) - 1f) * lensFallMix
-    val body = host.progressiveTideBody.coerceIn(0f, 1f)
-    val w = width.toFloat()
-    val sigmaDome = host.effectiveTideWidth().coerceIn(0.1f, 4f) * w / 2.3548f
-    val shape = host.progressiveTideShape.coerceIn(0f, 3f)
-    val sigma1 =
-      (sigmaDome * (TIDE_PRESS_WIDTH_RATIO + (1f - TIDE_PRESS_WIDTH_RATIO) * shape))
-        .coerceAtLeast(1f)
-    val sigma2 = sigma1 * TIDE_OUTER_SIGMA_RATIO
-    val center = host.progressiveTideCenter.coerceIn(0f, 1f) * w
-    val sharp = host.effectiveTideSharpness().coerceIn(1f, 3f)
-    var area1 = 0f
-    var area2 = 0f
-    for (i in 0 until TIDE_AREA_SAMPLES) {
-      val d = (i + 0.5f) / TIDE_AREA_SAMPLES * w - center
-      area1 += exp(-0.5f * abs(d / sigma1).pow(sharp))
-      area2 += exp(-0.5f * d * d / (sigma2 * sigma2))
-    }
-    var beta = host.effectiveTideVolume().coerceIn(0f, 1f) * area1 / area2.coerceAtLeast(1e-6f)
-    // A dome as tall as the screen cannot be paid for by the panel: cap the
-    // returned-volume trough so it never drains the panel. The moat depth is
-    // |A| * beta / (1 - beta) for a centre amplitude A.
-    val maxMoat = TIDE_MAX_MOAT * exactBottom
-    val centre = abs(amount) * heightPx
-    if (centre * beta / (1f - beta).coerceAtLeast(1e-3f) > maxMoat) {
-      beta = maxMoat / (centre + maxMoat)
-    }
-    val peak = (1f - beta).coerceAtLeast(0.2f)
-    return TideFrame(
-      amplitudePx = amount * heightPx / peak,
-      centerPx = center,
-      sigma1Px = sigma1,
-      sigma2Px = sigma2,
-      beta = beta,
-      meniscusPerPx = host.effectiveTideMeniscus() / heightPx,
-      meniscusBandPx = TIDE_MENISCUS_BAND * w,
-      wallPx = tideWallPx(host, height, exactBottom),
-      anchorPx = tideAnchorPx(host, exactBottom),
-      sharpness = sharp,
-      flickerPx = host.effectiveTideFlicker().coerceIn(0f, 0.3f) *
-        tideWallPx(host, height, exactBottom) * amount.coerceIn(0f, 1f),
-      time = BlurLabGeometry.finite(host.progressiveTideTime),
-      viewWidth = w,
-      impactX = impactX,
-      impactAge =
-        if (impactStartNs == 0L) -1f else (System.nanoTime() - impactStartNs) / 1e9f,
-      ripple = host.effectiveTideRipple().coerceIn(0f, 3f),
-      shellLook = host.effectiveTideShellLook().coerceIn(0f, 2f),
-      // Full strength almost as soon as the flame leaves the panel (LENS_RISE);
-      // on the way back it fades over the last LENS_FADE of the settle.
-      // Light and sheen never exceed the rise level: lens on fall scales the
-      // bend only, not the glint.
-      lensLevel = lensLevel(amount, rising) * min(lensFall, 1f) * body,
-      lensPx = host.effectiveTideLens().coerceIn(0f, 3f) * LENS_DISPLACEMENT * w *
-        lensLevel(amount, rising) * lensFall * body,
-      body = body,
-      // Body lift cap above the panel (reach 1 = up to the top edge: no cap).
-      bodyMaxPx = host.effectiveTideBodyReach().coerceIn(0f, 1f).let { r ->
-        if (r >= 0.999f) 0f else (r * (height - exactBottom)).coerceAtLeast(1f)
-      },
-      viewHeight = height.toFloat(),
-    )
-  }
-
-  /**
-   * Dome height in px: the reach is measured from the surface's birth line
-   * (the panel top, or lower with an anchor) to the top edge of the view, so
-   * 1 puts the surface exactly on the top edge.
-   */
-  private fun tideHeightPx(host: EdgeFadeView, height: Int, bottom: Float): Float =
-    host.effectiveTideHeight().coerceIn(0f, 1.5f) * tideWallPx(host, height, bottom)
-
-  /** Birth line below the panel top, px (0 = the surface is born there). */
-  private fun tideAnchorPx(host: EdgeFadeView, bottom: Float): Float =
-    host.progressiveTideAnchor.coerceIn(0f, 1f) * bottom.coerceAtLeast(0f)
-
-  private fun tideWallPx(host: EdgeFadeView, height: Int, bottom: Float): Float =
-    ((height - bottom).coerceAtLeast(0f) + tideAnchorPx(host, bottom)).coerceAtLeast(1f)
-
-  /**
-   * Raster room above the band for the highest dome plus its meniscus. Only
-   * reserved while the tide moves, so the resting panel keeps its raster.
-   */
-  private fun tideReserve(host: EdgeFadeView, width: Int, height: Int, bottom: Float): Float {
-    if (BlurLabGeometry.finite(host.progressiveTideAmount) == 0f) return 0f
-    val heightPx = tideHeightPx(host, height, bottom)
-    if (heightPx <= 0f) return 0f
-    val meniscus = if (host.effectiveTideMeniscus() > 0f) 3f * TIDE_MENISCUS_BAND * width else 0f
-    return heightPx * TIDE_RESERVE_OVERSHOOT + meniscus
-  }
-
-  private var previousTideAmount = 0f
-  private var tideRising = true
-  private var lastTideFrameNs = 0L
-  private var lensFallMix = 0f
-  private var impactStartNs = 0L
-  private var impactX = 0f
-
-  private fun applyTideUniforms(strip: Strip, tide: TideFrame?, host: EdgeFadeView) {
-    val scale = strip.scale
-    // Views outside the host (the showcase chrome) bend under the same wave.
-    EdgeFadeTideBus.publish(
-      tide?.let {
-        TideSurface(
-          host = WeakReference(host),
-          amplitudePx = it.amplitudePx,
-          centerPx = it.centerPx,
-          sigma1Px = it.sigma1Px,
-          sigma2Px = it.sigma2Px,
-          beta = it.beta,
-          wallPx = it.wallPx,
-          sharpness = it.sharpness,
-          flickerPx = it.flickerPx,
-          time = it.time,
-          baselineY = it.viewHeight - exactBottom + it.anchorPx,
-          slopeScale = 1f / scale.coerceAtLeast(0.01f),
-          lensPx = it.lensPx,
-          bandPx = LENS_BAND * it.viewWidth,
-          // No split on the chrome: on a transparent layer it only tints the
-          // text green; the feed underneath carries the dispersion.
-          chroma = 0f,
-        )
-      },
-    )
-    val reveal = host.progressiveTideReveal
-    val light = host.progressiveTideBgLight
-    val dark = host.progressiveTideBgDark
-    val toDark = host.progressiveTideRevealTo >= 0.5f
-    val from = if (toDark) light else dark
-    val to = if (toDark) dark else light
-    strip.fieldMaterial.setFloatUniform("bgReveal", if (reveal < 0f) -1f else reveal)
-    strip.fieldMaterial.setFloatUniform(
-      "bgFrom", Color.red(from) / 255f, Color.green(from) / 255f, Color.blue(from) / 255f,
-    )
-    strip.fieldMaterial.setFloatUniform(
-      "bgTo", Color.red(to) / 255f, Color.green(to) / 255f, Color.blue(to) / 255f,
-    )
-    if (tide == null) {
-      strip.mask.setFloatUniform("tideAnchor", 0f)
-      strip.fieldMaterial.setFloatUniform("tideAnchor", 0f)
-      strip.mask.setFloatUniform("tideBody", 1f)
-      strip.fieldMaterial.setFloatUniform("tideBody", 1f)
-      strip.mask.setFloatUniform("tideBodyMax", 0f)
-      strip.fieldMaterial.setFloatUniform("tideBodyMax", 0f)
-      strip.fieldMaterial.setFloatUniform("cornerCalm", 0f, 1f, 1f)
-      strip.mask.setFloatUniform("tide", 0f, 0f, 1f, 1f)
-      strip.fieldMaterial.setFloatUniform("tide", 0f, 0f, 1f, 1f)
-      strip.fieldMaterial.setFloatUniform("meniscus", 0f, 1f)
-      strip.fieldMaterial.setFloatUniform("rippleSrc", 0f, -1f, 0f, 1f)
-      strip.fieldMaterial.setFloatUniform("lensFront", 0f, 1f, 0f, 0f)
-      strip.fieldMaterial.setFloatUniform("lensLevel", 0f)
-    } else {
-      strip.mask.setFloatUniform(
-        "tide",
-        tide.amplitudePx * scale,
-        tide.centerPx * scale,
-        tide.sigma1Px * scale,
-        tide.sigma2Px * scale,
-      )
-      strip.mask.setFloatUniform("tideBeta", tide.beta)
-      strip.mask.setFloatUniform("tideWall", tide.wallPx * scale)
-      strip.mask.setFloatUniform("tideSharp", tide.sharpness)
-      strip.mask.setFloatUniform("tideFlicker", tide.flickerPx * scale, tide.time)
-      strip.mask.setFloatUniform("tideAnchor", tide.anchorPx * scale)
-      strip.fieldMaterial.setFloatUniform("tideAnchor", tide.anchorPx)
-      strip.mask.setFloatUniform("tideBody", tide.body)
-      strip.fieldMaterial.setFloatUniform("tideBody", tide.body)
-      strip.mask.setFloatUniform("tideBodyMax", tide.bodyMaxPx * scale)
-      strip.fieldMaterial.setFloatUniform("tideBodyMax", tide.bodyMaxPx)
-      strip.fieldMaterial.setFloatUniform(
-        "cornerCalm", tide.viewWidth, CORNER_CALM_RADIUS * tide.viewWidth, CORNER_CALM_MIN,
-      )
-      strip.fieldMaterial.setFloatUniform(
-        "tide",
-        tide.amplitudePx,
-        (tide.centerPx - strip.band.source.left) * scale,
-        tide.sigma1Px * scale,
-        tide.sigma2Px * scale,
-      )
-      strip.fieldMaterial.setFloatUniform("tideBeta", tide.beta)
-      strip.fieldMaterial.setFloatUniform("tideWall", tide.wallPx)
-      strip.fieldMaterial.setFloatUniform("tidePile", TIDE_PILE)
-      strip.fieldMaterial.setFloatUniform("tideSharp", tide.sharpness)
-      strip.fieldMaterial.setFloatUniform("tideFlicker", tide.flickerPx, tide.time)
-      strip.fieldMaterial.setFloatUniform("srcLeft", strip.band.source.left.toFloat())
-      strip.fieldMaterial.setFloatUniform(
-        "rippleSrc",
-        tide.impactX,
-        tide.impactAge,
-        if (tide.impactAge >= 0f && tide.impactAge < SHELL_LIFETIME_S) tide.ripple else 0f,
-        tide.viewWidth,
-      )
-      val reach = maxOf(tide.impactX, tide.viewWidth - tide.impactX)
-      strip.fieldMaterial.setFloatUniform(
-        "rippleShape",
-        SHELL_EXPAND_S,
-        SHELL_BAND * tide.viewWidth,
-        SHELL_DISPLACEMENT * tide.viewWidth,
-        sqrt(reach * reach + tide.viewHeight * tide.viewHeight) * SHELL_RADIUS_OVERSCAN,
-      )
-      strip.fieldMaterial.setFloatUniform(
-        "lensFront",
-        tide.lensPx,
-        LENS_BAND * tide.viewWidth,
-        LENS_CHROMA,
-        LENS_GLOW,
-      )
-      strip.fieldMaterial.setFloatUniform("lensLevel", tide.lensLevel)
-      strip.fieldMaterial.setFloatUniform("shellLook", tide.shellLook)
-      strip.fieldMaterial.setFloatUniform("meniscus", tide.meniscusPerPx, tide.meniscusBandPx)
-    }
-    // The composite holds a snapshot of its child shader: re-bind the mask so
-    // the new tide uniforms reach the early-out intensity too.
-    strip.fieldMaterial.setInputShader("mask", strip.mask)
-  }
-
-  private class TideFrame(
-    val amplitudePx: Float,
-    val centerPx: Float,
-    val sigma1Px: Float,
-    val sigma2Px: Float,
-    val beta: Float,
-    val meniscusPerPx: Float,
-    val meniscusBandPx: Float,
-    val wallPx: Float,
-    val anchorPx: Float,
-    val body: Float,
-    val bodyMaxPx: Float,
-    val sharpness: Float,
-    val flickerPx: Float,
-    val time: Float,
-    val viewWidth: Float,
-    val impactX: Float,
-    val impactAge: Float,
-    val ripple: Float,
-    val shellLook: Float,
-    val lensLevel: Float,
-    val lensPx: Float,
-    val viewHeight: Float,
-  )
-
-  private fun lensLevel(amount: Float, rising: Boolean): Float =
-    smoothstep01(amount / if (rising) LENS_RISE else LENS_FADE)
-
-  private fun smoothstep01(x: Float): Float {
-    val t = x.coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
-  }
-
   private fun setMaskGeom(strip: Strip, height: Int) {
     strip.fieldMaterial.setFloatUniform(
       "maskGeom",
@@ -1634,24 +1180,6 @@ internal class EdgeFadeProgressiveStripRenderer(
       Color.blue(color) / 255f,
     )
   }
-
-  private fun setVeilColor(shader: RuntimeShader, color: Int) {
-    shader.setFloatUniform(
-      "veilColor",
-      Color.red(color) / 255f,
-      Color.green(color) / 255f,
-      Color.blue(color) / 255f,
-    )
-  }
-
-  /**
-   * "Focus" theme veil colour: pure white in light theme, mixing toward the
-   * effective dark material anchor as materialThemeProgress goes dark —
-   * mirrors the materialColor mix so the veil reads as part of the same
-   * material, not an unrelated tint.
-   */
-  private fun veilColor(key: Key): Int =
-    mixColor(Color.WHITE, key.materialColorDark, materialThemeProgress)
 
   private fun mixColor(light: Int, dark: Int, progress: Float): Int {
     val t = progress.coerceIn(0f, 1f)
@@ -1720,19 +1248,13 @@ internal class EdgeFadeProgressiveStripRenderer(
     content.discardDisplayList()
     key = null
     materialThemeProgress = Float.NaN
-    livingWaveTime = Float.NaN
-    livingFrontGlow = Float.NaN
     exactBottom = Float.NaN
-    exactWaveAmplitude = Float.NaN
-    exactWaveDome = Float.NaN
     exactProgression = Float.NaN
     exactMaterialStrength = Float.NaN
     exactMaterialExposure = Float.NaN
     exactMaterialSurface = Float.NaN
     exactMaterialSurfaceProgression = Float.NaN
-    exactMaterialVeil = Float.NaN
     exactMaterialNeutrality = Float.NaN
-    exactMaterialLumaFlatten = Float.NaN
     exactMaterialCurveHeight = Float.NaN
     exactMaterialCurveOffset = Float.NaN
     exactColorFieldMix = Float.NaN

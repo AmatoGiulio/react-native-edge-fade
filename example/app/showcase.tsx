@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -383,7 +382,6 @@ function AccountRow({
 }
 
 export default function ProgressiveShowcaseRoute() {
-  const insets = useSafeAreaInsets();
   const { height, width } = useWindowDimensions();
   const params = useLocalSearchParams<{ bench?: string | string[] }>();
 
@@ -418,9 +416,6 @@ export default function ProgressiveShowcaseRoute() {
 
   const [open, setOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [debugStage, setDebugStage] = useState<
-    'material' | 'field' | 'fieldmask' | 'capture' | 'gaussian'
-  >('fieldmask');
   const progress = useSharedValue(0);
   const closedNavOpacity = useSharedValue(1);
   const openMenuOpacity = useSharedValue(0);
@@ -699,25 +694,6 @@ export default function ProgressiveShowcaseRoute() {
     }
   };
 
-  const cycleDebugStage = () => {
-    setDebugStage((current) =>
-      current === 'material'
-        ? 'field'
-        : current === 'field'
-          ? 'fieldmask'
-          : current === 'fieldmask'
-            ? 'capture'
-            : current === 'capture'
-              ? 'gaussian'
-              : 'material'
-    );
-  };
-
-  const debugBackend =
-    debugStage === 'material'
-      ? 'androidx-gradient'
-      : `agsl-debug-${debugStage}`;
-
   // Closed nav geometry.
   const closedNavLabelFontSize = Math.round(
     W * REF_LAYOUT.closedNav.labelFontSize
@@ -769,7 +745,9 @@ export default function ProgressiveShowcaseRoute() {
         curve={REFERENCE_BLUR_CURVE}
         blurRadius={blurRadiusDp}
         blurProgression={blurProgressionValue}
-        progressiveBackend={debugBackend}
+        // Showcase look: sharp scene + low-res colour field + material in one
+        // opaque full-res pass (see EdgeFadeProgressiveStripRenderer).
+        progressiveBackend="agsl-debug-fieldmask"
         progressiveNativeTuner={true}
         // Static per theme: no strength motion on open/close or theme swap.
         progressiveMaterialStrength={strengthValue}
@@ -953,25 +931,6 @@ export default function ProgressiveShowcaseRoute() {
           />
         </Animated.View>
       </ProgressiveFade>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Cycle progressive debug stage"
-        onPress={cycleDebugStage}
-        style={[s.debugProbe, { top: insets.top + 6 }]}
-      >
-        <Text style={s.debugProbeText}>
-          {debugStage === 'material'
-            ? 'FULL'
-            : debugStage === 'field'
-              ? 'FIELD'
-              : debugStage === 'fieldmask'
-                ? 'FMASK'
-                : debugStage === 'capture'
-                  ? 'CAP'
-                  : 'GAUSS'}
-        </Text>
-      </Pressable>
 
       <Animated.View
         pointerEvents={open ? 'auto' : 'none'}
@@ -1208,25 +1167,6 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: '#efeeec',
     overflow: 'hidden',
-  },
-
-  debugProbe: {
-    position: 'absolute',
-    right: 8,
-    zIndex: 100,
-    minWidth: 48,
-    height: 26,
-    paddingHorizontal: 8,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.64)',
-  },
-  debugProbeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.4,
   },
 
   previousCard: {
