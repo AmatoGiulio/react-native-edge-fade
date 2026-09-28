@@ -47,9 +47,15 @@ class EdgeFadeViewManager :
     view.progressiveStructureDirty = false
   }
 
+  // React drops the view as soon as a screen unmounts, but a navigator keeps
+  // drawing it for the whole exit animation. Releasing the blur here would
+  // show the mask fallback for those frames, so the release waits until the
+  // view actually leaves the window.
   override fun onDropViewInstance(view: EdgeFadeView) {
-    EdgeFadeGlesMotionInvalidator.unregister(view)
-    EdgeFadeProgressiveBlurEffect.unregister(view)
+    view.releaseWhenOffScreen {
+      EdgeFadeGlesMotionInvalidator.unregister(view)
+      EdgeFadeProgressiveBlurEffect.unregister(view)
+    }
     super.onDropViewInstance(view)
   }
 

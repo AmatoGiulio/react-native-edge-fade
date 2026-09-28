@@ -115,7 +115,18 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     bottomSlot.release()
     leftSlot.release()
     rightSlot.release()
+    pendingRelease?.let {
+      pendingRelease = null
+      it()
+    }
     super.onDetachedFromWindow()
+  }
+
+  private var pendingRelease: (() -> Unit)? = null
+
+  /** Runs [release] once this view is off screen: now if detached, else on detach. */
+  internal fun releaseWhenOffScreen(release: () -> Unit) {
+    if (isAttachedToWindow) pendingRelease = release else release()
   }
 
   /**

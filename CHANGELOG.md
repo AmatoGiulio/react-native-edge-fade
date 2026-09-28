@@ -14,6 +14,7 @@
 
 ### Bug fixes
 
+* **android:** a blurred view that is leaving the screen (e.g. the previous page during a back navigation) keeps its blur until it is actually off screen. React drops the view at unmount, before the navigator's exit animation ends, which used to show the mask fallback for those frames.
 * **animated:** a prop driven by a `SharedValue` in `AnimatedEdgeFadeView` is no longer also sent as a static placeholder. A React re-render (e.g. a list reaching its end) used to reset animated edge sizes to 0 until the SharedValue changed again, switching the effect off.
 
 ### API
