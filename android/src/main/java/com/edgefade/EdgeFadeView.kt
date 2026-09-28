@@ -62,9 +62,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   /** Example-only comparison switch: "auto" or "androidx" (official BlurRadiusSpec). */
   internal var progressiveBackend: String = "auto"
 
-  /** Diagnostics: run the GLES backend on API 33+ (see EdgeFadeProgressiveBlurEffect). */
-  internal var debugForceGles: Boolean = false
-
   /**
    * Set by EdgeFadeViewManager's ReactProp setters when a structural prop
    * changed (mode selection, band presence, curves) — but NOT by the

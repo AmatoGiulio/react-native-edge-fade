@@ -69,11 +69,6 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   fun apply(view: EdgeFadeView) {
     val state = states[view] ?: return
-    val forceGles = debugForceGles(view)
-    if (forceGles != view.debugForceGles) {
-      clearProgressive(view)
-      view.debugForceGles = forceGles
-    }
     val requested = state.requestedMode
 
     if (requested != "blur") {
@@ -343,20 +338,10 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   private const val TAG = "EdgeFadeProgressive"
 
+  // `view` is kept for call-site symmetry with the per-view backend state.
+  @Suppress("UNUSED_PARAMETER")
   private fun useAgsl(view: EdgeFadeView): Boolean =
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !view.debugForceGles
-
-  /**
-   * Diagnostics only: `adb shell settings put global edgefade_debug_backend gles`
-   * runs the API 31-32 GLES backend on a newer device so both engines can be
-   * measured on the same hardware. Not part of the public API.
-   */
-  private fun debugForceGles(view: EdgeFadeView): Boolean =
-    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-      android.provider.Settings.Global.getString(
-        view.context.contentResolver,
-        "edgefade_debug_backend",
-      ) == "gles"
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
   private const val SURFACE_VIEW_REASON =
     "contains a SurfaceView, which composites outside the view hierarchy; " +
       "render video/camera/maps into a TextureView (e.g. expo-video surfaceType=\"textureView\")"
