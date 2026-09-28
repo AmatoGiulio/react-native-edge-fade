@@ -16,7 +16,7 @@
  *
  * The paired-tap blur kernel is adapted from AndroidX BlurShaders.kt,
  * inspected Git blob 9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd.
- * Changes: mirrored bounds, strip-local extents, continuous tap support,
+ * Changes: clamp-only bounds, strip-local extents, continuous tap support,
  * and a four-edge radius mask. This is a port, NOT the Compose binary.
  * See android/PROGRESSIVE_BLUR_NOTICE.md.
  */
@@ -59,7 +59,7 @@ internal object EdgeFadeBlurShaders {
         if (isFinal > 0.5) {
           float2 edge = min(coord - visible.xy, visible.zw - coord);
           coverage = clamp(min(edge.x, edge.y) + 0.5, 0.0, 1.0)
-            * smoothstep(0.75, 1.5 / rasterScale, radius / rasterScale);
+            * smoothstep(0.75, 3.0, radius / rasterScale);
           if (coverage <= 0.0) return half4(0.0);
         }
     """
@@ -75,14 +75,8 @@ internal object EdgeFadeBlurShaders {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
 
-      // Samples past the raster edge are mirrored back inside, so the last
-      // pixels get a full, symmetric kernel. Dropping them would leave a
-      // one-sided, visibly sharper blur along the view's outer edges.
-      float2 mirror(float2 p) {
-        float e = extent.$axis - 0.5;
-        float v = abs(p.$axis - 0.5);
-        p.$axis = e - abs(e - v) + 0.5;
-        return p;
+      float inside(float2 p) {
+        return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
       }
 
       half4 main(float2 coord) {
@@ -104,8 +98,8 @@ internal object EdgeFadeBlurShaders {
           float2 offset = $offset;
           float2 a = coord - offset;
           float2 b = coord + offset;
-          result += weight * (float4(content.eval(mirror(a))) + float4(content.eval(mirror(b))));
-          weightSum += 2.0 * weight;
+          if (inside(a) > 0.0) { result += weight * float4(content.eval(a)); weightSum += weight; }
+          if (inside(b) > 0.0) { result += weight * float4(content.eval(b)); weightSum += weight; }
         }
         return half4(result / weightSum * coverage);
       }

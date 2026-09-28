@@ -5,7 +5,7 @@
 ### Android blur
 
 * **android:** replace the 0.2.2 multi-level blur stack with a true spatially varying Gaussian. Every fragment derives its radius from the edge curve (`radius = blurRadius * intensity`); there are no discrete levels, opacity cross-fades, saturation/lift grade or tint veil.
-* **android:** API 33+ runs one renderer: an AGSL port of the AndroidX `BlurRadiusSpec` kernel (Apache-2.0, no Compose dependency), at half resolution (a quarter above 96 px radius) with the sharp scene underneath; top/bottom-only fades blur just their bands, side edges use one area for the whole view, radius cap 300 px. Passes run in the AndroidX order (horizontal, then vertical) with a continuous tap support that removes AndroidX's horizontal banding. Each blurred strip renders into its own layer, so partial window redraws (e.g. a pressed header button) never recompute a cropped blur.
+* **android:** API 33+ runs one renderer: an AGSL port of the AndroidX `BlurRadiusSpec` kernel (Apache-2.0, no Compose dependency), at half resolution with the sharp scene underneath; top/bottom-only fades blur just their bands, side edges use one area for the whole view, radius cap 300 px. Passes run in the AndroidX order (horizontal, then vertical) with a continuous tap support that removes AndroidX's horizontal banding. Each blurred strip renders into its own layer, so partial window redraws (e.g. a pressed header button) never recompute a cropped blur.
 * **android:** API 31–32 use an OpenGL ES 3.0 backend with the same radius field. API < 31 falls back to `mask`.
 * **android:** blur tracks moving content — lists, animations, `WebView` and `TextureView` video — by re-recording when a descendant invalidates.
 * **android:** content containing a `SurfaceView` (default video surface, camera, maps) is left sharp with a logged warning instead of being masked, since any offscreen layer blacks it out. Use a `TextureView` surface to blur video.
@@ -14,7 +14,6 @@
 
 ### Bug fixes
 
-* **android:** the blur stays full up to the view's outer edges: kernel samples past the edge are mirrored back inside instead of dropped, which left a one-sided, sharper strip along the screen edges.
 * **android:** `EdgeFadeView` no longer lets `FrameLayout` re-layout its children at (0, 0) when a descendant requests a native layout pass (e.g. a video surface becoming ready); React Native owns child layout.
 * **android:** a descendant change outside the blurred areas (e.g. a playing video away from the edges) no longer forces a full-view redraw.
 * **android:** a blurred view that is leaving the screen (e.g. the previous page during a back navigation) keeps its blur until it is actually off screen. React drops the view at unmount, before the navigator's exit animation ends, which used to show the mask fallback for those frames.

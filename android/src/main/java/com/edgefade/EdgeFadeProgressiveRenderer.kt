@@ -20,10 +20,9 @@ import kotlin.math.ceil
  * drawn over the sharp scene. Where the radius is zero the shaders return
  * early.
  *
- * Working scale follows the radius: half resolution by default, a quarter
- * above [QUARTER_RES_MIN_RADIUS_PX], where the blur hides the upscale. Geometry
- * and radius scale together; measured on device, full resolution was slower at
- * every radius without a visible difference.
+ * The areas run at half resolution, geometry and radius scaled together.
+ * Measured on device, full resolution was slower at every radius without a
+ * visible difference; a quarter was cheaper but showed column streaks.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
@@ -201,11 +200,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
 
     // The official AndroidX comparison runs at full resolution, as an app
     // using BlurRadiusSpec directly would.
-    scale = when {
-      key.androidx -> 1f
-      key.radius > QUARTER_RES_MIN_RADIUS_PX -> QUARTER_RES_SCALE
-      else -> HALF_RES_SCALE
-    }
+    scale = if (key.androidx) 1f else HALF_RES_SCALE
 
     val curves = arrayOf(
       curveUniforms(key.curveTop),
@@ -331,8 +326,6 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
 
   companion object {
     const val HALF_RES_SCALE = 0.5f
-    const val QUARTER_RES_SCALE = 0.25f
-    const val QUARTER_RES_MIN_RADIUS_PX = 96f
 
     /** Public radius cap; the kernel cap applies in the half-resolution raster. */
     const val MAX_SCREEN_RADIUS_PX = EdgeFadeBlurShaders.MAX_KERNEL_RADIUS_PX / HALF_RES_SCALE
