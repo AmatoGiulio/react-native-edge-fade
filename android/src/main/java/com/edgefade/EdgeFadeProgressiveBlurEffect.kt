@@ -338,6 +338,10 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   private const val TAG = "EdgeFadeProgressive"
 
+  /** Whether a descendant change inside [rect] (host coordinates) reaches the blur. */
+  fun blurNeedsRedraw(view: EdgeFadeView, rect: android.graphics.Rect): Boolean =
+    if (useAgsl(view)) Api33.rendererFor(view)?.overlapsBlur(rect) ?: true else true
+
   // `view` is kept for call-site symmetry with the per-view backend state.
   @Suppress("UNUSED_PARAMETER")
   private fun useAgsl(view: EdgeFadeView): Boolean =

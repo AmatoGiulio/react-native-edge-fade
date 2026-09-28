@@ -122,6 +122,18 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
     super.onDetachedFromWindow()
   }
 
+  // React Native owns the layout of every child (Yoga). FrameLayout would
+  // otherwise re-layout them at (0, 0) whenever a descendant requests a native
+  // layout pass, e.g. a video surface becoming ready.
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    setMeasuredDimension(
+      MeasureSpec.getSize(widthMeasureSpec),
+      MeasureSpec.getSize(heightMeasureSpec),
+    )
+  }
+
+  override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) = Unit
+
   private var pendingRelease: (() -> Unit)? = null
 
   /** Runs [release] once this view is off screen: now if detached, else on detach. */
@@ -135,16 +147,24 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
    * lists can be re-recorded without invalidating the parent display list, which
    * leaves a materialized progressive scene stale during scrolling/animation.
    *
-   * Re-mark only an active non-zero progressive host dirty when Android reports
-   * descendant drawing invalidation. The zero-radius identity path and every
-   * non-progressive mode keep the platform's normal invalidation behavior.
+   * Re-mark the host dirty only when the invalidated descendant overlaps a blur
+   * area. Re-recording the host damages the whole view, so a playing video
+   * outside the blurred bands must keep Android's partial redraw.
    */
   override fun onDescendantInvalidated(child: View, target: View) {
     super.onDescendantInvalidated(child, target)
-    if (progressiveBlurActive && blurRadius > 0f) {
+    if (!progressiveBlurActive || blurRadius <= 0f) return
+    descendantRect.set(0, 0, target.width, target.height)
+    try {
+      offsetDescendantRectToMyCoords(target, descendantRect)
+    } catch (_: IllegalArgumentException) {
       invalidate()
+      return
     }
+    if (EdgeFadeProgressiveBlurEffect.blurNeedsRedraw(this, descendantRect)) invalidate()
   }
+
+  private val descendantRect = android.graphics.Rect()
 
   /**
    * Touch reaches this host before it is dispatched to the wrapped ScrollView.

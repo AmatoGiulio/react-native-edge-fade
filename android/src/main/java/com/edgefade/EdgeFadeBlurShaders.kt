@@ -59,7 +59,7 @@ internal object EdgeFadeBlurShaders {
         if (isFinal > 0.5) {
           float2 edge = min(coord - visible.xy, visible.zw - coord);
           coverage = clamp(min(edge.x, edge.y) + 0.5, 0.0, 1.0)
-            * smoothstep(0.75, 3.0, radius / rasterScale);
+            * smoothstep(0.75, 1.5 / rasterScale, radius / rasterScale);
           if (coverage <= 0.0) return half4(0.0);
         }
     """
