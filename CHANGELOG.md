@@ -14,6 +14,7 @@
 
 ### Bug fixes
 
+* **android:** the blur stays full up to the view's outer edges: kernel samples past the edge are mirrored back inside instead of dropped, which left a one-sided, sharper strip along the screen edges.
 * **android:** `EdgeFadeView` no longer lets `FrameLayout` re-layout its children at (0, 0) when a descendant requests a native layout pass (e.g. a video surface becoming ready); React Native owns child layout.
 * **android:** a descendant change outside the blurred areas (e.g. a playing video away from the edges) no longer forces a full-view redraw.
 * **android:** a blurred view that is leaving the screen (e.g. the previous page during a back navigation) keeps its blur until it is actually off screen. React drops the view at unmount, before the navigator's exit animation ends, which used to show the mask fallback for those frames.

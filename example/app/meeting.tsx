@@ -29,6 +29,8 @@ const OPEN_FADE = CARD_BOTTOM + CARD_OPEN + OPEN_LEAD;
 const REST_BLUR = 18;
 const OPEN_BLUR = 150 / PixelRatio.get();
 
+const CONTENT_OPEN_SCALE = 0.95;
+
 const SPRING = { duration: 650, dampingRatio: 0.92 };
 const AUTO_INTERVAL_MS = 3500;
 
@@ -110,6 +112,12 @@ export default function MeetingScreen() {
   const cardStyle = useAnimatedStyle(() => ({
     height: interpolate(progress.get(), [0, 1], [CARD_REST, CARD_OPEN]),
   }));
+  // The page behind recedes slightly as the card comes forward.
+  const contentStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: interpolate(progress.get(), [0, 1], [1, CONTENT_OPEN_SCALE]) },
+    ],
+  }));
   const detailStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.get(), [0.35, 1], [0, 1], 'clamp'),
     transform: [
@@ -126,7 +134,13 @@ export default function MeetingScreen() {
         curve="smoother"
         style={styles.fill}
       >
-        <View style={[styles.content, { paddingTop: insets.top + 24 }]}>
+        <Animated.View
+          style={[
+            styles.content,
+            { paddingTop: insets.top + 24 },
+            contentStyle,
+          ]}
+        >
           <View style={styles.videoCard}>
             <VideoView
               player={player}
@@ -157,7 +171,7 @@ export default function MeetingScreen() {
               </View>
             </View>
           ))}
-        </View>
+        </Animated.View>
       </AnimatedEdgeFadeView>
 
       <Animated.View
@@ -209,7 +223,7 @@ export default function MeetingScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FFFFFF' },
   fill: { flex: 1, backgroundColor: '#FFFFFF' },
-  content: { paddingHorizontal: 20 },
+  content: { flex: 1, paddingHorizontal: 20 },
   videoCard: {
     height: 210,
     borderRadius: 22,

@@ -11,7 +11,7 @@ paired-sample blur kernel from AndroidX:
 - Original copyright: Copyright 2026 The Android Open Source Project
 - Modifications: Copyright 2026 Giulio Amato
 
-Changes in this adaptation: the bounded/Clamp-mode in-bounds renormalization
+Changes in this adaptation: mirrored sampling past the raster edge (instead of the Clamp-mode in-bounds renormalization
 used by the AndroidX runtime-shader path (without the Decal option); strip-local
 extents; per-strip mutable RuntimeShader instances; an edge-union intensity
 mask; support for the library's analytical presets and serialized custom-curve

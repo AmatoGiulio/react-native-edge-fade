@@ -53,9 +53,8 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     val height: Int get() = bottom - top
   }
 
-  /** One blurred region: `visible` is drawn, `source` adds the kernel's reach. */
+  /** One blurred region; `source` includes the kernel's reach. */
   private class Area {
-    var visible = Rect(0, 0, 0, 0)
     var source = Rect(0, 0, 0, 0)
     val node = RenderNode("EdgeFade.progressive.blur")
 
@@ -216,9 +215,8 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     )
     val regions = regions(key)
     val previous = areas
-    areas = regions.mapIndexed { i, (visible, source) ->
+    areas = regions.mapIndexed { i, source ->
       (previous.getOrNull(i) ?: Area()).also { area ->
-        area.visible = visible
         area.source = source
         configureArea(area, key, curves)
       }
@@ -232,26 +230,26 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
    * bands meet in rounded corners: one area for the whole view is then cheaper
    * than stitching bands (measured on device).
    */
-  private fun regions(key: Key): List<Pair<Rect, Rect>> {
+  private fun regions(key: Key): List<Rect> {
     val w = key.width
     val h = key.height
     val full = Rect(0, 0, w, h)
-    if (key.left > 0 || key.right > 0) return listOf(full to full)
+    if (key.left > 0 || key.right > 0) return listOf(full)
 
     val grid = Math.round(1f / scale)
     val pad = ceil(key.radius).toInt() + 2 * grid
     val bottomTop = h - key.bottom
-    if (key.top + pad >= bottomTop - pad) return listOf(full to full)
+    if (key.top + pad >= bottomTop - pad) return listOf(full)
 
-    val result = ArrayList<Pair<Rect, Rect>>(2)
+    val result = ArrayList<Rect>(2)
     if (key.top > 0) {
-      result += Rect(0, 0, w, key.top) to Rect(0, 0, w, (key.top + pad).coerceAtMost(h))
+      result += Rect(0, 0, w, (key.top + pad).coerceAtMost(h))
     }
     if (key.bottom > 0) {
       // Snap the raster origin to the low-res grid so an animated edge never
       // resamples content on a fractionally shifted grid (shimmer).
       val sourceTop = Math.floorDiv((bottomTop - pad).coerceAtLeast(0), grid) * grid
-      result += Rect(0, bottomTop, w, h) to Rect(0, sourceTop, w, h)
+      result += Rect(0, sourceTop, w, h)
     }
     return result
   }
@@ -288,20 +286,17 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
       return
     }
 
-    val visible = area.visible
     val kernelRadius = (key.radius * scale).coerceAtMost(EdgeFadeBlurShaders.MAX_KERNEL_RADIUS_PX)
     for (pass in arrayOf(area.horizontal, area.vertical)) {
       pass.setInputShader("mask", mask)
       pass.setFloatUniform("blurRadius", kernelRadius)
       pass.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
       pass.setFloatUniform("rasterScale", scale)
-      pass.setFloatUniform(
-        "visible",
-        (visible.left - source.left) * scale,
-        (visible.top - source.top) * scale,
-        (visible.right - source.left) * scale,
-        (visible.bottom - source.top) * scale,
-      )
+      // No output bound inside the raster: the radius is zero where an area
+      // meets the sharp scene, so the entrance fade already hides its padding.
+      // An antialiased bound would instead leave the view's outer edges half
+      // blurred, letting sharp content through.
+      pass.setFloatUniform("visible", -1f, -1f, rasterWidth + 1f, rasterHeight + 1f)
     }
     // Horizontal first, vertical last: the AndroidX order. Along a top/bottom
     // field a thin vertical line stays a narrow wedge (chosen on device over

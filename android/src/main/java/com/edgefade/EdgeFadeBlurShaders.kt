@@ -16,7 +16,7 @@
  *
  * The paired-tap blur kernel is adapted from AndroidX BlurShaders.kt,
  * inspected Git blob 9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd.
- * Changes: clamp-only bounds, strip-local extents, continuous tap support,
+ * Changes: mirrored bounds, strip-local extents, continuous tap support,
  * and a four-edge radius mask. This is a port, NOT the Compose binary.
  * See android/PROGRESSIVE_BLUR_NOTICE.md.
  */
@@ -75,8 +75,14 @@ internal object EdgeFadeBlurShaders {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
 
-      float inside(float2 p) {
-        return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
+      // Samples past the raster edge are mirrored back inside, so the last
+      // pixels get a full, symmetric kernel. Dropping them would leave a
+      // one-sided, visibly sharper blur along the view's outer edges.
+      float2 mirror(float2 p) {
+        float e = extent.$axis - 0.5;
+        float v = abs(p.$axis - 0.5);
+        p.$axis = e - abs(e - v) + 0.5;
+        return p;
       }
 
       half4 main(float2 coord) {
@@ -98,8 +104,8 @@ internal object EdgeFadeBlurShaders {
           float2 offset = $offset;
           float2 a = coord - offset;
           float2 b = coord + offset;
-          if (inside(a) > 0.0) { result += weight * float4(content.eval(a)); weightSum += weight; }
-          if (inside(b) > 0.0) { result += weight * float4(content.eval(b)); weightSum += weight; }
+          result += weight * (float4(content.eval(mirror(a))) + float4(content.eval(mirror(b))));
+          weightSum += 2.0 * weight;
         }
         return half4(result / weightSum * coverage);
       }
