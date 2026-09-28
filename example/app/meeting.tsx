@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { PixelRatio, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,7 +32,6 @@ const OPEN_BLUR = 150 / PixelRatio.get();
 const CONTENT_OPEN_SCALE = 0.95;
 
 const SPRING = { duration: 650, dampingRatio: 0.92 };
-const AUTO_INTERVAL_MS = 3500;
 
 const TRANSCRIPT = [
   {
@@ -71,13 +70,11 @@ const TRANSCRIPT = [
  * Release demo: a meeting screen with a live video. Opening the action card
  * raises the progressive blur front with it — sharp above, increasingly
  * blurred below, per pixel, while the video keeps playing.
- *
- * `?auto=1` toggles the card on a fixed cadence for screen recording.
+
  */
 export default function MeetingScreen() {
   const insets = useSafeAreaInsets();
-  const { auto, blur, radiusPx } = useLocalSearchParams<{
-    auto?: string;
+  const { blur, radiusPx } = useLocalSearchParams<{
     blur?: string;
     radiusPx?: string;
   }>();
@@ -99,12 +96,6 @@ export default function MeetingScreen() {
   const toggle = useCallback(() => {
     progress.set(withSpring(progress.get() > 0.5 ? 0 : 1, SPRING));
   }, [progress]);
-
-  useEffect(() => {
-    if (auto !== '1') return;
-    const id = setInterval(toggle, AUTO_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [auto, toggle]);
 
   const bottom = useDerivedValue(
     () =>

@@ -16,6 +16,10 @@ import { useScheme, PALETTES } from '@/theme';
 
 import DiscoverTune from '@expo/material-symbols/discover_tune.xml';
 import Web from '@expo/material-symbols/web.xml';
+import Apps from '@expo/material-symbols/apps.xml';
+import GraphicEq from '@expo/material-symbols/graphic_eq.xml';
+import Videocam from '@expo/material-symbols/videocam.xml';
+import GridView from '@expo/material-symbols/grid_view.xml';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30 * 60 * 1000 } },
 });
@@ -59,11 +63,38 @@ export default function RootLayout() {
                       tintColor={t.headerTint}
                       onPress={() => router.push('/panel')}
                     />
-                    <Stack.Toolbar.Button
-                      icon={Platform.OS === 'ios' ? 'safari' : Web}
+                    <Stack.Toolbar.Menu
+                      icon={Platform.OS === 'ios' ? 'square.grid.2x2' : Apps}
                       tintColor={t.headerTint}
-                      onPress={() => router.push('/webview')}
-                    />
+                      accessibilityLabel="demos"
+                    >
+                      <Stack.Toolbar.MenuAction
+                        icon={Platform.OS === 'ios' ? 'waveform' : GraphicEq}
+                        onPress={() => router.push('/meeting')}
+                      >
+                        Live blur
+                      </Stack.Toolbar.MenuAction>
+                      <Stack.Toolbar.MenuAction
+                        icon={Platform.OS === 'ios' ? 'video' : Videocam}
+                        onPress={() => router.push('/video')}
+                      >
+                        Video surface
+                      </Stack.Toolbar.MenuAction>
+                      <Stack.Toolbar.MenuAction
+                        icon={Platform.OS === 'ios' ? 'safari' : Web}
+                        onPress={() => router.push('/webview')}
+                      >
+                        WebView
+                      </Stack.Toolbar.MenuAction>
+                      <Stack.Toolbar.MenuAction
+                        icon={
+                          Platform.OS === 'ios' ? 'square.split.1x2' : GridView
+                        }
+                        onPress={() => router.push('/debug')}
+                      >
+                        Debug bands
+                      </Stack.Toolbar.MenuAction>
+                    </Stack.Toolbar.Menu>
                   </Stack.Toolbar>
                 </Stack.Screen>
                 <Stack.Screen
