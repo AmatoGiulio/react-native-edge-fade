@@ -53,7 +53,7 @@ export default function RootLayout() {
                     headerTitleAlign: 'center',
                   }}
                 >
-                  <Stack.Toolbar placement="right">
+                  <Stack.Toolbar placement="right" backgroundColor={t.card}>
                     <Stack.Toolbar.Button
                       icon={
                         Platform.OS === 'ios'
@@ -67,6 +67,7 @@ export default function RootLayout() {
                       icon={Platform.OS === 'ios' ? 'square.grid.2x2' : Apps}
                       tintColor={t.headerTint}
                       accessibilityLabel="demos"
+                      cornerRadius={20}
                     >
                       <Stack.Toolbar.MenuAction
                         icon={Platform.OS === 'ios' ? 'waveform' : GraphicEq}
