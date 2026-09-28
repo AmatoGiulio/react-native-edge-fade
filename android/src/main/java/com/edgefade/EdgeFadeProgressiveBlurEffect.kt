@@ -15,12 +15,9 @@ import java.util.WeakHashMap
  *
  * `mode="blur"` keeps one Android semantic contract on supported releases: a
  * true spatially-varying Gaussian whose radius is driven continuously by the
- * edge mask. The implementation is selected by platform capability and,
- * on API 33+, by the maximum radius cost envelope:
+ * edge mask. The implementation is selected by platform capability:
  *
- * - API 33+: exact AndroidX/AGSL by default. Validated top/bottom-only fields
- *   switch the whole renderer to the 0.75x HWUI Gaussian path at high radii,
- *   with hysteresis. Mixed-axis fields stay exact.
+ * - API 33+: [EdgeFadeProgressiveRenderer], AGSL port of the AndroidX kernel.
  * - API 31-32: GLES 3.0 renderer with the same radius field and Gaussian taps.
  * - Unsupported configurations: `mask`; never the old multi-level frost blur.
  *
@@ -72,6 +69,11 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   fun apply(view: EdgeFadeView) {
     val state = states[view] ?: return
+    val forceGles = debugForceGles(view)
+    if (forceGles != view.debugForceGles) {
+      clearProgressive(view)
+      view.debugForceGles = forceGles
+    }
     val requested = state.requestedMode
 
     if (requested != "blur") {
@@ -99,19 +101,24 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
     state.identityAnnounced = false
 
-    val fallbackReason = progressiveFallbackReason(view)
+    // A SurfaceView punches a hole through every offscreen layer it is drawn
+    // into, so the mask fallback (a saveLayer) would black it out. Leave such
+    // content untouched instead.
+    val surfaceReason = if (containsUnsupportedSurface(view)) SURFACE_VIEW_REASON else null
+    val fallbackReason = surfaceReason ?: progressiveFallbackReason(view)
     if (fallbackReason != null) {
       clearProgressive(view)
-      view.mode = "mask"
+      view.mode = if (surfaceReason != null) EdgeFadeView.MODE_PASSTHROUGH else "mask"
       if (view.width > 0 && view.height > 0 && state.lastFallbackReason != fallbackReason) {
         state.lastFallbackReason = fallbackReason
-        Log.i(TAG, "Progressive unavailable; using mask fallback: $fallbackReason")
+        Log.w(TAG, "Progressive blur unavailable (${view.mode}): $fallbackReason")
       }
       return
     }
 
+    view.containsWebView = containsWebView(view)
     val applied = when {
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.apply(view)
+      useAgsl(view) -> Api33.apply(view)
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.apply(view)
       else -> false
     }
@@ -121,28 +128,10 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.mode = "blur"
       state.lastFallbackReason = null
 
-      val backend = when {
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> "gles31"
-        else -> Api33.backendFor(view)
-          ?: if (AndroidxBlurAdapter.available) "androidx33" else "agsl33"
-      }
+      val backend = activeBackendName(view)
       if (state.announcedBackend != backend) {
         state.announcedBackend = backend
-        if (backend == "hwui-scaled33") {
-          Log.i(
-            TAG,
-            "Using HWUI-scaled progressive blur on API 33+ (0.75x top/bottom strips; enter >=110px, exit <=90px).",
-          )
-        } else if (backend == "androidx33") {
-          Log.i(TAG, "Using official AndroidX progressive blur on API 33+ (direct edge-local dispatch).")
-        } else if (backend == "agsl33") {
-          Log.i(TAG, "Using pure progressive AGSL blur on API 33+ (direct edge-local dispatch).")
-        } else {
-          Log.i(
-            TAG,
-            "Using GLES 3.0 continuous progressive blur on API 31-32 (HardwareRenderer -> SurfaceTexture -> H/V Gaussian).",
-          )
-        }
+        Log.i(TAG, "Progressive blur active: $backend")
       }
     } else {
       clearProgressive(view)
@@ -151,9 +140,8 @@ internal object EdgeFadeProgressiveBlurEffect {
     }
   }
 
-  // Oversized radii are recoverable, not a capability failure. Public
-  // progressive renderers clamp their effective radius to
-  // BlurLabGeometry.MAX_RADIUS_PX, matching AndroidX's 150px spatial-blur cap.
+  // Oversized radii are recoverable, not a capability failure: renderers clamp
+  // the effective radius to their own kernel cap.
   private fun progressiveFallbackReason(view: EdgeFadeView): String? = when {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
@@ -164,19 +152,18 @@ internal object EdgeFadeProgressiveBlurEffect {
       view.overlayColorLeft != null ||
       view.overlayColorRight != null -> "overlay color is not part of pure progressive blur"
     !supportsCurves(view) -> "curve cannot be represented by the progressive radius mask"
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
+    !useAgsl(view) &&
       !EdgeFadeGlesProgressiveRenderer.isSupported(view) -> "requires OpenGL ES 3.0"
-    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU && containsWebView(view) ->
+    !useAgsl(view) && containsWebView(view) ->
       "WebView capture is not yet supported by the API 31-32 GLES backend"
-    containsUnsupportedSurface(view) -> "contains a SurfaceView outside a WebView subtree"
     else -> null
   }
 
   internal fun activeBackendName(view: EdgeFadeView): String =
     when {
       !view.progressiveBlurActive -> "inactive"
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
-        Api33.backendFor(view) ?: "api33-unprepared"
+      useAgsl(view) ->
+        Api33.rendererFor(view)?.backendName() ?: "api33-unprepared"
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> "gles31"
       else -> "unsupported"
     }
@@ -184,7 +171,7 @@ internal object EdgeFadeProgressiveBlurEffect {
   private fun clearProgressive(view: EdgeFadeView) {
     view.progressiveBlurActive = false
     when {
-      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Api33.clear(view)
+      useAgsl(view) -> Api33.clear(view)
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> Api31.clear(view)
     }
   }
@@ -227,7 +214,7 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   @RequiresApi(Build.VERSION_CODES.S)
   fun draw(view: EdgeFadeView, canvas: Canvas, recordChildren: (Canvas) -> Unit): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    return if (useAgsl(view)) {
       drawApi33(view, canvas, recordChildren)
     } else {
       drawApi31(view, canvas, recordChildren)
@@ -316,7 +303,7 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   private object Api33 {
-    private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveAdaptiveRenderer>()
+    private val renderers = WeakHashMap<EdgeFadeView, EdgeFadeProgressiveRenderer>()
 
     fun apply(view: EdgeFadeView): Boolean {
       // The rejected full-view implementation used View.setRenderEffect(). Make
@@ -325,7 +312,7 @@ internal object EdgeFadeProgressiveBlurEffect {
 
       val existing = renderers[view]
       val renderer = existing ?: try {
-        EdgeFadeProgressiveAdaptiveRenderer(view)
+        EdgeFadeProgressiveRenderer(view)
       } catch (error: RuntimeException) {
         Log.w(TAG, "Progressive renderer creation failed; using mask fallback.", error)
         return false
@@ -346,9 +333,7 @@ internal object EdgeFadeProgressiveBlurEffect {
       }
     }
 
-    fun rendererFor(view: EdgeFadeView): EdgeFadeProgressiveAdaptiveRenderer? = renderers[view]
-
-    fun backendFor(view: EdgeFadeView): String? = renderers[view]?.backendName()
+    fun rendererFor(view: EdgeFadeView): EdgeFadeProgressiveRenderer? = renderers[view]
 
     fun clear(view: EdgeFadeView) {
       view.setRenderEffect(null)
@@ -358,83 +343,21 @@ internal object EdgeFadeProgressiveBlurEffect {
 
   private const val TAG = "EdgeFadeProgressive"
 
-  // Shared by every API 33+ edge-local strip. `origin` maps local strip
-  // coordinates back into the EdgeFadeView coordinate space. The output alpha
-  // is the true radius intensity field: radius = maxRadius * alpha.
-  internal const val MASK_SHADER = """
-    uniform float2 origin;
-    uniform float2 viewSize;
-    uniform float4 edges;
-    uniform float progression;
-    uniform float4 curveExp;
-    uniform float4 curveMode;
-    uniform float4 useLut;
-    uniform float curveTopLut[32];
-    uniform float curveBottomLut[32];
-    uniform float curveLeftLut[32];
-    uniform float curveRightLut[32];
+  private fun useAgsl(view: EdgeFadeView): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !view.debugForceGles
 
-    float presence(float t, float exponent, float mode) {
-      float x = clamp(t, 0.0, 1.0);
-      if (mode > 1.5) {
-        return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
-      }
-      if (mode > 0.5) {
-        return 1.0 - cos(x * 1.5707963);
-      }
-      return 1.0 - pow(1.0 - x, exponent);
-    }
-
-    float sampleTop(float t) {
-      float x = clamp(t, 0.0, 1.0) * 31.0;
-      for (int i = 0; i < 31; i++) {
-        if (x <= float(i + 1)) return mix(curveTopLut[i], curveTopLut[i + 1], x - float(i));
-      }
-      return curveTopLut[31];
-    }
-
-    float sampleBottom(float t) {
-      float x = clamp(t, 0.0, 1.0) * 31.0;
-      for (int i = 0; i < 31; i++) {
-        if (x <= float(i + 1)) return mix(curveBottomLut[i], curveBottomLut[i + 1], x - float(i));
-      }
-      return curveBottomLut[31];
-    }
-
-    float sampleLeft(float t) {
-      float x = clamp(t, 0.0, 1.0) * 31.0;
-      for (int i = 0; i < 31; i++) {
-        if (x <= float(i + 1)) return mix(curveLeftLut[i], curveLeftLut[i + 1], x - float(i));
-      }
-      return curveLeftLut[31];
-    }
-
-    float sampleRight(float t) {
-      float x = clamp(t, 0.0, 1.0) * 31.0;
-      for (int i = 0; i < 31; i++) {
-        if (x <= float(i + 1)) return mix(curveRightLut[i], curveRightLut[i + 1], x - float(i));
-      }
-      return curveRightLut[31];
-    }
-
-    float position(float distance, float depth) {
-      if (depth <= 0.0 || distance >= depth) return -1.0;
-      return clamp((1.0 - distance / depth) / progression, 0.0, 1.0);
-    }
-
-    half4 main(float2 local) {
-      float2 p = local + origin;
-      float topPos = position(p.y, edges.x);
-      float bottomPos = position(viewSize.y - p.y, edges.y);
-      float leftPos = position(p.x, edges.z);
-      float rightPos = position(viewSize.x - p.x, edges.w);
-
-      float top = topPos < 0.0 ? 0.0 : (useLut.x > 0.5 ? sampleTop(topPos) : presence(topPos, curveExp.x, curveMode.x));
-      float bottom = bottomPos < 0.0 ? 0.0 : (useLut.y > 0.5 ? sampleBottom(bottomPos) : presence(bottomPos, curveExp.y, curveMode.y));
-      float left = leftPos < 0.0 ? 0.0 : (useLut.z > 0.5 ? sampleLeft(leftPos) : presence(leftPos, curveExp.z, curveMode.z));
-      float right = rightPos < 0.0 ? 0.0 : (useLut.w > 0.5 ? sampleRight(rightPos) : presence(rightPos, curveExp.w, curveMode.w));
-      float intensity = max(max(top, bottom), max(left, right));
-      return half4(0.0, 0.0, 0.0, intensity);
-    }
-  """
+  /**
+   * Diagnostics only: `adb shell settings put global edgefade_debug_backend gles`
+   * runs the API 31-32 GLES backend on a newer device so both engines can be
+   * measured on the same hardware. Not part of the public API.
+   */
+  private fun debugForceGles(view: EdgeFadeView): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+      android.provider.Settings.Global.getString(
+        view.context.contentResolver,
+        "edgefade_debug_backend",
+      ) == "gles"
+  private const val SURFACE_VIEW_REASON =
+    "contains a SurfaceView, which composites outside the view hierarchy; " +
+      "render video/camera/maps into a TextureView (e.g. expo-video surfaceType=\"textureView\")"
 }

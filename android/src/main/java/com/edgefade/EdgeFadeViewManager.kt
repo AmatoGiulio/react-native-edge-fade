@@ -1,6 +1,5 @@
 package com.edgefade
 
-import android.graphics.Color
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
@@ -33,22 +32,18 @@ class EdgeFadeViewManager :
   // has reached the native view, so no intermediate radius/curve combination is
   // ever exposed to RuntimeShader.
   //
-  // EdgeFadeProgressiveBlurEffect.apply(view) is expensive (setRenderEffect(null),
-  // curve string parsing, a view hierarchy walk, and a full renderer.prepare())
-  // and is only needed when a structural prop changed. When only per-frame
-  // animated props changed (open/close motion, theme change, living wave), the
-  // active renderer's own draw() already calls prepare() every frame, so skip
-  // straight to invalidate()/syncNativeTunerBounds().
+  // EdgeFadeProgressiveBlurEffect.apply(view) is comparatively expensive
+  // (curve parsing, a view hierarchy walk, renderer setup) and is only needed
+  // when a structural prop changed. When only animated props changed, the
+  // active renderer's draw() picks the new values up through prepare().
   override fun onAfterUpdateTransaction(view: EdgeFadeView) {
     super.onAfterUpdateTransaction(view)
     if (view.progressiveBlurActive && !view.progressiveStructureDirty) {
       view.invalidate()
-      view.syncNativeTunerBounds()
       return
     }
     EdgeFadeProgressiveBlurEffect.apply(view)
     view.invalidate()
-    view.syncNativeTunerBounds()
     view.progressiveStructureDirty = false
   }
 
@@ -60,8 +55,7 @@ class EdgeFadeViewManager :
 
   // ── Edge sizes ─────────────────────────────────────────────────────────────
 
-  // fadeTop/Bottom/Left/Right are animated every frame during open/close
-  // motion, but a 0 -> >0 or >0 -> 0 transition changes backend eligibility
+  // Edge sizes may animate every frame, but a 0 -> >0 or >0 -> 0 transition changes backend eligibility
   // (progressiveFallbackReason) and mask/band shape, so only that transition
   // is structural.
   @ReactProp(name = "fadeTop")
@@ -76,8 +70,6 @@ class EdgeFadeViewManager :
     val next = dp(view, value)
     if ((view.fadeBottom > 0f) != (next > 0f)) view.progressiveStructureDirty = true
     view.fadeBottom = next
-    // onAfterUpdateTransaction already calls syncNativeTunerBounds() once per
-    // transaction; no need to also call it here per-prop.
   }
 
   @ReactProp(name = "fadeLeft")
@@ -168,200 +160,34 @@ class EdgeFadeViewManager :
 
   // ── Blur ───────────────────────────────────────────────────────────────────
 
+  // Animatable like the edge sizes: only crossing zero changes backend
+  // selection (zero is the identity transform).
   @ReactProp(name = "blurRadius")
   override fun setBlurRadius(view: EdgeFadeView, value: Float) {
-    view.blurRadius = dp(view, value)
-    view.progressiveStructureDirty = true
+    val next = dp(view, value)
+    if ((view.blurRadius > 0f) != (next > 0f)) view.progressiveStructureDirty = true
+    view.blurRadius = next
   }
 
-  @ReactProp(name = "progressiveNativeTuner")
-  override fun setProgressiveNativeTuner(view: EdgeFadeView, value: Boolean) {
-    view.updateProgressiveNativeTunerEnabled(value)
-    view.progressiveStructureDirty = true
-  }
-
+  // Example-only comparison switch, not part of the public JS props.
   @ReactProp(name = "progressiveBackend")
   override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
-    view.progressiveBackend = when (value) {
-      "exact" -> "exact"
-      "agsl" -> "agsl"
-      "agsl-debug-capture" -> "agsl-debug-capture"
-      "agsl-debug-gaussian" -> "agsl-debug-gaussian"
-      "agsl-debug-field" -> "agsl-debug-field"
-      "agsl-debug-fieldmask" -> "agsl-debug-fieldmask"
-      "androidx" -> "androidx"
-      "androidx-gradient" -> "androidx-gradient"
-      "scaled" -> "scaled"
-      else -> "auto"
-    }
-    view.progressiveStructureDirty = true
+    view.progressiveBackend = if (value == "androidx") "androidx" else "auto"
+    view.invalidate()
   }
 
-  // Per-frame animated during open/close/theme motion — excluded from
-  // progressiveStructureDirty. The renderer's internal Key already tracks
-  // whether this crosses the 0/active threshold (materialActive), which is
-  // the only structural aspect of this value.
-  @ReactProp(name = "progressiveMaterialStrength", defaultFloat = 0f)
-  override fun setProgressiveMaterialStrength(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialStrength = value.coerceIn(0f, 1f)
-  }
-
-  @ReactProp(name = "progressiveMaterialColor", customType = "Color")
-  override fun setProgressiveMaterialColor(view: EdgeFadeView, value: Int?) {
-    view.progressiveMaterialColor = value ?: Color.rgb(239, 238, 236)
-    view.progressiveStructureDirty = true
-    view.postInvalidateOnAnimation()
-  }
-
-  @ReactProp(name = "progressiveMaterialColorDark", customType = "Color")
-  override fun setProgressiveMaterialColorDark(view: EdgeFadeView, value: Int?) {
-    view.progressiveMaterialColorDark = value ?: Color.rgb(89, 90, 96)
-    view.progressiveStructureDirty = true
-    view.postInvalidateOnAnimation()
-  }
-
-  // Per-frame animated (theme change) — excluded from progressiveStructureDirty.
-  @ReactProp(name = "progressiveMaterialThemeProgress", defaultFloat = 0f)
-  override fun setProgressiveMaterialThemeProgress(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialThemeProgress = value.coerceIn(0f, 1f)
-    // This prop is animated on the UI thread and is intentionally excluded
-    // from the expensive renderer key. Explicitly schedule a frame so the
-    // RuntimeShader materialColor uniform cannot lag/freeze behind the scene.
-    view.postInvalidateOnAnimation()
-  }
-
-  // Per-frame animated during open/close motion — excluded from
-  // progressiveStructureDirty.
-  @ReactProp(name = "progressiveMaterialExposure", defaultFloat = 1f)
-  override fun setProgressiveMaterialExposure(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialExposure = value.coerceIn(0.5f, 1.2f)
-  }
-
-  @ReactProp(name = "progressiveMaterialSurface", defaultFloat = 0f)
-  override fun setProgressiveMaterialSurface(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialSurface = value.coerceIn(0f, 1f)
-    view.progressiveStructureDirty = true
-  }
-
-  // Per-frame animated during open/close motion — excluded from
-  // progressiveStructureDirty.
-  @ReactProp(name = "progressiveMaterialSurfaceProgression", defaultFloat = 0.7f)
-  override fun setProgressiveMaterialSurfaceProgression(
-    view: EdgeFadeView,
-    value: Float,
-  ) {
-    view.progressiveMaterialSurfaceProgression = value.coerceIn(0.15f, 1f)
-  }
-
-
-  @ReactProp(name = "progressiveMaterialNeutrality", defaultFloat = 0f)
-  override fun setProgressiveMaterialNeutrality(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialNeutrality = value.coerceIn(0f, 1f)
-  }
-
-
-  @ReactProp(name = "progressiveMaterialColorFieldEnabled", defaultBoolean = false)
-  override fun setProgressiveMaterialColorFieldEnabled(view: EdgeFadeView, value: Boolean) {
-    view.progressiveMaterialColorFieldEnabled = value
-    view.progressiveStructureDirty = true
-  }
-
-  // Per-frame animated during open/close motion — excluded from
-  // progressiveStructureDirty.
-  @ReactProp(name = "progressiveMaterialColorFieldMix", defaultFloat = 0f)
-  override fun setProgressiveMaterialColorFieldMix(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldMix = value.coerceIn(0f, 1f)
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldScale", defaultFloat = 0.10f)
-  override fun setProgressiveMaterialColorFieldScale(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldScale = value.coerceIn(0.05f, 0.25f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldBlurRadiusPx", defaultFloat = 160f)
-  override fun setProgressiveMaterialColorFieldBlurRadiusPx(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldBlurRadiusPx = value.coerceIn(16f, 900f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldChromaGate", defaultFloat = 0.035f)
-  override fun setProgressiveMaterialColorFieldChromaGate(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldChromaGate = value.coerceIn(0f, 0.25f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldChromaGain", defaultFloat = 1.35f)
-  override fun setProgressiveMaterialColorFieldChromaGain(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldChromaGain = value.coerceIn(0.5f, 2.5f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldLumaMix", defaultFloat = 0.10f)
-  override fun setProgressiveMaterialColorFieldLumaMix(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldLumaMix = value.coerceIn(0f, 1f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialColorFieldNeutralWeight", defaultFloat = 0f)
-  override fun setProgressiveMaterialColorFieldNeutralWeight(view: EdgeFadeView, value: Float) {
-    view.progressiveMaterialColorFieldNeutralWeight = value.coerceIn(0f, 1f)
-    view.progressiveStructureDirty = true
-  }
-
-  @ReactProp(name = "progressiveMaterialCurveOffset", defaultFloat = 0f)
-  override fun setProgressiveMaterialCurveOffset(view: EdgeFadeView, value: Float) {
-    // Per-frame animatable (theme lift): uniform-only, not structural.
-    view.progressiveMaterialCurveOffset = value.coerceIn(-0.35f, 0.35f)
-  }
-
-  @ReactProp(name = "progressiveMaterialCurveHeight", defaultFloat = 1f)
-  override fun setProgressiveMaterialCurveHeight(view: EdgeFadeView, value: Float) {
-    // Per-frame animatable (theme lift): uniform-only, not structural.
-    view.progressiveMaterialCurveHeight = value.coerceIn(0.25f, 1.5f)
-  }
-
-
-
-
-
-
-
-
-
+  // iOS-only frost grade; Android progressive blur is a pure Gaussian.
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
-  override fun setFrostSaturation(view: EdgeFadeView, value: Float) {
-    view.frostSaturation = value
-    view.progressiveStructureDirty = true
-  }
+  override fun setFrostSaturation(view: EdgeFadeView, value: Float) = Unit
 
   @ReactProp(name = "frostLift", defaultFloat = 1.03f)
-  override fun setFrostLift(view: EdgeFadeView, value: Float) {
-    view.frostLift = value
-    view.progressiveStructureDirty = true
-  }
+  override fun setFrostLift(view: EdgeFadeView, value: Float) = Unit
 
-  // Per-frame animated during open/close motion — excluded from
-  // progressiveStructureDirty.
+  // Animatable: a uniform-only change, never structural.
   @ReactProp(name = "frostProgression", defaultFloat = 1f)
-  override fun setFrostProgression(view: EdgeFadeView, value: Float) { view.frostProgression = value }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  override fun setFrostProgression(view: EdgeFadeView, value: Float) {
+    view.frostProgression = value
+  }
 
   companion object {
     const val NAME = "EdgeFadeView"

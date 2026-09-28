@@ -1,14 +1,7 @@
 import { useMemo } from 'react';
-import {
-  PixelRatio,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PixelRatio, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+import type { EdgeFadeCurve } from 'react-native-edge-fade';
 import {
   GalleryScreen,
   type GalleryStressConfig,
@@ -44,16 +37,22 @@ function resolveImageRenderer(
 }
 
 export default function GalleryEntry() {
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     stress?: string | string[];
     effect?: string | string[];
     radiusPx?: string | string[];
     cycleMs?: string | string[];
     image?: string | string[];
+    edges?: string | string[];
+    curve?: string | string[];
   }>();
 
-  const stressEnabled = firstParam(params.stress) === 'auto';
+  // `stress=auto` scrolls on its own for benchmarks; `stress=static` renders
+  // the same deterministic scene for visual checks.
+  const stressParam = firstParam(params.stress);
+  const stressEnabled = stressParam === 'auto' || stressParam === 'static';
+  const sideDp = firstParam(params.edges) === 'four' ? 60 : 0;
+  const curve = firstParam(params.curve) as EdgeFadeCurve | undefined;
   const effectEnabled = firstParam(params.effect) !== 'off';
   const radiusPx = resolveRadiusPx(params.radiusPx);
   const cycleMs = resolveCycleMs(params.cycleMs);
@@ -64,8 +63,11 @@ export default function GalleryEntry() {
     () =>
       stressEnabled
         ? {
-            autoScroll: true,
+            autoScroll: stressParam === 'auto',
             effectEnabled,
+            leftDp: sideDp,
+            rightDp: sideDp,
+            curve,
             radiusDp: radiusPx / density,
             cycleMs,
             imageRenderer,
@@ -77,6 +79,9 @@ export default function GalleryEntry() {
       effectEnabled,
       imageRenderer,
       radiusPx,
+      sideDp,
+      curve,
+      stressParam,
       stressEnabled,
     ]
   );
@@ -84,51 +89,10 @@ export default function GalleryEntry() {
   return (
     <View style={styles.root}>
       <GalleryScreen stress={stress} />
-      {!stressEnabled && (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/showcase')}
-          style={[styles.showcase, { bottom: insets.bottom + 20 }]}
-        >
-          <Text style={styles.showcaseLabel}>Showcase</Text>
-        </Pressable>
-      )}
-      {Platform.OS === 'android' && !stressEnabled && (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/progressive-blur')}
-          style={[styles.lab, { bottom: insets.bottom + 20 }]}
-        >
-          <Text style={styles.label}>Progressive Blur Lab</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  lab: {
-    position: 'absolute',
-    alignSelf: 'center',
-    borderRadius: 24,
-    backgroundColor: '#202520',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-  },
-  label: { color: '#ffffff', fontWeight: '600', fontSize: 13 },
-  showcase: {
-    position: 'absolute',
-    left: 20,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    shadowColor: '#000000',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
-  },
-  showcaseLabel: { color: '#111111', fontWeight: '700', fontSize: 13 },
 });

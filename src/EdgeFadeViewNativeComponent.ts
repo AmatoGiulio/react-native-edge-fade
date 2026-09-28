@@ -23,68 +23,14 @@ interface NativeProps extends ViewProps {
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: CodegenTypes.Float;
   /**
-   * Internal demo/test override: "auto" | "agsl" | "androidx" | "scaled".
+   * Example-only comparison switch: "auto" | "androidx" (official AndroidX
+   * BlurRadiusSpec, only when the app is built with edgeFadeAndroidxBlur).
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveBackend?: string;
-  /** Android showcase-only native runtime tuner; not part of public JS props. */
-  progressiveNativeTuner?: boolean;
-  /**
-   * Internal showcase material grading. 0 keeps public progressive blur pure.
-   * Deliberately not exposed by the public JS prop types.
-   */
-  progressiveMaterialStrength?: CodegenTypes.Float;
-  /** Internal showcase light-theme luminance anchor; not an opacity tint. */
-  progressiveMaterialColor?: ColorValue;
-  /** Internal showcase dark-theme luminance anchor. */
-  progressiveMaterialColorDark?: ColorValue;
-  /** Internal 0(light)..1(dark) material colour animation progress. */
-  progressiveMaterialThemeProgress?: CodegenTypes.Float;
-  /**
-   * Internal showcase source exposure before the material tone response.
-   * 1 is neutral exposure. Public progressive blur never sets this.
-   */
-  progressiveMaterialExposure?: CodegenTypes.Float;
-  /**
-   * Internal showcase surface scattering; compresses the luminance range
-   * independently from transmitted source chroma.
-   */
-  progressiveMaterialSurface?: CodegenTypes.Float;
-  /**
-   * Internal showcase material geometry. Smaller values make the translucent
-   * sheet reach full density earlier across the edge band.
-   */
-  progressiveMaterialSurfaceProgression?: CodegenTypes.Float;
-  /** Internal 0..1 chroma removal on the material response. 0 is a no-op. */
-  progressiveMaterialNeutrality?: CodegenTypes.Float;
-  /** Internal low-frequency RGB field before the material tone response. */
-  progressiveMaterialColorFieldEnabled?: boolean;
-  /** 0 = normal material only, 1 = full low-frequency colour-field influence. */
-  progressiveMaterialColorFieldMix?: CodegenTypes.Float;
-  /** Internal render scale for the dedicated colour-field capture (0.05..0.25). */
-  progressiveMaterialColorFieldScale?: CodegenTypes.Float;
-  /** Screen-space blur radius, in px, applied after the low-res capture. */
-  progressiveMaterialColorFieldBlurRadiusPx?: CodegenTypes.Float;
-  /** Neutral pixels below this chroma amount are suppressed from the field. */
-  progressiveMaterialColorFieldChromaGate?: CodegenTypes.Float;
-  /** Multiplier applied to extracted source chroma before diffusion. */
-  progressiveMaterialColorFieldChromaGain?: CodegenTypes.Float;
-  /** Fraction of source luminance retained in the colour field. */
-  progressiveMaterialColorFieldLumaMix?: CodegenTypes.Float;
-  /**
-   * Neutral-tone weight floor for the colour field (0..1). Lets low-chroma
-   * page/card backgrounds diffuse too, so blurred cards fuse with the page
-   * instead of only saturated image colours mixing. 0 = previous
-   * chroma-only behaviour.
-   */
-  progressiveMaterialColorFieldNeutralWeight?: CodegenTypes.Float;
-  /** Curve offset applied to the material response band (-0.35..0.35). */
-  progressiveMaterialCurveOffset?: CodegenTypes.Float;
-  /** Curve height applied to the material response band (0.25..1.5). */
-  progressiveMaterialCurveHeight?: CodegenTypes.Float;
-  /** Frost vibrancy saturation multiplier (blur mode). 1 = neutral. */
+  /** iOS frost saturation (blur mode). Ignored on Android. */
   frostSaturation?: CodegenTypes.Float;
-  /** Frost vibrancy brightness multiplier (blur mode). 1 = neutral. */
+  /** iOS frost brightness (blur mode). Ignored on Android. */
   frostLift?: CodegenTypes.Float;
   /** Fraction of the band over which the blur radius ramps (blur mode). */
   frostProgression?: CodegenTypes.Float;

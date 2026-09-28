@@ -215,7 +215,7 @@ internal class EdgeFadeGlesProgressiveRenderer(
         }
 
         tracePhase("EdgeFade.progressive.gles.drawOutput") {
-          for (band in visibleBands) {
+          for (band in visibleBands + cornerBands(current)) {
             val save = canvas.save()
             try {
               canvas.clipRect(
@@ -249,7 +249,7 @@ internal class EdgeFadeGlesProgressiveRenderer(
     bottom = finite(host.fadeBottom).coerceIn(0f, host.height.toFloat()),
     left = finite(host.fadeLeft).coerceIn(0f, host.width.toFloat()),
     right = finite(host.fadeRight).coerceIn(0f, host.width.toFloat()),
-    radius = finite(host.blurRadius).coerceIn(0f, BlurLabGeometry.MAX_RADIUS_PX),
+    radius = finite(host.blurRadius).coerceIn(0f, EdgeFadeBlurShaders.MAX_KERNEL_RADIUS_PX),
     progression = finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
     curveTop = host.curveTop,
     curveBottom = host.curveBottom,
@@ -730,6 +730,44 @@ internal class EdgeFadeGlesProgressiveRenderer(
       add(Rect(0, centerTop, left, centerBottom))
       val rightLeft = (width - right).coerceAtLeast(left)
       add(Rect(rightLeft, centerTop, width, centerBottom))
+    }
+    return result
+  }
+
+  /**
+   * Rounded sharp window: blur reaches past both bands where edges meet. The
+   * sharp scene stays underneath these rects; the GLES output is transparent
+   * wherever the radius is zero.
+   */
+  private fun cornerBands(key: Key): List<Rect> {
+    val width = key.width
+    val height = key.height
+    val top = ceil(key.top).toInt().coerceIn(0, height)
+    val bottom = ceil(key.bottom).toInt().coerceIn(0, height)
+    val left = ceil(key.left).toInt().coerceIn(0, width)
+    val right = ceil(key.right).toInt().coerceIn(0, width)
+    val centerTop = top
+    val centerBottom = (height - bottom).coerceAtLeast(centerTop)
+    val rightLeft = (width - right).coerceAtLeast(left)
+    val result = ArrayList<Rect>(4)
+    if (centerBottom <= centerTop) return result
+
+    fun add(rect: Rect) {
+      if (!rect.isEmpty) result += rect
+    }
+    val halfW = (rightLeft - left) / 2
+    val halfH = (centerBottom - centerTop) / 2
+    fun reachX(depth: Int) =
+      ceil(depth * EdgeFadeBlurShaders.CORNER_ROUNDNESS).toInt().coerceAtMost(halfW)
+    fun reachY(depth: Int) =
+      ceil(depth * EdgeFadeBlurShaders.CORNER_ROUNDNESS).toInt().coerceAtMost(halfH)
+    if (top > 0 && left > 0) add(Rect(left, top, left + reachX(left), top + reachY(top)))
+    if (top > 0 && right > 0) add(Rect(rightLeft - reachX(right), top, rightLeft, top + reachY(top)))
+    if (bottom > 0 && left > 0) {
+      add(Rect(left, centerBottom - reachY(bottom), left + reachX(left), centerBottom))
+    }
+    if (bottom > 0 && right > 0) {
+      add(Rect(rightLeft - reachX(right), centerBottom - reachY(bottom), rightLeft, centerBottom))
     }
     return result
   }

@@ -39,7 +39,7 @@ internal object EdgeFadeGlesShaders {
     }
   """
 
-  private const val MASK_FUNCTIONS = """
+  private val MASK_FUNCTIONS = """
     uniform vec2 uViewSize;
     uniform vec4 uEdges;
     uniform float uProgression;
@@ -94,25 +94,50 @@ internal object EdgeFadeGlesShaders {
       return uCurveRightLut[31];
     }
 
-    float edgePosition(float distance, float depth) {
-      if (depth <= 0.0 || distance >= depth) return -1.0;
-      return clamp((1.0 - distance / depth) / uProgression, 0.0, 1.0);
+    // Same field as the API 33+ mask: signed band coordinates joined like a
+    // rounded-rectangle SDF, so the sharp window has rounded corners.
+    const float uCorner = ${EdgeFadeBlurShaders.CORNER_ROUNDNESS};
+
+    float band(float distance, float depth) {
+      return depth > 0.0 ? 1.0 - distance / depth : -1000.0;
+    }
+
+    float rawField(vec2 coord) {
+      float top = band(coord.y, uEdges.x);
+      float bottom = band(uViewSize.y - coord.y, uEdges.y);
+      float left = band(coord.x, uEdges.z);
+      float right = band(uViewSize.x - coord.x, uEdges.w);
+      vec2 q = max(vec2(max(top, bottom), max(left, right)) + uCorner, 0.0);
+      return length(q) - uCorner;
     }
 
     float radiusIntensity(vec2 coord) {
-      float topPos = edgePosition(coord.y, uEdges.x);
-      float bottomPos = edgePosition(uViewSize.y - coord.y, uEdges.y);
-      float leftPos = edgePosition(coord.x, uEdges.z);
-      float rightPos = edgePosition(uViewSize.x - coord.x, uEdges.w);
+      float raw = rawField(coord);
+      if (raw <= 0.0) return 0.0;
+      float t = clamp(raw / uProgression, 0.0, 1.0);
+      float top = band(coord.y, uEdges.x);
+      float bottom = band(uViewSize.y - coord.y, uEdges.y);
+      float left = band(coord.x, uEdges.z);
+      float right = band(uViewSize.x - coord.x, uEdges.w);
 
-      float top = topPos < 0.0 ? 0.0 : (uUseLut.x > 0.5 ? sampleTop(topPos) : presence(topPos, uCurveExp.x, uCurveMode.x));
-      float bottom = bottomPos < 0.0 ? 0.0 : (uUseLut.y > 0.5 ? sampleBottom(bottomPos) : presence(bottomPos, uCurveExp.y, uCurveMode.y));
-      float left = leftPos < 0.0 ? 0.0 : (uUseLut.z > 0.5 ? sampleLeft(leftPos) : presence(leftPos, uCurveExp.z, uCurveMode.z));
-      float right = rightPos < 0.0 ? 0.0 : (uUseLut.w > 0.5 ? sampleRight(rightPos) : presence(rightPos, uCurveExp.w, uCurveMode.w));
-      return clamp(max(max(top, bottom), max(left, right)), 0.0, 1.0);
+      float result = 0.0;
+      if (top > -uCorner && top >= bottom) {
+        result = max(result, uUseLut.x > 0.5 ? sampleTop(t) : presence(t, uCurveExp.x, uCurveMode.x));
+      }
+      if (bottom > -uCorner && bottom > top) {
+        result = max(result, uUseLut.y > 0.5 ? sampleBottom(t) : presence(t, uCurveExp.y, uCurveMode.y));
+      }
+      if (left > -uCorner && left >= right) {
+        result = max(result, uUseLut.z > 0.5 ? sampleLeft(t) : presence(t, uCurveExp.z, uCurveMode.z));
+      }
+      if (right > -uCorner && right > left) {
+        result = max(result, uUseLut.w > 0.5 ? sampleRight(t) : presence(t, uCurveExp.w, uCurveMode.w));
+      }
+      return clamp(result, 0.0, 1.0);
     }
 
     bool inOwnedBand(vec2 coord) {
+      if (rawField(coord) > 0.0) return true;
       float top = ceil(uEdges.x);
       float bottom = ceil(uEdges.y);
       float left = ceil(uEdges.z);

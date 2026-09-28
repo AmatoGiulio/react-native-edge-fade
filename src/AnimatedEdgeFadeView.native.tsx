@@ -66,15 +66,7 @@ function useEdgeFadeAnimatedProps(
   endSV: SharedValueLike<number> | null,
   radiusSV: SharedValueLike<number> | null,
   blurRadiusSV: SharedValueLike<number> | null,
-  blurProgressionSV: SharedValueLike<number> | null,
-  materialThemeProgressSV: SharedValueLike<number> | null,
-  materialStrengthSV: SharedValueLike<number> | null,
-  materialSurfaceProgressionSV: SharedValueLike<number> | null,
-  materialExposureSV: SharedValueLike<number> | null,
-  materialCurveOffsetSV: SharedValueLike<number> | null,
-  materialCurveHeightSV: SharedValueLike<number> | null,
-  materialNeutralitySV: SharedValueLike<number> | null,
-  materialColorFieldMixSV: SharedValueLike<number> | null
+  blurProgressionSV: SharedValueLike<number> | null
 ) {
   return Reanimated.useAnimatedProps(() => {
     'worklet';
@@ -91,31 +83,6 @@ function useEdgeFadeAnimatedProps(
     // Public blurProgression maps to the historical native frostProgression
     // prop. Keep the mapping here so animated and static APIs stay identical.
     if (blurProgressionSV) out.frostProgression = blurProgressionSV.value;
-    if (materialThemeProgressSV) {
-      out.progressiveMaterialThemeProgress = materialThemeProgressSV.value;
-    }
-    if (materialStrengthSV) {
-      out.progressiveMaterialStrength = materialStrengthSV.value;
-    }
-    if (materialSurfaceProgressionSV) {
-      out.progressiveMaterialSurfaceProgression =
-        materialSurfaceProgressionSV.value;
-    }
-    if (materialExposureSV) {
-      out.progressiveMaterialExposure = materialExposureSV.value;
-    }
-    if (materialCurveOffsetSV) {
-      out.progressiveMaterialCurveOffset = materialCurveOffsetSV.value;
-    }
-    if (materialCurveHeightSV) {
-      out.progressiveMaterialCurveHeight = materialCurveHeightSV.value;
-    }
-    if (materialNeutralitySV) {
-      out.progressiveMaterialNeutrality = materialNeutralitySV.value;
-    }
-    if (materialColorFieldMixSV) {
-      out.progressiveMaterialColorFieldMix = materialColorFieldMixSV.value;
-    }
     return out;
   });
 }
@@ -160,43 +127,6 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     : null;
   const blurProgressionSV = isSharedValue(props.blurProgression)
     ? (props.blurProgression as SharedValueLike<number>)
-    : null;
-  const materialThemeProgressProp = (props as any)
-    .progressiveMaterialThemeProgress;
-  const materialThemeProgressSV = isSharedValue(materialThemeProgressProp)
-    ? (materialThemeProgressProp as SharedValueLike<number>)
-    : null;
-  const materialStrengthProp = (props as any).progressiveMaterialStrength;
-  const materialStrengthSV = isSharedValue(materialStrengthProp)
-    ? (materialStrengthProp as SharedValueLike<number>)
-    : null;
-  const materialSurfaceProgressionProp = (props as any)
-    .progressiveMaterialSurfaceProgression;
-  const materialSurfaceProgressionSV = isSharedValue(
-    materialSurfaceProgressionProp
-  )
-    ? (materialSurfaceProgressionProp as SharedValueLike<number>)
-    : null;
-  const materialExposureProp = (props as any).progressiveMaterialExposure;
-  const materialExposureSV = isSharedValue(materialExposureProp)
-    ? (materialExposureProp as SharedValueLike<number>)
-    : null;
-  const materialCurveOffsetProp = (props as any).progressiveMaterialCurveOffset;
-  const materialCurveOffsetSV = isSharedValue(materialCurveOffsetProp)
-    ? (materialCurveOffsetProp as SharedValueLike<number>)
-    : null;
-  const materialCurveHeightProp = (props as any).progressiveMaterialCurveHeight;
-  const materialCurveHeightSV = isSharedValue(materialCurveHeightProp)
-    ? (materialCurveHeightProp as SharedValueLike<number>)
-    : null;
-  const materialNeutralityProp = (props as any).progressiveMaterialNeutrality;
-  const materialNeutralitySV = isSharedValue(materialNeutralityProp)
-    ? (materialNeutralityProp as SharedValueLike<number>)
-    : null;
-  const materialColorFieldMixProp = (props as any)
-    .progressiveMaterialColorFieldMix;
-  const materialColorFieldMixSV = isSharedValue(materialColorFieldMixProp)
-    ? (materialColorFieldMixProp as SharedValueLike<number>)
     : null;
 
   // Build the static prop set: replace any SharedValue with `{ size: 0 }` —
@@ -243,28 +173,10 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     frostLift: _fl,
     frostProgression: _fp,
     radius: _radius,
-    progressiveMaterialThemeProgress: _materialThemeProgress,
-    progressiveMaterialStrength: _materialStrength,
-    progressiveMaterialSurfaceProgression: _materialSurfaceProgression,
-    progressiveMaterialExposure: _materialExposure,
-    progressiveMaterialCurveOffset: _materialCurveOffset,
-    progressiveMaterialCurveHeight: _materialCurveHeight,
-    progressiveMaterialNeutrality: _materialNeutrality,
-    progressiveMaterialColorFieldMix: _materialColorFieldMix,
     style,
     children,
     ...viewProps
-  } = props as AnimatedEdgeFadeViewProps & {
-    children?: React.ReactNode;
-    progressiveMaterialThemeProgress?: number | SharedValueLike<number>;
-    progressiveMaterialStrength?: number | SharedValueLike<number>;
-    progressiveMaterialSurfaceProgression?: number | SharedValueLike<number>;
-    progressiveMaterialExposure?: number | SharedValueLike<number>;
-    progressiveMaterialCurveOffset?: number | SharedValueLike<number>;
-    progressiveMaterialCurveHeight?: number | SharedValueLike<number>;
-    progressiveMaterialNeutrality?: number | SharedValueLike<number>;
-    progressiveMaterialColorFieldMix?: number | SharedValueLike<number>;
-  };
+  } = props as AnimatedEdgeFadeViewProps & { children?: React.ReactNode };
 
   const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
   const { borderRadius: _ignoredBorderRadius, ...cleanStyle } = flat;
@@ -282,60 +194,35 @@ export const AnimatedEdgeFadeView = memo(function AnimatedEdgeFadeView(
     endSV,
     radiusSV,
     blurRadiusSV,
-    blurProgressionSV,
-    materialThemeProgressSV,
-    materialStrengthSV,
-    materialSurfaceProgressionSV,
-    materialExposureSV,
-    materialCurveOffsetSV,
-    materialCurveHeightSV,
-    materialNeutralitySV,
-    materialColorFieldMixSV
+    blurProgressionSV
   );
 
   return (
     <AnimatedNativeEdgeFadeView
       {...viewProps}
       style={cleanStyle}
-      fadeTop={n.fadeTop}
-      fadeBottom={n.fadeBottom}
-      fadeLeft={n.fadeLeft}
-      fadeRight={n.fadeRight}
+      // A prop driven by a SharedValue is owned by animatedProps alone. A
+      // static placeholder here would be re-sent on the next React commit and
+      // overwrite the animated value until the SharedValue changes again.
+      fadeTop={topSV ? undefined : n.fadeTop}
+      fadeBottom={bottomSV ? undefined : n.fadeBottom}
+      fadeLeft={leftSV || startSV ? undefined : n.fadeLeft}
+      fadeRight={rightSV || endSV ? undefined : n.fadeRight}
       curveTop={n.curveTop}
       curveBottom={n.curveBottom}
       curveLeft={n.curveLeft}
       curveRight={n.curveRight}
       mode={n.mode}
-      blurRadius={n.blurRadius}
+      blurRadius={blurRadiusSV ? undefined : n.blurRadius}
       frostSaturation={n.frostSaturation}
       frostLift={n.frostLift}
-      frostProgression={n.frostProgression}
-      progressiveMaterialThemeProgress={
-        materialThemeProgressSV ? 0 : _materialThemeProgress
-      }
-      progressiveMaterialStrength={materialStrengthSV ? 0 : _materialStrength}
-      progressiveMaterialSurfaceProgression={
-        materialSurfaceProgressionSV ? 0 : _materialSurfaceProgression
-      }
-      progressiveMaterialExposure={materialExposureSV ? 0 : _materialExposure}
-      progressiveMaterialCurveOffset={
-        materialCurveOffsetSV ? 0 : _materialCurveOffset
-      }
-      progressiveMaterialCurveHeight={
-        materialCurveHeightSV ? 1 : _materialCurveHeight
-      }
-      progressiveMaterialNeutrality={
-        materialNeutralitySV ? 0 : _materialNeutrality
-      }
-      progressiveMaterialColorFieldMix={
-        materialColorFieldMixSV ? 0 : _materialColorFieldMix
-      }
+      frostProgression={blurProgressionSV ? undefined : n.frostProgression}
       overlayColor={n.overlayColor}
       overlayColorTop={n.overlayColorTop}
       overlayColorBottom={n.overlayColorBottom}
       overlayColorLeft={n.overlayColorLeft}
       overlayColorRight={n.overlayColorRight}
-      fadeRadius={resolvedRadius}
+      fadeRadius={radiusSV ? undefined : resolvedRadius}
       animatedProps={animatedProps}
     >
       {children}

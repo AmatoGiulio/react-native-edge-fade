@@ -1,7 +1,4 @@
-import {
-  ANDROID_PROGRESSIVE_BLUR_DENSITY,
-  MAX_DEMO_BLUR,
-} from '@/fade/limits';
+import { ANDROID_PROGRESSIVE_BLUR_DENSITY, MAX_DEMO_BLUR } from '@/fade/limits';
 import { useCallback, useState, type ReactNode } from 'react';
 import {
   Platform,
@@ -43,21 +40,6 @@ import { useScheme, useTheme, type AppPalette, type Scheme } from '@/theme';
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const MODES = ['mask', 'blur', 'overlay'] as const;
 const MODES_ANDROID = ['mask', 'blur', 'overlay'] as const;
-const BLUR_RENDERERS = [
-  'auto',
-  'agsl',
-  'androidx',
-  'androidx-gradient',
-  'scaled',
-] as const;
-
-const BLUR_RENDERER_LABELS = {
-  auto: 'auto',
-  agsl: 'agsl',
-  androidx: 'androidx',
-  'androidx-gradient': 'gradient',
-  scaled: 'scaled',
-} as const;
 const DEFAULT_TINT = '#000000';
 
 const TINT_PRESETS = [
@@ -361,8 +343,6 @@ export function FadePanel() {
     setTint,
     showBands,
     setShowBands,
-    blurRenderer,
-    setBlurRenderer,
     autoDemo,
     setAutoDemo,
     preset,
@@ -602,46 +582,6 @@ export function FadePanel() {
     </>
   );
 
-  const androidRendererSelector = Platform.OS === 'android' ? (
-    <View style={s.rendererSection}>
-      <Text style={[s.rendererLabel, { color: t.faintText }]}>blur renderer</Text>
-      <View
-        style={[
-          s.rendererSeg,
-          { backgroundColor: rowBg, opacity: mode === 'blur' ? 1 : 0.45 },
-        ]}
-      >
-        {BLUR_RENDERERS.map((renderer) => {
-          const selected = blurRenderer === renderer;
-          const disabled = mode !== 'blur';
-          return (
-            <Pressable
-              key={renderer}
-              accessibilityRole="button"
-              accessibilityLabel={`blur renderer ${renderer}`}
-              accessibilityState={{ selected, disabled }}
-              disabled={disabled}
-              style={[
-                s.rendererSegItem,
-                selected && { backgroundColor: t.controlActive },
-              ]}
-              onPress={() => setBlurRenderer(renderer)}
-            >
-              <Text
-                style={[
-                  s.rendererSegText,
-                  { color: selected ? t.text : t.faintText },
-                ]}
-              >
-                {BLUR_RENDERER_LABELS[renderer]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  ) : null;
-
   // The scrollable body is shared between platforms, but the *root* element
   // returned to react-native-screens differs (see below): on iOS the
   // ScrollView must be the screen's direct child, not wrapped in a `flex: 1`
@@ -756,9 +696,7 @@ export function FadePanel() {
         min={0}
         max={MAX_DEMO_BLUR}
         step={
-          Platform.OS === 'android'
-            ? 1 / ANDROID_PROGRESSIVE_BLUR_DENSITY
-            : 1
+          Platform.OS === 'android' ? 1 / ANDROID_PROGRESSIVE_BLUR_DENSITY : 1
         }
         format={fmtBlurRadius}
         tint={scheme}
@@ -837,8 +775,6 @@ export function FadePanel() {
           <PanelResetButton color={t.headerTint} />
         </View>
       </View>
-
-      {androidRendererSelector}
 
       <ScrollView
         nestedScrollEnabled
@@ -947,38 +883,6 @@ const s = StyleSheet.create({
   monoLabel: {
     fontFamily: MONO,
     fontSize: 14,
-  },
-  rendererSection: {
-    paddingHorizontal: 20,
-    marginBottom: 10,
-  },
-  rendererSeg: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    padding: 3,
-    gap: 3,
-    minHeight: 44,
-  },
-  rendererSegItem: {
-    flex: 1,
-    minHeight: 38,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rendererSegText: {
-    fontFamily: MONO,
-    fontSize: 14,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  rendererLabel: {
-    fontFamily: MONO,
-    fontSize: 11,
-    marginLeft: 4,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
 
   tintDot: {

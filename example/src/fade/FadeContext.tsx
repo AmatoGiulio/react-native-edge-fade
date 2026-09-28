@@ -37,13 +37,6 @@ import type { EdgeFadeCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 import { useDialCurve, useThrottledMirror } from '@/components/dial';
 
-export type DemoBlurRenderer =
-  | 'auto'
-  | 'agsl'
-  | 'androidx'
-  | 'androidx-gradient'
-  | 'scaled';
-
 export interface FadeStore {
   x1: SharedValue<number>;
   y1: SharedValue<number>;
@@ -67,8 +60,6 @@ export interface FadeStore {
   setShowBands: (show: boolean) => void;
 
   /** Android demo-only override for comparing progressive renderers. */
-  blurRenderer: DemoBlurRenderer;
-  setBlurRenderer: (renderer: DemoBlurRenderer) => void;
 
   /**
    * Auto-demo: when on, the top/bottom fade region gently breathes on a loop so
@@ -105,22 +96,21 @@ export function FadeProvider({ children }: { children: ReactNode }) {
   const y1 = useSharedValue(DEFAULT_BEZIER.y1);
   const x2 = useSharedValue(DEFAULT_BEZIER.x2);
   const y2 = useSharedValue(DEFAULT_BEZIER.y2);
-  const top = useSharedValue(BLUR_LAB_DEFAULTS.top);
-  const bottom = useSharedValue(BLUR_LAB_DEFAULTS.bottom);
-  const left = useSharedValue(BLUR_LAB_DEFAULTS.left);
-  const right = useSharedValue(BLUR_LAB_DEFAULTS.right);
+  const top = useSharedValue<number>(BLUR_LAB_DEFAULTS.top);
+  const bottom = useSharedValue<number>(BLUR_LAB_DEFAULTS.bottom);
+  const left = useSharedValue<number>(BLUR_LAB_DEFAULTS.left);
+  const right = useSharedValue<number>(BLUR_LAB_DEFAULTS.right);
   const blur = useSharedValue(DEFAULT_DEMO_BLUR);
   const radius = useSharedValue(0);
   const frostSat = useSharedValue(0.9);
   const frostLift = useSharedValue(1.03);
-  const frostProg = useSharedValue(BLUR_LAB_DEFAULTS.progression);
+  const frostProg = useSharedValue<number>(BLUR_LAB_DEFAULTS.progression);
 
   const [mode, setMode] = useState<EdgeFadeMode>('blur');
   // No frost tint by default: a pure content-derived Gaussian blur that adapts
   // to any photo. Dark/Light/custom tints are opt-in via the panel.
   const [tint, setTint] = useState<string | undefined>(undefined);
   const [showBands, setShowBands] = useState(false);
-  const [blurRenderer, setBlurRenderer] = useState<DemoBlurRenderer>('auto');
   const [autoDemo, setAutoDemo] = useState(false);
   // Starts on the named default curve; a manual edit flips it to 'custom'.
   const [preset, setPreset] = useState<string>('default');
@@ -167,7 +157,6 @@ export function FadeProvider({ children }: { children: ReactNode }) {
     setMode('blur');
     setTint(undefined);
     setShowBands(false);
-    setBlurRenderer('auto');
     setAutoDemo(false);
     setPreset('default');
   }, [
@@ -207,8 +196,6 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       setTint,
       showBands,
       setShowBands,
-      blurRenderer,
-      setBlurRenderer,
       autoDemo,
       setAutoDemo,
       preset,
@@ -233,7 +220,6 @@ export function FadeProvider({ children }: { children: ReactNode }) {
       mode,
       tint,
       showBands,
-      blurRenderer,
       autoDemo,
       preset,
       reset,

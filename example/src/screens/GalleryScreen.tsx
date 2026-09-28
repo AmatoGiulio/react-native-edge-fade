@@ -1,10 +1,11 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
   Image as NativeImage,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Platform,
+  Text,
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -17,19 +18,26 @@ import Animated, {
   useFrameCallback,
   useSharedValue,
 } from 'react-native-reanimated';
-import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
+import {
+  AnimatedEdgeFadeView,
+  type EdgeFadeCurve,
+} from 'react-native-edge-fade';
 
 import { useCatalog, type CatalogItem } from '@/data/catalog';
-import {
-  useFadeStore,
-  useFadeRender,
-  type DemoBlurRenderer,
-} from '@/fade/FadeContext';
+import { useFadeStore, useFadeRender } from '@/fade/FadeContext';
 import { useTheme } from '@/theme';
 
-const DemoAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
-
 const GAP = 2;
+
+type Backend = 'auto' | 'androidx';
+const NEXT_BACKEND: Record<Backend, Backend> = {
+  auto: 'androidx',
+  androidx: 'auto',
+};
+const BACKEND_LABEL: Record<Backend, string> = {
+  auto: 'EdgeFade',
+  androidx: 'AndroidX ufficiale',
+};
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
 const STRESS_VIEWPORT_SPAN = 4;
@@ -50,8 +58,7 @@ export interface GalleryStressConfig {
   bottomDp?: number;
   leftDp?: number;
   rightDp?: number;
-  curve?: string;
-  progressiveBackend?: DemoBlurRenderer;
+  curve?: EdgeFadeCurve;
 }
 
 interface GalleryScreenProps {
@@ -86,12 +93,10 @@ const PhotoCell = memo(function PhotoCell({
           source={item.source}
           style={imageStyle}
           contentFit="cover"
-          /*placeholder={
-            item.blur_hash && item.blur_hash.length >= 6
-              ? { blurhash: item.blur_hash }
-              : undefined
-          }*/
-          //xtransition={300}
+          // FlashList recycles cells: without a recycling key a reused cell
+          // keeps showing the previous photo until the new one decodes.
+          recyclingKey={item.id}
+          cachePolicy="memory-disk"
         />
       )}
     </Pressable>
@@ -116,17 +121,8 @@ function SkeletonGrid() {
 export function GalleryScreen({ stress }: GalleryScreenProps) {
   const t = useTheme();
   const { catalog, isLoading, isError } = useCatalog();
-  const {
-    top,
-    bottom,
-    left,
-    right,
-    radius,
-    mode,
-    tint,
-    showBands,
-    blurRenderer,
-  } = useFadeStore();
+  const { top, bottom, left, right, radius, mode, tint, showBands } =
+    useFadeStore();
   const { curve, blurRadius, frostProgression } = useFadeRender();
 
   // The deterministic stress path must never be JS-rAF driven. Imperative
@@ -214,9 +210,15 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
     : blurRadius;
   const edgeProgression = stressMode ? 1 : frostProgression;
 
+  // Android comparison: our renderer vs the official AndroidX BlurRadiusSpec
+  // on the same radius field. Internal native prop, not public API.
+  const [backend, setBackend] = useState<Backend>('auto');
+  const backendProp = { progressiveBackend: backend } as object;
+
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
-      <DemoAnimatedEdgeFadeView
+      <AnimatedEdgeFadeView
+        {...backendProp}
         testID={stressMode ? 'gallery-stress-edge-fade' : undefined}
         top={edgeTop}
         bottom={edgeBottom}
@@ -227,13 +229,6 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
-        progressiveBackend={
-          Platform.OS === 'android'
-            ? stressMode
-              ? (stress.progressiveBackend ?? 'auto')
-              : blurRenderer
-            : 'auto'
-        }
         color={!stressMode && mode === 'overlay' ? tint : undefined}
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
@@ -261,7 +256,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             }}
           />
         )}
-      </DemoAnimatedEdgeFadeView>
+      </AnimatedEdgeFadeView>
 
       <Animated.View
         pointerEvents="none"
@@ -271,12 +266,33 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         pointerEvents="none"
         style={[s.debugBand, s.debugBottom, bottomBandStyle]}
       />
+      {Platform.OS === 'android' && edgeMode === 'blur' && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="switch blur renderer"
+          onPress={() => setBackend((b) => NEXT_BACKEND[b])}
+          style={s.backendButton}
+        >
+          <Text style={s.backendLabel}>{BACKEND_LABEL[backend]}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, paddingTop: 16 },
+  backendButton: {
+    position: 'absolute',
+    bottom: 56,
+    alignSelf: 'center',
+    borderRadius: 22,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    elevation: 6,
+  },
+  backendLabel: { color: '#111111', fontWeight: '700', fontSize: 14 },
 
   gridScroll: { flex: 1 },
   grid: {

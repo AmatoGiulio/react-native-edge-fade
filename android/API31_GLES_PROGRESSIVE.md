@@ -19,7 +19,7 @@ The API 31-32 backend must not use:
 - saturation, lift, tint or a frost veil;
 - `RenderEffect.createBlurEffect()` as an approximation of the progressive field.
 
-The maximum radius remains 150 physical pixels so the mathematical envelope stays aligned with the API 33+ AndroidX-derived renderer.
+The maximum radius is 150 physical pixels (the API 33+ renderer reaches 300 px through its half-resolution path).
 
 ## Pipeline
 

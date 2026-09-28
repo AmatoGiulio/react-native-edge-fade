@@ -4,23 +4,23 @@
 
 ### Android blur
 
-* **android:** replace the published 0.2.2 multi-level blur stack with **Public Progressive**, a true spatially varying Gaussian on API 33+. Every fragment derives its radius from the edge mask (`radius = blurRadius * intensity`) and runs the AndroidX-derived separable Gaussian kernel. There are no discrete blur levels, opacity cross-fades, saturation/lift grading, tint veil, or Legacy blur fallback.
-* **android:** unsupported progressive configurations and API < 33 now degrade directly to `mask`. The old API 31/32 RenderEffect blur is not retained as a second implementation.
-* **android:** keep WebView eligible by materializing child content once into a compositing `RenderNode`; direct `SurfaceView` descendants outside a WebView subtree remain an explicit `mask` fallback.
-* **android:** support preset curves analytically and serialized `cubicBezier` / `stops` curves through a 32-sample radius-mask LUT. Custom curves reshape the continuous radius field; they do not blend between discrete blur levels.
-* **android:** harden renderer lifecycle and failure handling: weak host ownership, deterministic RenderNode release, boolean draw ownership, and same-frame `mask` fallback if progressive setup/draw cannot own the frame.
+* **android:** replace the 0.2.2 multi-level blur stack with a true spatially varying Gaussian. Every fragment derives its radius from the edge curve (`radius = blurRadius * intensity`); there are no discrete levels, opacity cross-fades, saturation/lift grade or tint veil.
+* **android:** API 33+ runs one renderer: an AGSL port of the AndroidX `BlurRadiusSpec` kernel (Apache-2.0, no Compose dependency), always at half resolution with the sharp scene underneath (measured faster than full resolution with no visible difference), radius cap 300 px. Passes run in the AndroidX order (horizontal, then vertical) with a continuous tap support that removes AndroidX's horizontal banding. Each blurred strip renders into its own layer, so partial window redraws (e.g. a pressed header button) never recompute a cropped blur.
+* **android:** API 31–32 use an OpenGL ES 3.0 backend with the same radius field. API < 31 falls back to `mask`.
+* **android:** blur tracks moving content — lists, animations, `WebView` and `TextureView` video — by re-recording when a descendant invalidates.
+* **android:** content containing a `SurfaceView` (default video surface, camera, maps) is left sharp with a logged warning instead of being masked, since any offscreen layer blacks it out. Use a `TextureView` surface to blur video.
+* **android:** `blurRadius` is animatable through `AnimatedEdgeFadeView` without re-running backend selection every frame.
+* **android:** where two blurred edges meet, the sharp window has rounded corners (the radius field is a rounded-rectangle distance, not a square `max()` union). Same field on API 33+ and API 31–32.
+
+### Bug fixes
+
+* **animated:** a prop driven by a `SharedValue` in `AnimatedEdgeFadeView` is no longer also sent as a static placeholder. A React re-render (e.g. a list reaching its end) used to reset animated edge sizes to 0 until the SharedValue changed again, switching the effect off.
 
 ### API
 
-* **blur:** add `blurProgression` as the canonical public name for the fraction of the fade band over which the blur radius reaches its maximum. `frostProgression` remains a deprecated compatibility alias; `blurProgression` wins when both are supplied.
-* **blur:** deprecate `frostSaturation` and `frostLift`. Android Public Progressive ignores both because color grading is no longer part of the blur algorithm.
-* **android:** `color` remains an overlay concern rather than part of Public Progressive. An explicit Android `mode="blur"` request that also requires overlay color falls back to `mask` instead of silently changing the blur algorithm.
-
-### Validation
-
-* **performance:** physical-device Perfetto / FrameTimeline validation at the public 28dp default (98px on the 560dpi test device) shows renderer-level parity with AndroidX Official. Observed `Drawing` p50 was ~6.667ms Public vs ~6.675ms AndroidX, and `DrawFrames` p50 was ~10.167ms vs ~10.532ms.
-* **webview:** physical API 36 scrolling/fling/direction-change regression passed with Public Progressive active and no observed page flashes, blank blur frames, or stale edge content.
-* **tooling:** add isolated AndroidX Official reference app, cross-platform performance/Perfetto harnesses, progressive shader/compiler contracts, and a release smoke harness for radius transitions, custom curves, background/foreground, rotation, rapid scroll, and API fallback behavior.
+* **blur:** add `blurProgression` as the canonical name for the fraction of the band over which the radius reaches its maximum. `frostProgression` remains a deprecated alias; `blurProgression` wins when both are supplied.
+* **blur:** `frostSaturation` and `frostLift` are ignored on Android.
+* **android:** `color` stays an overlay concern: a `mode="blur"` request that also sets an overlay color falls back to `mask`.
 
 ## [0.2.2](https://github.com/AmatoGiulio/react-native-edge-fade/compare/v0.2.1...v0.2.2) (2026-08-20)
 

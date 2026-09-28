@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { ImageSourcePropType } from 'react-native';
 import { AnimatedEdgeFadeView } from 'react-native-edge-fade';
-import type { CubicBezierCurve, EdgeFadeMode } from 'react-native-edge-fade';
+import type { EdgeFadeCurve, EdgeFadeMode } from 'react-native-edge-fade';
 
 const HANDLE = 40;
 const KNOB_R = 14;
@@ -34,7 +34,7 @@ export interface BeforeAfterPhotoProps {
   left: SharedValue<number>;
   right: SharedValue<number>;
   radius: SharedValue<number>;
-  curve: CubicBezierCurve;
+  curve: EdgeFadeCurve;
   mode: EdgeFadeMode;
   blurRadius: number;
   color: string | undefined;

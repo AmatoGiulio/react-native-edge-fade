@@ -50,7 +50,9 @@ Building edge fades from scratch means juggling `MaskedView`, `LinearGradient`, 
 </EdgeFadeView>
 ```
 
-On Android, `mode="blur"` uses a spatial progressive Gaussian on supported configurations: AGSL on API 33+ and GLES on API 31–32. Compatible builds can opt into the official AndroidX implementation on API 33+; see the [SDK 58 integration notes](docs/androidx-blur-build.md). Unsupported configurations and API < 31 fall back to `mask`. Web also falls back to `mask`. iOS keeps its native blur implementation. This experimental branch has not yet restored every blur fallback supported by `main`.
+On Android, `mode="blur"` is a spatial progressive Gaussian: every pixel gets its own radius from the edge curve. API 33+ runs an AGSL port of the AndroidX kernel (no Compose dependency); API 31–32 run an OpenGL ES 3.0 backend with the same radius field. API < 31 and Web fall back to `mask`; iOS keeps its native blur.
+
+Blur works over images, lists, `WebView` and video rendered into a `TextureView` (for `expo-video`, pass `surfaceType="textureView"`). A `SurfaceView` composites outside the view hierarchy and cannot be blurred by any view-level API: that content is left sharp and a warning is logged. Give the blurred content an opaque background.
 
 ## Installation
 
