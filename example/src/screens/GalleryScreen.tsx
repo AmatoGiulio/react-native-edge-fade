@@ -229,7 +229,10 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
-        color={!stressMode && mode === 'overlay' ? tint : undefined}
+        // Overlay needs a colour; fall back to black when the tint switch is off.
+        color={
+          !stressMode && mode === 'overlay' ? (tint ?? '#000000') : undefined
+        }
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >
         {isLoading || isError || catalog.length === 0 ? (

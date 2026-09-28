@@ -80,7 +80,11 @@ export function PhotoScreen() {
             mode={mode}
             blurRadius={blurRadius}
             color={
-              Platform.OS === 'ios' || mode === 'overlay' ? tint : undefined
+              mode === 'overlay'
+                ? (tint ?? '#000000')
+                : Platform.OS === 'ios'
+                  ? tint
+                  : undefined
             }
             background={t.bg}
           />
