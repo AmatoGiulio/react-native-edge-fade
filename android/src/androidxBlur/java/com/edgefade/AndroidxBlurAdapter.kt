@@ -7,6 +7,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.blur.BlurRadiusSpec
+import androidx.compose.ui.graphics.blur.BlurStop
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 
@@ -21,6 +22,16 @@ internal object AndroidxBlurAdapter {
   @RequiresApi(Build.VERSION_CODES.TIRAMISU)
   fun create(width: Int, height: Int, radiusPx: Float, mask: Shader): RenderEffect =
     BlurRadiusSpec.shader(maxRadius = radiusPx.dp) { mask }
+      .createRenderEffect(Size(width.toFloat(), height.toFloat()), Density(1f), TileMode.Clamp)
+      .asAndroidRenderEffect()
+
+  /**
+   * Official `BlurRadiusSpec.verticalGradient`. [stops] are (fraction of
+   * height, radius px) pairs, ascending, at most 16 (the API limit).
+   */
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  fun createVerticalGradient(width: Int, height: Int, stops: List<Pair<Float, Float>>): RenderEffect =
+    BlurRadiusSpec.verticalGradient(stops.map { (f, r) -> BlurStop(f, r.dp) })
       .createRenderEffect(Size(width.toFloat(), height.toFloat()), Density(1f), TileMode.Clamp)
       .asAndroidRenderEffect()
 }

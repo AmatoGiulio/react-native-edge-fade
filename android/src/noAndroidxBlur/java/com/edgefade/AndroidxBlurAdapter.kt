@@ -8,4 +8,7 @@ internal object AndroidxBlurAdapter {
 
   fun create(width: Int, height: Int, radiusPx: Float, mask: Shader): RenderEffect =
     error("AndroidX comparison backend not compiled; build with -PedgeFadeAndroidxBlur=true")
+
+  fun createVerticalGradient(width: Int, height: Int, stops: List<Pair<Float, Float>>): RenderEffect =
+    error("AndroidX comparison backend not compiled; build with -PedgeFadeAndroidxBlur=true")
 }

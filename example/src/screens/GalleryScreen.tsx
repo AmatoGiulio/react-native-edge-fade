@@ -29,14 +29,16 @@ import { useTheme } from '@/theme';
 
 const GAP = 2;
 
-type Backend = 'auto' | 'androidx';
+type Backend = 'auto' | 'androidx' | 'androidx-gradient';
 const NEXT_BACKEND: Record<Backend, Backend> = {
-  auto: 'androidx',
-  androidx: 'auto',
+  'auto': 'androidx',
+  'androidx': 'androidx-gradient',
+  'androidx-gradient': 'auto',
 };
 const BACKEND_LABEL: Record<Backend, string> = {
-  auto: 'EdgeFade',
-  androidx: 'AndroidX ufficiale',
+  'auto': 'EdgeFade',
+  'androidx': 'AndroidX shader',
+  'androidx-gradient': 'AndroidX verticalGradient',
 };
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;

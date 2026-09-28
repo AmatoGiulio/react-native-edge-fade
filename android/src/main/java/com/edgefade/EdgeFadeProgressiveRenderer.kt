@@ -41,6 +41,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     val curveLeft: String,
     val curveRight: String,
     val androidx: Boolean,
+    val androidxGradient: Boolean,
   )
 
   private class CurveUniforms(val exponent: Float, val mode: Float, val useLut: Float, val lut: FloatArray)
@@ -81,7 +82,11 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
   private var scale = HALF_RES_SCALE
 
   fun backendName(): String =
-    if (key?.androidx == true) "androidx-official" else "agsl33"
+    when {
+      key?.androidx == true -> "androidx-official"
+      key?.androidxGradient == true -> "androidx-vertical-gradient"
+      else -> "agsl33"
+    }
 
   fun prepare(): Boolean {
     val host = hostRef.get() ?: return false
@@ -103,6 +108,10 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
       curveLeft = host.curveLeft,
       curveRight = host.curveRight,
       androidx = host.progressiveBackend == "androidx" && AndroidxBlurAdapter.available,
+      // verticalGradient only describes a top/bottom field; side edges fall
+      // back to our renderer.
+      androidxGradient = host.progressiveBackend == "androidx-gradient" &&
+        AndroidxBlurAdapter.available && host.fadeLeft <= 0f && host.fadeRight <= 0f,
     )
     if (next == key) return true
 
@@ -200,7 +209,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
 
     // The official AndroidX comparison runs at full resolution, as an app
     // using BlurRadiusSpec directly would.
-    scale = if (key.androidx) 1f else HALF_RES_SCALE
+    scale = if (key.androidx || key.androidxGradient) 1f else HALF_RES_SCALE
 
     val curves = arrayOf(
       curveUniforms(key.curveTop),
@@ -273,6 +282,17 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     mask.setFloatUniform("curveLeftLut", curves[2].lut)
     mask.setFloatUniform("curveRightLut", curves[3].lut)
 
+    if (key.androidxGradient) {
+      area.node.setRenderEffect(
+        AndroidxBlurAdapter.createVerticalGradient(
+          rasterWidth,
+          rasterHeight,
+          gradientStops(source, key, rasterHeight),
+        ),
+      )
+      return
+    }
+
     if (key.androidx) {
       // Same radius field, official kernel; identity where the radius is zero.
       area.node.setRenderEffect(
@@ -308,6 +328,45 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
       ),
     )
   }
+
+  /**
+   * The same radius profile as our mask, sampled into verticalGradient stops:
+   * the area's band is split into GRADIENT_SAMPLES points of the edge curve,
+   * with identity (radius 0) on the sharp side.
+   */
+  private fun gradientStops(source: Rect, key: Key, rasterHeight: Int): List<Pair<Float, Float>> {
+    val hasTop = key.top > 0 && source.top < key.top
+    val hasBottom = key.bottom > 0 && source.bottom > key.height - key.bottom
+    // 16 stops at most: split the curve samples between the bands present.
+    val samples = if (hasTop && hasBottom) 6 else 13
+    val points = ArrayList<Pair<Float, Float>>(16)
+    if (hasTop) {
+      val depth = key.top.toFloat()
+      for (i in samples downTo 0) {
+        val t = i.toFloat() / samples
+        points += depth * (1f - t) to key.radius * presence(key.curveTop, t / key.progression)
+      }
+    }
+    if (hasBottom) {
+      val depth = key.bottom.toFloat()
+      val start = key.height - depth
+      for (i in 0..samples) {
+        val t = i.toFloat() / samples
+        points += start + depth * t to key.radius * presence(key.curveBottom, t / key.progression)
+      }
+    }
+    val h = rasterHeight.toFloat()
+    val stops = ArrayList<Pair<Float, Float>>(16)
+    for ((y, r) in points) {
+      val f = ((y - source.top) * scale / h).coerceIn(0f, 1f)
+      if (stops.isEmpty() || f > stops.last().first + 0.0005f) stops += f to r
+    }
+    if (stops.size == 1) stops += 1f to stops[0].second
+    return stops
+  }
+
+  private fun presence(curve: String, t: Float): Float =
+    EdgeFadeCurves.presenceAt(curve, t.coerceIn(0f, 1f)).coerceIn(0f, 1f)
 
   private fun curveUniforms(curve: String): CurveUniforms {
     EdgeFadeCurves.agslPresetParams(curve)?.let { (exponent, mode) ->

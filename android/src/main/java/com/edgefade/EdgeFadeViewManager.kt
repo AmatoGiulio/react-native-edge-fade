@@ -178,7 +178,10 @@ class EdgeFadeViewManager :
   // Example-only comparison switch, not part of the public JS props.
   @ReactProp(name = "progressiveBackend")
   override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
-    view.progressiveBackend = if (value == "androidx") "androidx" else "auto"
+    view.progressiveBackend = when (value) {
+      "androidx", "androidx-gradient" -> value
+      else -> "auto"
+    }
     view.invalidate()
   }
 
