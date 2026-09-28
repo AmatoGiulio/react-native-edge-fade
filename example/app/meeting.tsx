@@ -76,12 +76,18 @@ const TRANSCRIPT = [
  */
 export default function MeetingScreen() {
   const insets = useSafeAreaInsets();
-  const { auto, blur } = useLocalSearchParams<{
+  const { auto, blur, radiusPx } = useLocalSearchParams<{
     auto?: string;
     blur?: string;
+    radiusPx?: string;
   }>();
-  // `?blur=off` keeps the same scene and motion without the effect (benchmark baseline).
+  // `?blur=off` keeps the same scene and motion without the effect (benchmark
+  // baseline); `?radiusPx=` overrides the open radius in physical pixels.
   const blurOff = blur === 'off';
+  const parsedRadius = Number.parseFloat(radiusPx ?? '');
+  const openBlur = Number.isFinite(parsedRadius)
+    ? parsedRadius / PixelRatio.get()
+    : OPEN_BLUR;
 
   const player = useVideoPlayer(SOURCE, (p) => {
     p.loop = true;
@@ -106,7 +112,7 @@ export default function MeetingScreen() {
       insets.bottom
   );
   const blurRadius = useDerivedValue(() =>
-    blurOff ? 0 : interpolate(progress.get(), [0, 1], [REST_BLUR, OPEN_BLUR])
+    blurOff ? 0 : interpolate(progress.get(), [0, 1], [REST_BLUR, openBlur])
   );
 
   const cardStyle = useAnimatedStyle(() => ({
