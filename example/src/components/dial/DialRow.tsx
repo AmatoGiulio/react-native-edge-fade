@@ -90,12 +90,32 @@ export function DialRow({
     [rowWidth]
   );
 
+  const setFromX = (x: number) => {
+    'worklet';
+    const w = rowWidth.get();
+    if (w <= 0) return;
+    let v = min + Math.max(0, Math.min(1, x / w)) * (max - min);
+    if (step !== undefined && step > 0) v = Math.round(v / step) * step;
+    value.set(Math.max(min, Math.min(max, v)));
+  };
+
+  // Tap jumps to the touched position.
+  const tap = Gesture.Tap()
+    .enabled(!disabled)
+    .maxDeltaY(12)
+    .onEnd((e, success) => {
+      if (!success) return;
+      setFromX(e.x);
+      if (onEnd) runOnJS(onEnd)();
+    });
+
+  // Drag moves the value relative to where it was. Horizontal-first: it
+  // activates on sideways movement and only yields to the enclosing sheet on
+  // a clearly vertical drag.
   const pan = Gesture.Pan()
     .enabled(!disabled)
-    // Horizontal-only: activate on sideways movement, bail on vertical so a
-    // vertical drag scrolls the enclosing sheet instead of moving the value.
-    .activeOffsetX([-10, 10])
-    .failOffsetY([-12, 12])
+    .activeOffsetX([-6, 6])
+    .failOffsetY([-24, 24])
     .onStart(() => {
       startValue.set(value.get());
     })
@@ -109,6 +129,8 @@ export function DialRow({
     .onEnd(() => {
       if (onEnd) runOnJS(onEnd)();
     });
+
+  const gesture = Gesture.Exclusive(pan, tap);
 
   const fillStyle = useAnimatedStyle(() => {
     const pct = ((value.get() - min) / (max - min)) * 100;
@@ -124,7 +146,7 @@ export function DialRow({
   const t = tint === 'light' ? light : dark;
 
   return (
-    <GestureDetector gesture={pan}>
+    <GestureDetector gesture={gesture}>
       <View
         style={[
           t.row,
