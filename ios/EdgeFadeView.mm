@@ -2,6 +2,7 @@
 #import "EdgeFadeCurves.h"
 #import "EdgeFadeMaskLayer.h"
 #import "EdgeFadeBlurMaskLayer.h"
+#import "EdgeFadeVariableBlurView.h"
 
 #import <React/RCTConversions.h>
 
@@ -311,6 +312,12 @@ static NSArray<NSNumber *> *veilLocations(void)
   UIViewPropertyAnimator *_blurAnimators[kEdgeFadeEdgeCount][kEdgeFadeBlurLevels];
   EdgeFadeBlurMaskLayer  *_blurMaskLayers[kEdgeFadeEdgeCount][kEdgeFadeBlurLevels];
 
+  // Default blur backend: one true progressive strip per edge (per-pixel
+  // radius from the curve, see EdgeFadeVariableBlurView). When the system
+  // lacks the variableBlur filter these stay nil and the level stack above is
+  // built instead.
+  EdgeFadeVariableBlurView *_varBlurViews[kEdgeFadeEdgeCount];
+
   // CADisplayLink to force blur-backdrop refresh on every frame.
   // UIVisualEffectView samples content behind it via CABackdropLayer. For views
   // rendered out-of-process (e.g. WKWebView), the backdrop snapshot may become
@@ -481,7 +488,7 @@ static NSArray<NSNumber *> *veilLocations(void)
   switch (newMode) {
     case EdgeFadeModeMask:    layerMissing = (_maskLayer == nil);  break;
     case EdgeFadeModeOverlay: layerMissing = (_overlayTop == nil); break;
-    case EdgeFadeModeBlur:    layerMissing = (_blurViews[0][0] == nil); break;
+    case EdgeFadeModeBlur:    layerMissing = (_blurViews[0][0] == nil && _varBlurViews[0] == nil); break;
     default:                  layerMissing = NO;                   break;
   }
   EF_BENCH_LOG("up_switch");
@@ -500,6 +507,23 @@ static NSArray<NSNumber *> *veilLocations(void)
     EF_BENCH_LOG("up_overlay_color");
     if (sizeChanged) [self _updateLayerFrames];
     EF_BENCH_LOG("up_overlay_size");
+  } else if (_varBlurViews[0]) {
+    // Variable blur — geometry, curve, radius and progression all live in the
+    // per-edge strips; one sync covers every change.
+    if (sizeChanged || curveChanged || blurRadiusChanged || frostProgressionChanged) {
+      [self _updateLayerFrames];
+      [self _ensureDisplayLinkState];
+    }
+    if (curveChanged && _overlayColor) [self _rebuildVeilColors];
+    if (colorChanged) {
+      if (_overlayColor) {
+        if (!_frostTop) [self _buildFrostVeil];
+        else            [self _rebuildVeilColors];
+      } else {
+        [self _teardownFrostVeil];
+      }
+    }
+    EF_BENCH_LOG("up_varblur");
   } else {
     // Blur mode — incremental updates.
     if (sizeChanged || curveChanged) [self _syncBlurMaskLayers];
@@ -582,7 +606,10 @@ static NSArray<NSNumber *> *veilLocations(void)
     [self.layer addSublayer:_overlayBottom];
     [self.layer addSublayer:_overlayLeft];
     [self.layer addSublayer:_overlayRight];
-  } else if (_renderMode == EdgeFadeModeBlur && _blurViews[0][0] && ![self _isBlurView:subview]) {
+  } else if (_renderMode == EdgeFadeModeBlur && (_blurViews[0][0] || _varBlurViews[0]) && ![self _isBlurView:subview]) {
+    for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+      if (_varBlurViews[e]) [self addSubview:_varBlurViews[e]];
+    }
     // Keep all blur strips (and frost veil layers on their superlayer) above
     // content. Re-add edge by edge, in level order so radius stacks low → high
     // (0 under 2) within each edge. Ordering *between* edges is indifferent —
@@ -630,6 +657,8 @@ static NSArray<NSNumber *> *veilLocations(void)
 
   [self _neutralizeBlurAnimators];
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    [_varBlurViews[e] removeFromSuperview];
+    _varBlurViews[e] = nil;
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       [_blurViews[e][k] removeFromSuperview];
       _blurViews[e][k] = nil;
@@ -801,6 +830,7 @@ static NSArray<NSNumber *> *veilLocations(void)
 // avoid re-adding a blur view in response to its own insertion.
 - (BOOL)_isBlurView:(UIView *)view {
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    if (view == _varBlurViews[e]) return YES;
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       if (view == _blurViews[e][k]) return YES;
     }
@@ -859,6 +889,17 @@ static NSArray<NSNumber *> *veilLocations(void)
 - (void)_buildBlurView {
   EF_BENCH_START();
   const CGFloat scale = [self _effectiveScale];
+
+  if ([EdgeFadeVariableBlurView isSupported]) {
+    // One variable-radius strip per edge replaces the whole level stack. Its
+    // filter chain holds only the blur, so no saturation compensation either.
+    for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+      _varBlurViews[e] = [[EdgeFadeVariableBlurView alloc] initWithEdge:e];
+      [self addSubview:_varBlurViews[e]];
+    }
+    [self _ensureDisplayLinkState];
+    return;
+  }
 
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
@@ -989,6 +1030,11 @@ static NSArray<NSNumber *> *veilLocations(void)
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
   for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    EdgeFadeVariableBlurView *strip = _varBlurViews[e];
+    if (strip && !strip.hidden) {
+      strip.alpha = 0.9998;
+      strip.alpha = 1.0;
+    }
     for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
       UIVisualEffectView *view = _blurViews[e][k];
       if (view && !view.hidden) {
@@ -1119,7 +1165,7 @@ static NSArray<NSNumber *> *veilLocations(void)
   }
 
   if (_renderMode == EdgeFadeModeBlur) {
-    if (!_blurViews[0][0]) {
+    if (!_blurViews[0][0] && !_varBlurViews[0]) {
       return;
     }
     [CATransaction begin];
@@ -1128,7 +1174,33 @@ static NSArray<NSNumber *> *veilLocations(void)
     // Per-edge fade extents; an edge whose fade is 0 hides its whole stack.
     const CGFloat fades[kEdgeFadeEdgeCount] = {_fadeTop, _fadeBottom, _fadeLeft, _fadeRight};
 
-    for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    if (_varBlurViews[0]) {
+      NSString *curves[kEdgeFadeEdgeCount] = {_curveTop, _curveBottom, _curveLeft, _curveRight};
+      // No inner padding: the filter blends radius across the mask on its
+      // own, so a zero-radius pad would still come out blurred. The strip ends
+      // exactly where the fade does, and the curve reaches zero radius there.
+      const CGFloat pad = 0;
+      for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+        EdgeFadeVariableBlurView *strip = _varBlurViews[e];
+        const CGFloat fade = fades[e];
+        strip.hidden = (fade <= 0 || _blurRadius <= 0);
+        if (strip.hidden) continue;
+        CGRect frame;
+        switch (e) {
+          case EdgeFadeEdgeTop:    frame = CGRectMake(0, 0, w, MIN(h, fade + pad)); break;
+          case EdgeFadeEdgeBottom: frame = CGRectMake(0, MAX(0, h - fade - pad), w, MIN(h, fade + pad)); break;
+          case EdgeFadeEdgeLeft:   frame = CGRectMake(0, 0, MIN(w, fade + pad), h); break;
+          default:                 frame = CGRectMake(MAX(0, w - fade - pad), 0, MIN(w, fade + pad), h); break;
+        }
+        strip.frame = frame;
+        const BOOL vertical = (e == EdgeFadeEdgeTop || e == EdgeFadeEdgeBottom);
+        const CGFloat extent = vertical ? frame.size.height : frame.size.width;
+        [strip setFade:MIN(fade, extent) pad:MAX(0, extent - fade) curve:curves[e] progression:_frostProgression];
+        strip.radius = _blurRadius;
+      }
+    }
+
+    for (NSInteger e = 0; e < kEdgeFadeEdgeCount && _blurViews[0][0]; e++) {
       const BOOL edgeActive = (fades[e] > 0);
       for (NSInteger k = 0; k < kEdgeFadeBlurLevels; k++) {
         UIVisualEffectView *view = _blurViews[e][k];
