@@ -9,6 +9,7 @@ import android.os.Trace
 import androidx.annotation.RequiresApi
 import java.lang.ref.WeakReference
 import kotlin.math.ceil
+import kotlin.math.max
 
 /**
  * API 33+ progressive blur renderer.
@@ -56,6 +57,13 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
   /** One blurred region; `source` includes the kernel's reach. */
   private class Area {
     var source = Rect(0, 0, 0, 0)
+
+    // Reserved raster size. An animated edge changes the area every frame;
+    // resizing the layer would reallocate its texture each time, so the layer
+    // only grows (in CAPACITY_STEP_PX steps) and the shaders bound themselves
+    // to the live extent instead.
+    var capacityWidth = 0
+    var capacityHeight = 0
     val node = RenderNode("EdgeFade.progressive.blur")
 
     // The blur is evaluated while rendering this layer, whose clip is always
@@ -71,6 +79,8 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     val vertical = RuntimeShader(EdgeFadeBlurShaders.pass(vertical = true))
 
     fun release() {
+      capacityWidth = 0
+      capacityHeight = 0
       node.setRenderEffect(null)
       node.discardDisplayList()
       layer.discardDisplayList()
@@ -262,8 +272,18 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     val source = area.source
     val rasterWidth = ceil(source.width * scale).toInt().coerceAtLeast(1)
     val rasterHeight = ceil(source.height * scale).toInt().coerceAtLeast(1)
-    area.node.setPosition(0, 0, rasterWidth, rasterHeight)
-    area.layer.setPosition(0, 0, rasterWidth, rasterHeight)
+    if (key.androidx || key.androidxGradient) {
+      // The AndroidX comparison effects size themselves to the node.
+      area.capacityWidth = rasterWidth
+      area.capacityHeight = rasterHeight
+      area.node.setPosition(0, 0, rasterWidth, rasterHeight)
+      area.layer.setPosition(0, 0, rasterWidth, rasterHeight)
+    } else if (rasterWidth > area.capacityWidth || rasterHeight > area.capacityHeight) {
+      area.capacityWidth = max(area.capacityWidth, reserve(rasterWidth))
+      area.capacityHeight = max(area.capacityHeight, reserve(rasterHeight))
+      area.node.setPosition(0, 0, area.capacityWidth, area.capacityHeight)
+      area.layer.setPosition(0, 0, area.capacityWidth, area.capacityHeight)
+    }
 
     val mask = area.mask
     mask.setFloatUniform("origin", source.left * scale, source.top * scale)
@@ -377,6 +397,9 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     return CurveUniforms(1f, 0f, 1f, FloatArray(alpha.size) { (1f - alpha[it]).coerceIn(0f, 1f) })
   }
 
+  private fun reserve(size: Int): Int =
+    ((size + CAPACITY_STEP_PX - 1) / CAPACITY_STEP_PX) * CAPACITY_STEP_PX
+
   private fun edge(value: Float, limit: Int): Int =
     ceil(finite(value).coerceIn(0f, limit.toFloat())).toInt()
 
@@ -385,6 +408,9 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
 
   companion object {
     const val HALF_RES_SCALE = 0.5f
+
+    /** Growth step of a reserved area raster, in raster pixels. */
+    private const val CAPACITY_STEP_PX = 64
 
     /** Public radius cap; the kernel cap applies in the half-resolution raster. */
     const val MAX_SCREEN_RADIUS_PX = EdgeFadeBlurShaders.MAX_KERNEL_RADIUS_PX / HALF_RES_SCALE

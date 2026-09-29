@@ -80,6 +80,9 @@ internal object EdgeFadeBlurShaders {
       }
 
       half4 main(float2 coord) {
+        // The layer may be reserved larger than the live area: nothing past
+        // the extent is drawn or blurred.
+        if (coord.x >= extent.x || coord.y >= extent.y) return half4(0.0);
         float radius = blurRadius * clamp(mask.eval(coord).a, 0.0, 1.0);
         $coverage
         float4 result = float4(content.eval(coord));
