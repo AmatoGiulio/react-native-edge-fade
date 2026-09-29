@@ -88,3 +88,7 @@ nitrogen/
 
 # generated showcase benchmark captures
 benchmarks/progressive-showcase/current/
+
+# Local agent notes and settings
+.agent/
+.claude/settings.local.json
