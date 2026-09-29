@@ -175,17 +175,7 @@ class EdgeFadeViewManager :
     view.blurRadius = next
   }
 
-  // Example-only comparison switch, not part of the public JS props.
-  @ReactProp(name = "progressiveBackend")
-  override fun setProgressiveBackend(view: EdgeFadeView, value: String?) {
-    view.progressiveBackend = when (value) {
-      "androidx", "androidx-gradient" -> value
-      else -> "auto"
-    }
-    view.invalidate()
-  }
-
-  // iOS-only frost grade; Android progressive blur is a pure Gaussian.
+  // Deprecated frost grade, ignored on both platforms.
   @ReactProp(name = "frostSaturation", defaultFloat = 0.9f)
   override fun setFrostSaturation(view: EdgeFadeView, value: Float) = Unit
 

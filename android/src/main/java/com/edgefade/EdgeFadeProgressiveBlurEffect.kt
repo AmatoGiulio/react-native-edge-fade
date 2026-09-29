@@ -152,8 +152,7 @@ internal object EdgeFadeProgressiveBlurEffect {
   internal fun activeBackendName(view: EdgeFadeView): String =
     when {
       !view.progressiveBlurActive -> "inactive"
-      useAgsl(view) ->
-        Api33.rendererFor(view)?.backendName() ?: "api33-unprepared"
+      useAgsl(view) -> "agsl33"
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> "gles31"
       else -> "unsupported"
     }

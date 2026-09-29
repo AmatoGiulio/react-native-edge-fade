@@ -4167,24 +4167,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tanstack/query-core@npm:5.101.2":
-  version: 5.101.2
-  resolution: "@tanstack/query-core@npm:5.101.2"
-  checksum: 10c0/c3288757bfd563ca35cee21bf6ed0edb2f4425a8c92f75d84dcb36a0580a59e48bd97fcdbbc7c8d8e95a4c40376edfc5772b14665b85d183079a0ba7e17793b2
-  languageName: node
-  linkType: hard
-
-"@tanstack/react-query@npm:^5.101.2":
-  version: 5.101.2
-  resolution: "@tanstack/react-query@npm:5.101.2"
-  dependencies:
-    "@tanstack/query-core": "npm:5.101.2"
-  peerDependencies:
-    react: ^18 || ^19
-  checksum: 10c0/076b2db0d85a6dc96d461789715ae0df2e439d9a20a41e629446275f8177a856c3b89d242ad3d31eadaf421f080b9834bcd9f94e5143f4cd7f947a10af9e42b3
-  languageName: node
-  linkType: hard
-
 "@tootallnate/quickjs-emscripten@npm:^0.23.0":
   version: 0.23.0
   resolution: "@tootallnate/quickjs-emscripten@npm:0.23.0"
@@ -7385,17 +7367,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"expo-video@npm:~58.0.3":
-  version: 58.0.3
-  resolution: "expo-video@npm:58.0.3"
-  peerDependencies:
-    expo: "*"
-    react: "*"
-    react-native: "*"
-  checksum: 10c0/2d5917a5641ae96925b05ce39770d1dbc13bdda78498842e008565f5298bf659636520fce2b7943755a6432cb34bc97fc7e4255c02aaf2df8d7edecf35b8f389
-  languageName: node
-  linkType: hard
-
 "expo@npm:58.0.0-preview.2":
   version: 58.0.0-preview.2
   resolution: "expo@npm:58.0.0-preview.2"
@@ -8402,7 +8373,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"invariant@npm:2.2.4, invariant@npm:^2.2.4":
+"invariant@npm:^2.2.4":
   version: 2.2.4
   resolution: "invariant@npm:2.2.4"
   dependencies:
@@ -11505,7 +11476,6 @@ __metadata:
     "@expo/metro-runtime": "npm:~58.0.2"
     "@expo/ui": "npm:~58.0.2"
     "@shopify/flash-list": "npm:2.0.2"
-    "@tanstack/react-query": "npm:^5.101.2"
     expo: "npm:58.0.0-preview.2"
     expo-constants: "npm:~58.0.2"
     expo-dev-client: "npm:~58.0.2"
@@ -11515,7 +11485,6 @@ __metadata:
     expo-splash-screen: "npm:~58.0.0"
     expo-status-bar: "npm:~58.0.0"
     expo-system-ui: "npm:~58.0.1"
-    expo-video: "npm:~58.0.3"
     react: "npm:19.2.3"
     react-dom: "npm:19.2.3"
     react-native: "npm:0.88.0-rc.0"
@@ -11526,7 +11495,6 @@ __metadata:
     react-native-safe-area-context: "npm:~5.9.1"
     react-native-screens: "npm:~4.27.0"
     react-native-web: "npm:~0.21.0"
-    react-native-webview: "npm:14.0.1"
     react-native-worklets: "npm:0.12.2"
   languageName: unknown
   linkType: soft
@@ -11670,19 +11638,6 @@ __metadata:
     react: ^18.0.0 || ^19.0.0
     react-dom: ^18.0.0 || ^19.0.0
   checksum: 10c0/8c184fef0045c25deff765c8e80963454a5dffd8e389a9e11cf2fec9e769ff0f82c3d56d082b1897a7ded8374d9ae8a49dac7f09377a104f1995a5ddea645095
-  languageName: node
-  linkType: hard
-
-"react-native-webview@npm:14.0.1":
-  version: 14.0.1
-  resolution: "react-native-webview@npm:14.0.1"
-  dependencies:
-    escape-string-regexp: "npm:^4.0.0"
-    invariant: "npm:2.2.4"
-  peerDependencies:
-    react: "*"
-    react-native: "*"
-  checksum: 10c0/79f906a751a7fb24e41e14ad9ab193f60682ee2ad8d7d448e5db07a02ed7391c057b886515f66e6e560dcb56cdcaa886e936eafdb8f2d43eddfddd52d76b4c02
   languageName: node
   linkType: hard
 

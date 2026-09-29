@@ -19,8 +19,7 @@ export const MAX_DEMO_BLUR =
       )
     : 100;
 
-// Android demo default: 150 physical px, the AndroidX BlurRadiusSpec cap, so
-// the renderer switch compares both at the same radius.
+// Android demo default: 150 physical px.
 export const DEFAULT_DEMO_BLUR =
   Platform.OS === 'android'
     ? 150 / ANDROID_PROGRESSIVE_BLUR_DENSITY

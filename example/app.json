@@ -28,7 +28,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "./plugins/withOfficialAndroidxBlur",
       "expo-router",
       "expo-image",
       "expo-status-bar",
@@ -39,8 +38,7 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ],
-      "expo-video"
+      ]
     ]
   }
 }

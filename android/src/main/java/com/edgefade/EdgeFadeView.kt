@@ -59,9 +59,6 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   /** Set by the backend selector: a WebView descendant needs a compositing layer. */
   internal var containsWebView: Boolean = false
 
-  /** Example-only comparison switch: "auto" or "androidx" (official BlurRadiusSpec). */
-  internal var progressiveBackend: String = "auto"
-
   /**
    * Set by EdgeFadeViewManager's ReactProp setters when a structural prop
    * changed (mode selection, band presence, curves) — but NOT by the

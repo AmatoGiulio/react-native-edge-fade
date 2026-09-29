@@ -1,11 +1,9 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback } from 'react';
 import {
   Image as NativeImage,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -29,17 +27,6 @@ import { useTheme } from '@/theme';
 
 const GAP = 2;
 
-type Backend = 'auto' | 'androidx' | 'androidx-gradient';
-const NEXT_BACKEND: Record<Backend, Backend> = {
-  'auto': 'androidx',
-  'androidx': 'androidx-gradient',
-  'androidx-gradient': 'auto',
-};
-const BACKEND_LABEL: Record<Backend, string> = {
-  'auto': 'EdgeFade',
-  'androidx': 'AndroidX shader',
-  'androidx-gradient': 'AndroidX verticalGradient',
-};
 const STRESS_TOP_BOTTOM_DP = 110;
 const STRESS_WARMUP_MS = 1200;
 const STRESS_VIEWPORT_SPAN = 4;
@@ -214,15 +201,9 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
     : blurRadius;
   const edgeProgression = stressMode ? 1 : frostProgression;
 
-  // Android comparison: our renderer vs the official AndroidX BlurRadiusSpec
-  // on the same radius field. Internal native prop, not public API.
-  const [backend, setBackend] = useState<Backend>('auto');
-  const backendProp = { progressiveBackend: backend } as object;
-
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
       <AnimatedEdgeFadeView
-        {...backendProp}
         testID={stressMode ? 'gallery-stress-edge-fade' : undefined}
         top={edgeTop}
         bottom={edgeBottom}
@@ -280,34 +261,12 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         pointerEvents="none"
         style={[s.debugBand, s.debugBottom, bottomBandStyle]}
       />
-      {Platform.OS === 'android' && edgeMode === 'blur' && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="switch blur renderer"
-          onPress={() => setBackend((b) => NEXT_BACKEND[b])}
-          style={s.backendButton}
-        >
-          <Text style={s.backendLabel}>{BACKEND_LABEL[backend]}</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, paddingTop: 16 },
-  backendButton: {
-    position: 'absolute',
-    bottom: 56,
-    alignSelf: 'center',
-    borderRadius: 22,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    elevation: 6,
-  },
-  backendLabel: { color: '#111111', fontWeight: '700', fontSize: 14 },
-
   gridScroll: { flex: 1 },
   grid: {
     flexDirection: 'row',

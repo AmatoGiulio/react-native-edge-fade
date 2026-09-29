@@ -22,12 +22,6 @@ interface NativeProps extends ViewProps {
   mode?: string;
   /** Max blur radius (dp) at the outer edge, blur mode only. */
   blurRadius?: CodegenTypes.Float;
-  /**
-   * Example-only comparison switch: "auto" | "androidx" (official AndroidX
-   * BlurRadiusSpec, only when the app is built with edgeFadeAndroidxBlur).
-   * Deliberately not exposed by the public JS prop types.
-   */
-  progressiveBackend?: string;
   /** Deprecated, ignored on both platforms. */
   frostSaturation?: CodegenTypes.Float;
   /** Deprecated, ignored on both platforms. */

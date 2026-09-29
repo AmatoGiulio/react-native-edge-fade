@@ -34,21 +34,9 @@ if (!builtInKotlin) {
 }
 apply plugin: "com.facebook.react"
 
-// Comparison only: the example app compiles the official AndroidX
-// BlurRadiusSpec next to our renderer. Library consumers never get the
-// Compose dependency unless they set this property themselves.
-def useAndroidxBlur = (findProperty("edgeFadeAndroidxBlur") ?: "false").toBoolean()
-if (useAndroidxBlur && (agpVersion[0] < 9 || (agpVersion[0] == 9 && agpVersion[1] < 1))) {
-  throw new GradleException("edgeFadeAndroidxBlur requires AGP 9.1+ and compileSdk 37.1 in the app.")
-}
-
 android {
   namespace "com.edgefade"
   compileSdkVersion getExtOrDefault("compileSdkVersion")
-  if (useAndroidxBlur) {
-    compileSdk = 37
-    compileSdkMinor = 1
-  }
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
@@ -56,10 +44,6 @@ android {
     if (agpVersion[0] < 9) {
       targetSdkVersion getExtOrDefault("targetSdkVersion")
     }
-  }
-
-  sourceSets {
-    main.java.srcDir(useAndroidxBlur ? "src/androidxBlur/java" : "src/noAndroidxBlur/java")
   }
 
   buildFeatures {
@@ -85,7 +69,4 @@ android {
 dependencies {
   implementation "com.facebook.react:react-android"
   implementation "androidx.core:core-ktx:1.13.1"
-  if (useAndroidxBlur) {
-    implementation "androidx.compose.ui:ui-graphics:1.13.0-alpha03"
-  }
 }
