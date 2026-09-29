@@ -141,11 +141,6 @@ internal object EdgeFadeProgressiveBlurEffect {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> "requires API 31+"
     view.width <= 0 || view.height <= 0 -> "view not laid out yet"
     view.isAttachedToWindow && !view.isHardwareAccelerated -> "software canvas"
-    view.overlayColor != null ||
-      view.overlayColorTop != null ||
-      view.overlayColorBottom != null ||
-      view.overlayColorLeft != null ||
-      view.overlayColorRight != null -> "overlay color is not part of pure progressive blur"
     !supportsCurves(view) -> "curve cannot be represented by the progressive radius mask"
     !useAgsl(view) &&
       !EdgeFadeGlesProgressiveRenderer.isSupported(view) -> "requires OpenGL ES 3.0"

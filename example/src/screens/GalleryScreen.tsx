@@ -61,6 +61,8 @@ export interface GalleryStressConfig {
   leftDp?: number;
   rightDp?: number;
   curve?: EdgeFadeCurve;
+  /** Blur veil colour (`color` in blur mode). */
+  veil?: string;
 }
 
 interface GalleryScreenProps {
@@ -231,9 +233,16 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
-        // Overlay needs a colour; fall back to black when the tint switch is off.
+        // Overlay needs a colour (black when the tint switch is off); in blur
+        // mode a colour is the optional veil over the blurred band.
         color={
-          !stressMode && mode === 'overlay' ? (tint ?? '#000000') : undefined
+          stressMode
+            ? stress?.veil
+            : mode === 'overlay'
+              ? (tint ?? '#000000')
+              : mode === 'blur'
+                ? tint
+                : undefined
         }
         style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]}
       >

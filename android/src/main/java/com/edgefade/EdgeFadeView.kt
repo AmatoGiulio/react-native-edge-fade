@@ -210,7 +210,7 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
             ::drawChildrenForProgressive,
           )
           // A missing renderer is never permission to switch blur algorithms.
-          if (!drawn) drawMask(canvas)
+          if (!drawn) drawMask(canvas) else drawVeil(canvas)
         }
         // Defensive fallback. Normally the selector already changes unsupported
         // blur requests to mode="mask" before draw.
@@ -223,6 +223,75 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
       Trace.endSection()
     }
   }
+
+  // Frost veil: only when `color` is set, a tint over the blurred band, from
+  // transparent at the inner edge to the colour at VEIL_MAX_ALPHA at the outer
+  // edge, on a smoothstep independent of the fade curve. Same ramp as iOS
+  // (veilColors in EdgeFadeView.mm).
+  private fun drawVeil(canvas: Canvas) {
+    val w = width.toFloat()
+    val h = height.toFloat()
+    if (fadeTop > 0f) {
+      (overlayColorTop ?: overlayColor)?.let { color ->
+        veilPaint.shader = veilTop.acquire(color, 0f, fadeTop, 0f, 0f)
+        canvas.drawRect(0f, 0f, w, fadeTop, veilPaint)
+      }
+    }
+    if (fadeBottom > 0f) {
+      (overlayColorBottom ?: overlayColor)?.let { color ->
+        veilPaint.shader = veilBottom.acquire(color, 0f, h - fadeBottom, 0f, h)
+        canvas.drawRect(0f, h - fadeBottom, w, h, veilPaint)
+      }
+    }
+    if (fadeLeft > 0f) {
+      (overlayColorLeft ?: overlayColor)?.let { color ->
+        veilPaint.shader = veilLeft.acquire(color, fadeLeft, 0f, 0f, 0f)
+        canvas.drawRect(0f, 0f, fadeLeft, h, veilPaint)
+      }
+    }
+    if (fadeRight > 0f) {
+      (overlayColorRight ?: overlayColor)?.let { color ->
+        veilPaint.shader = veilRight.acquire(color, w - fadeRight, 0f, w, 0f)
+        canvas.drawRect(w - fadeRight, 0f, w, h, veilPaint)
+      }
+    }
+  }
+
+  /** One cached veil gradient per edge, rebuilt only when colour or geometry change. */
+  private class VeilSlot {
+    private var key: List<Any>? = null
+    private var shader: android.graphics.LinearGradient? = null
+
+    // (x0, y0) is the inner edge (transparent), (x1, y1) the outer edge.
+    fun acquire(color: Int, x0: Float, y0: Float, x1: Float, y1: Float): android.graphics.LinearGradient {
+      val next = listOf(color, x0, y0, x1, y1)
+      shader?.let { if (next == key) return it }
+      val a = android.graphics.Color.alpha(color) / 255f
+      val colors = IntArray(VEIL_STOPS) { i ->
+        val t = i / (VEIL_STOPS - 1f)
+        val weight = t * t * (3f - 2f * t)
+        android.graphics.Color.argb(
+          (a * weight * VEIL_MAX_ALPHA * 255f).toInt(),
+          android.graphics.Color.red(color),
+          android.graphics.Color.green(color),
+          android.graphics.Color.blue(color),
+        )
+      }
+      val positions = FloatArray(VEIL_STOPS) { it / (VEIL_STOPS - 1f) }
+      return android.graphics.LinearGradient(
+        x0, y0, x1, y1, colors, positions, android.graphics.Shader.TileMode.CLAMP,
+      ).also {
+        shader = it
+        key = next
+      }
+    }
+  }
+
+  private val veilPaint = Paint()
+  private val veilTop = VeilSlot()
+  private val veilBottom = VeilSlot()
+  private val veilLeft = VeilSlot()
+  private val veilRight = VeilSlot()
 
   private fun drawOverlay(canvas: Canvas) {
     Trace.beginSection("EdgeFade.overlay")
@@ -378,6 +447,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   }
 
   internal companion object {
+    /** Veil opacity at the outer edge, matching iOS kVeilMaxAlpha. */
+    const val VEIL_MAX_ALPHA = 0.6f
+    const val VEIL_STOPS = 16
     /** Blur requested over content that no fallback can render correctly. */
     const val MODE_PASSTHROUGH = "passthrough"
   }

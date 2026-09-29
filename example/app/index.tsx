@@ -45,6 +45,7 @@ export default function GalleryEntry() {
     image?: string | string[];
     edges?: string | string[];
     curve?: string | string[];
+    veil?: string | string[];
   }>();
 
   // `stress=auto` scrolls on its own for benchmarks; `stress=static` renders
@@ -53,6 +54,7 @@ export default function GalleryEntry() {
   const stressEnabled = stressParam === 'auto' || stressParam === 'static';
   const sideDp = firstParam(params.edges) === 'four' ? 60 : 0;
   const curve = firstParam(params.curve) as EdgeFadeCurve | undefined;
+  const veil = firstParam(params.veil);
   const effectEnabled = firstParam(params.effect) !== 'off';
   const radiusPx = resolveRadiusPx(params.radiusPx);
   const cycleMs = resolveCycleMs(params.cycleMs);
@@ -68,6 +70,7 @@ export default function GalleryEntry() {
             leftDp: sideDp,
             rightDp: sideDp,
             curve,
+            veil: veil ? `#${veil}` : undefined,
             radiusDp: radiusPx / density,
             cycleMs,
             imageRenderer,
@@ -81,6 +84,7 @@ export default function GalleryEntry() {
       radiusPx,
       sideDp,
       curve,
+      veil,
       stressParam,
       stressEnabled,
     ]

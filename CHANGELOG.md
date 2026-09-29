@@ -23,7 +23,7 @@
 
 * **blur:** add `blurProgression` as the canonical name for the fraction of the band over which the radius reaches its maximum. `frostProgression` remains a deprecated alias; `blurProgression` wins when both are supplied.
 * **blur:** `frostSaturation` and `frostLift` are ignored on Android.
-* **android:** `color` stays an overlay concern: a `mode="blur"` request that also sets an overlay color falls back to `mask`.
+* **blur:** `color` in `mode="blur"` is an optional veil over the blurred band (transparent at the inner edge, the colour at 60% opacity at the outer edge; per-edge colours override it). Same on iOS and Android; without `color` the blur stays neutral.
 
 ## [0.2.2](https://github.com/AmatoGiulio/react-native-edge-fade/compare/v0.2.1...v0.2.2) (2026-08-20)
 

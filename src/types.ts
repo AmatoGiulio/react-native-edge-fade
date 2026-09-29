@@ -31,7 +31,7 @@ export interface EdgeConfig {
   size?: number;
   /** Gradient curve. Overrides the component-level `curve`. */
   curve?: EdgeFadeCurve;
-  /** Per-edge overlay color (overlay mode only). Overrides the component-level `color`. */
+  /** Per-edge color (overlay gradient, or blur veil). Overrides the component-level `color`. */
   color?: ColorValue;
 }
 
@@ -63,9 +63,9 @@ export interface EdgeFadeViewProps extends ViewProps {
   /**
    * Overlay mode: gradient target color. Per-edge `EdgeConfig.color` overrides this.
    *
-   * Blur mode does not use this as part of the blur algorithm on Android. A
-   * colored blur request that cannot preserve pure progressive semantics falls
-   * back to mask rather than silently changing algorithms.
+   * Blur mode: optional veil over the blurred band, from transparent at the
+   * inner edge to this color at 60% opacity at the outer edge. The blur itself
+   * stays neutral; without `color` there is no veil. Same on iOS and Android.
    */
   color?: ColorValue;
   /**

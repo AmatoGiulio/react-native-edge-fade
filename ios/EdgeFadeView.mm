@@ -347,9 +347,6 @@ static NSArray<NSNumber *> *veilLocations(void)
   NSString *_cachedCurveTop, *_cachedCurveBottom, *_cachedCurveLeft, *_cachedCurveRight;
   UIColor  *_cachedColorTop, *_cachedColorBottom, *_cachedColorLeft, *_cachedColorRight;
 
-  // Veil color cache (the UNIFORM veil ramp is curve-independent, so the four
-  // edges share one colors array — only the color needs caching).
-  UIColor  *_cachedVeilColorTop;
 
   // Current config
   EdgeFadeRenderMode _renderMode;
@@ -514,9 +511,9 @@ static NSArray<NSNumber *> *veilLocations(void)
       [self _updateLayerFrames];
       [self _ensureDisplayLinkState];
     }
-    if (curveChanged && _overlayColor) [self _rebuildVeilColors];
+    if (curveChanged && [self _hasVeilColor]) [self _rebuildVeilColors];
     if (colorChanged) {
-      if (_overlayColor) {
+      if ([self _hasVeilColor]) {
         if (!_frostTop) [self _buildFrostVeil];
         else            [self _rebuildVeilColors];
       } else {
@@ -536,11 +533,11 @@ static NSArray<NSNumber *> *veilLocations(void)
     EF_BENCH_LOG("up_blur_size");
     if (curveChanged) {
       [self _invalidateBlurMaskLayers];
-      if (_overlayColor) [self _rebuildVeilColors];
+      if ([self _hasVeilColor]) [self _rebuildVeilColors];
     }
     EF_BENCH_LOG("up_blur_curve");
     if (colorChanged) {
-      if (_overlayColor) {
+      if ([self _hasVeilColor]) {
         if (!_frostTop) [self _buildFrostVeil];
         else            [self _rebuildVeilColors];
       } else {
@@ -717,7 +714,7 @@ static NSArray<NSNumber *> *veilLocations(void)
     // Blur mode — build blur view + mask, then optionally the frost veil.
     [self _buildBlurView];
     EF_BENCH_LOG("bld_buildBlurView");
-    if (_overlayColor) [self _buildFrostVeil];
+    if ([self _hasVeilColor]) [self _buildFrostVeil];
     EF_BENCH_LOG("bld_buildFrostVeil");
     [self _updateLayerFrames];
     EF_BENCH_LOG("bld_updateLayerFrames");
@@ -1129,23 +1126,25 @@ static NSArray<NSNumber *> *veilLocations(void)
   [_frostLeft   removeFromSuperlayer];
   [_frostRight  removeFromSuperlayer];
   _frostTop = _frostBottom = _frostLeft = _frostRight = nil;
-  _cachedVeilColorTop = nil;
 }
 
-// The UNIFORM veil ramp is curve-independent (see veilColors), so the four
-// edges share one colors array and only the color enters the cache key.
-- (void)_rebuildVeilColors {
-  if (!_frostTop || !_overlayColor) return;
-  UIColor *color = _overlayColor;
-  if ([color isEqual:_cachedVeilColorTop]) return;
+// The veil is opt-in: it exists only when a colour is set, globally or on any
+// edge (an edge's own colour wins, like overlay mode). The UNIFORM ramp is
+// curve-independent (see veilColors), so only the colour shapes each strip.
+- (BOOL)_hasVeilColor {
+  return _overlayColor || _overlayColorTop || _overlayColorBottom || _overlayColorLeft || _overlayColorRight;
+}
 
-  NSArray<id> *colors          = veilColors(color);
-  NSArray<NSNumber *> *locs    = veilLocations();
-  _frostTop.colors    = colors; _frostTop.locations    = locs;
-  _frostBottom.colors = colors; _frostBottom.locations = locs;
-  _frostLeft.colors   = colors; _frostLeft.locations   = locs;
-  _frostRight.colors  = colors; _frostRight.locations  = locs;
-  _cachedVeilColorTop = color;
+- (void)_rebuildVeilColors {
+  if (!_frostTop) return;
+  NSArray<NSNumber *> *locs = veilLocations();
+  CAGradientLayer *layers[kEdgeFadeEdgeCount] = {_frostTop, _frostBottom, _frostLeft, _frostRight};
+  UIColor *edgeColors[kEdgeFadeEdgeCount] = {_overlayColorTop, _overlayColorBottom, _overlayColorLeft, _overlayColorRight};
+  for (NSInteger e = 0; e < kEdgeFadeEdgeCount; e++) {
+    UIColor *color = edgeColors[e] ?: _overlayColor;
+    layers[e].colors    = color ? veilColors(color) : nil;
+    layers[e].locations = locs;
+  }
 }
 
 // ─── Frame sync ──────────────────────────────────────────────────────────────
