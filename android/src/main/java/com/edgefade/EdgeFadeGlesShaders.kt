@@ -16,7 +16,7 @@
 package com.edgefade
 
 /**
- * GLSL ES 3.0 equivalent of the API 33+ Public Progressive radius field and
+ * GLSL ES 3.0 equivalent of the API 33+ progressive radius field and
  * separable Gaussian. This backend exists for Android 12 / 12L (API 31-32),
  * where RenderEffect can blur uniformly but RuntimeShader cannot vary the blur
  * radius per fragment.

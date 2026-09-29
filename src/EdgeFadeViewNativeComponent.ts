@@ -28,9 +28,9 @@ interface NativeProps extends ViewProps {
    * Deliberately not exposed by the public JS prop types.
    */
   progressiveBackend?: string;
-  /** iOS frost saturation (blur mode). Ignored on Android. */
+  /** Deprecated, ignored on both platforms. */
   frostSaturation?: CodegenTypes.Float;
-  /** iOS frost brightness (blur mode). Ignored on Android. */
+  /** Deprecated, ignored on both platforms. */
   frostLift?: CodegenTypes.Float;
   /** Fraction of the band over which the blur radius ramps (blur mode). */
   frostProgression?: CodegenTypes.Float;

@@ -21,7 +21,7 @@ class ProgressiveDescendantInvalidation(unittest.TestCase):
             source,
         )
         self.assertIn("super.onDescendantInvalidated(child, target)", source)
-        self.assertIn("if (progressiveBlurActive && blurRadius > 0f)", source)
+        self.assertIn("if (!progressiveBlurActive || blurRadius <= 0f) return", source)
         self.assertIn("invalidate()", source)
 
     def test_zero_radius_identity_does_not_force_progressive_redraws(self):

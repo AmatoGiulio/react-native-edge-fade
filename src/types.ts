@@ -79,15 +79,15 @@ export interface EdgeFadeViewProps extends ViewProps {
    */
   blurProgression?: number;
   /**
-   * @deprecated Public Progressive does not apply a saturation grade. This
-   * compatibility prop is ignored by the Android progressive renderer and will
-   * be removed in a future API cleanup.
+   * @deprecated The progressive blur applies no saturation grade. This
+   * compatibility prop is ignored on iOS and Android and will be removed in a
+   * future API cleanup.
    */
   frostSaturation?: number;
   /**
-   * @deprecated Public Progressive does not apply a brightness/lift grade. This
-   * compatibility prop is ignored by the Android progressive renderer and will
-   * be removed in a future API cleanup.
+   * @deprecated The progressive blur applies no brightness/lift grade. This
+   * compatibility prop is ignored on iOS and Android and will be removed in a
+   * future API cleanup.
    */
   frostLift?: number;
   /**

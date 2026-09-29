@@ -12,6 +12,10 @@
 * **android:** `blurRadius` is animatable through `AnimatedEdgeFadeView` without re-running backend selection every frame.
 * **android:** where two blurred edges meet, the sharp window has rounded corners (the radius field is a rounded-rectangle distance, not a square `max()` union). Same field on API 33+ and API 31–32.
 
+### iOS blur
+
+* **ios:** `mode="blur"` is a true progressive blur: each edge uses one backdrop whose radius follows the edge curve continuously (the system `variableBlur` backdrop filter, driven by a 256-step mask built from the curve and `blurProgression`), instead of three discrete blur levels. Where the filter is unavailable, the previous three-level stack is used as a fallback.
+
 ### Bug fixes
 
 * **android:** `EdgeFadeView` no longer lets `FrameLayout` re-layout its children at (0, 0) when a descendant requests a native layout pass (e.g. a video surface becoming ready); React Native owns child layout.
@@ -22,7 +26,7 @@
 ### API
 
 * **blur:** add `blurProgression` as the canonical name for the fraction of the band over which the radius reaches its maximum. `frostProgression` remains a deprecated alias; `blurProgression` wins when both are supplied.
-* **blur:** `frostSaturation` and `frostLift` are ignored on Android.
+* **blur:** `frostSaturation` and `frostLift` are deprecated and ignored on both platforms.
 * **blur:** `color` in `mode="blur"` is an optional veil over the blurred band (transparent at the inner edge, the colour at 60% opacity at the outer edge; per-edge colours override it). Same on iOS and Android; without `color` the blur stays neutral.
 
 ## [0.2.2](https://github.com/AmatoGiulio/react-native-edge-fade/compare/v0.2.1...v0.2.2) (2026-08-20)

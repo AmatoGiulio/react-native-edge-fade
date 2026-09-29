@@ -26,7 +26,7 @@ Building edge fades from scratch means juggling `MaskedView`, `LinearGradient`, 
 
 - **Three render modes** — mask (alpha dissolve), overlay (color gradient), blur (progressive Gaussian)
 - **Four edges, independently tuned** — different size and curve per side; overlay color can also vary per edge
-- **True Android progressive blur** — on API 33+, every pixel gets its own Gaussian radius instead of selecting from discrete blur levels
+- **True progressive blur** — the blur radius follows the edge curve continuously, with no discrete blur levels (Android API 31+, iOS)
 - **Reanimated support** — UI-thread animated fades, no React re-renders
 - **RTL-aware** — `start` / `end` props respect layout direction
 - **Fabric only** — New Architecture native views, no Paper
@@ -50,7 +50,9 @@ Building edge fades from scratch means juggling `MaskedView`, `LinearGradient`, 
 </EdgeFadeView>
 ```
 
-On Android, `mode="blur"` is a spatial progressive Gaussian: every pixel gets its own radius from the edge curve. API 33+ runs an AGSL port of the AndroidX kernel (no Compose dependency); API 31–32 run an OpenGL ES 3.0 backend with the same radius field. API < 31 and Web fall back to `mask`; iOS keeps its native blur.
+On Android, `mode="blur"` is a spatial progressive Gaussian: every pixel gets its own radius from the edge curve. API 33+ runs an AGSL port of the AndroidX kernel (no Compose dependency); API 31–32 run an OpenGL ES 3.0 backend with the same radius field. API < 31 and Web fall back to `mask`.
+
+On iOS, `mode="blur"` uses the system `variableBlur` backdrop filter, whose radius follows the edge curve continuously. The filter is not documented by Apple: if it is unavailable, the view falls back automatically to a layered blur built on public `UIVisualEffectView` APIs.
 
 Blur works over images, lists, `WebView` and video rendered into a `TextureView` (for `expo-video`, pass `surfaceType="textureView"`). A `SurfaceView` composites outside the view hierarchy and cannot be blurred by any view-level API: that content is left sharp and a warning is logged. Give the blurred content an opaque background.
 
@@ -123,12 +125,12 @@ Reanimated is optional — without it, use the static `EdgeFadeView`.
 | `mode` | `'mask' \| 'overlay' \| 'blur'` | auto | Inferred from `color` when omitted |
 | `size` | `number` | `80` | Default fade depth (dp) |
 | `curve` | `EdgeFadeCurve` | `'smooth'` | Curve shape |
-| `color` | `ColorValue` | — | Overlay target color. It is not part of the Android progressive-blur algorithm |
+| `color` | `ColorValue` | — | Overlay target color. In `mode="blur"`, an optional veil over the blurred band (transparent inside, the colour at 60% opacity at the outer edge) |
 | `radius` | `number` | — | Corner radius |
 | `blurRadius` | `number` | `28` | Maximum blur radius (dp) in `mode="blur"` |
 | `blurProgression` | `number` | `1` | Fraction of the fade band over which the blur radius reaches its maximum (0.05–1) |
 
-`frostProgression` remains a deprecated compatibility alias for `blurProgression`; the new name wins when both are supplied. `frostSaturation` and `frostLift` are also deprecated compatibility props and are ignored by Android Public Progressive — the progressive blur contains no saturation or brightness grading.
+`frostProgression` remains a deprecated compatibility alias for `blurProgression`; the new name wins when both are supplied. `frostSaturation` and `frostLift` are also deprecated compatibility props and are ignored on both platforms — the progressive blur contains no saturation or brightness grading.
 
 ### Curves
 

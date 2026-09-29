@@ -12,19 +12,19 @@ paired-sample blur kernel from AndroidX:
 - Modifications: Copyright 2026 Giulio Amato
 
 Changes in this adaptation: the bounded/Clamp-mode in-bounds renormalization
-used by the AndroidX runtime-shader path (without the Decal option); strip-local
-extents; per-strip mutable RuntimeShader instances; an edge-union intensity
+used by the AndroidX runtime-shader path (without the Decal option); area-local
+extents; per-area mutable RuntimeShader instances; an edge-union intensity
 mask; support for the library's analytical presets and serialized custom-curve
 LUTs; continuous tap support (each paired tap fades in over one pixel of radius
 instead of snapping at floor(radius)); and an explicit no-blur bypass. The mask
 controls Gaussian radius, not output opacity.
 
-The edge-local strip geometry is a work-culling integration strategy for React
-Native. It does not quantize the radius field: every rendered fragment still
-uses `radius = maxRadius * intensity`. Above 32 px the strips run at half
-resolution with geometry and radius scaled together; the sharp scene stays
-underneath and each strip fades in over its first pixels of radius, so the
-identity end remains exact.
+The bounded blur areas are a work-culling integration strategy for React
+Native. They do not quantize the radius field: every rendered fragment still
+uses `radius = maxRadius * intensity`. The areas run at half resolution with
+geometry and radius scaled together; the sharp scene stays underneath and each
+area fades in over its first pixels of radius, so the identity end remains
+exact.
 
 The AGSL port is NOT the Compose binary and is not presented as an official
 AndroidX integration. The library itself remains Compose-free.
