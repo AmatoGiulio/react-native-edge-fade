@@ -20,6 +20,7 @@ import Apps from '@expo/material-symbols/apps.xml';
 import GraphicEq from '@expo/material-symbols/graphic_eq.xml';
 import Videocam from '@expo/material-symbols/videocam.xml';
 import GridView from '@expo/material-symbols/grid_view.xml';
+import Album from '@expo/material-symbols/album.xml';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 30 * 60 * 1000 } },
 });
@@ -74,6 +75,12 @@ export default function RootLayout() {
                         onPress={() => router.push('/meeting')}
                       >
                         Live blur
+                      </Stack.Toolbar.MenuAction>
+                      <Stack.Toolbar.MenuAction
+                        icon={Platform.OS === 'ios' ? 'record.circle' : Album}
+                        onPress={() => router.push('/crate')}
+                      >
+                        Crate
                       </Stack.Toolbar.MenuAction>
                       <Stack.Toolbar.MenuAction
                         icon={Platform.OS === 'ios' ? 'video' : Videocam}
