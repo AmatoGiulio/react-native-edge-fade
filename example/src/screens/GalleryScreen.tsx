@@ -1,9 +1,10 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
 import {
   Image as NativeImage,
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
@@ -34,6 +35,10 @@ const STRESS_VIEWPORT_SPAN = 4;
 const AnimatedFlashList = Animated.createAnimatedComponent(
   FlashList<CatalogItem>
 );
+
+// Demo-only escape hatch for the boundary A/B. The prop is intentionally not
+// part of the package's public EdgeFadeViewProps.
+const ExperimentalAnimatedEdgeFadeView = AnimatedEdgeFadeView as any;
 
 export type GalleryStressImageRenderer = 'expo' | 'native' | 'solid';
 
@@ -115,6 +120,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
   const { top, bottom, left, right, radius, mode, tint, showBands } =
     useFadeStore();
   const { curve, blurRadius, frostProgression } = useFadeRender();
+  const [mirrorBoundary, setMirrorBoundary] = useState(true);
 
   // The deterministic stress path must never be JS-rAF driven. Imperative
   // scrollToOffset(animated:false) from the JS thread produced visible stepping
@@ -203,7 +209,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
 
   return (
     <View style={[s.root, { backgroundColor: t.bg }]}>
-      <AnimatedEdgeFadeView
+      <ExperimentalAnimatedEdgeFadeView
         testID={stressMode ? 'gallery-stress-edge-fade' : undefined}
         top={edgeTop}
         bottom={edgeBottom}
@@ -214,6 +220,7 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
         mode={edgeMode}
         blurRadius={edgeBlurRadius}
         blurProgression={edgeProgression}
+        debugMirrorBoundary={mirrorBoundary}
         // Overlay needs a colour (black when the tint switch is off); in blur
         // mode a colour is the optional veil over the blurred band.
         color={
@@ -251,7 +258,30 @@ export function GalleryScreen({ stress }: GalleryScreenProps) {
             }}
           />
         )}
-      </AnimatedEdgeFadeView>
+      </ExperimentalAnimatedEdgeFadeView>
+
+      {!stressMode && mode === 'blur' ? (
+        <View style={[s.boundaryToggle, { backgroundColor: t.control }]}>
+          <Pressable
+            onPress={() => setMirrorBoundary(false)}
+            style={[
+              s.boundarySegment,
+              !mirrorBoundary && { backgroundColor: t.controlActive },
+            ]}
+          >
+            <Text style={[s.boundaryLabel, { color: t.text }]}>Original</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMirrorBoundary(true)}
+            style={[
+              s.boundarySegment,
+              mirrorBoundary && { backgroundColor: t.controlActive },
+            ]}
+          >
+            <Text style={[s.boundaryLabel, { color: t.text }]}>Mirror</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Animated.View
         pointerEvents="none"
@@ -284,6 +314,24 @@ const s = StyleSheet.create({
   },
 
   listContent: { paddingTop: 116, paddingBottom: 0 },
+
+  boundaryToggle: {
+    position: 'absolute',
+    top: 116,
+    right: 12,
+    flexDirection: 'row',
+    padding: 2,
+    borderRadius: 10,
+  },
+  boundarySegment: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  boundaryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
 
   debugBand: {
     position: 'absolute',
