@@ -37,6 +37,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
     val right: Int,
     val radius: Float,
     val progression: Float,
+    val mirrorBoundary: Boolean,
     val curveTop: String,
     val curveBottom: String,
     val curveLeft: String,
@@ -104,6 +105,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
       right = edge(host.fadeRight, width),
       radius = finite(host.blurRadius).coerceIn(0f, MAX_SCREEN_RADIUS_PX),
       progression = finite(host.frostProgression, 1f).coerceIn(0.05f, 1f),
+      mirrorBoundary = host.debugMirrorBoundary,
       curveTop = host.curveTop,
       curveBottom = host.curveBottom,
       curveLeft = host.curveLeft,
@@ -283,6 +285,7 @@ internal class EdgeFadeProgressiveRenderer(host: EdgeFadeView) {
       pass.setInputShader("mask", mask)
       pass.setFloatUniform("blurRadius", kernelRadius)
       pass.setFloatUniform("extent", rasterWidth.toFloat(), rasterHeight.toFloat())
+      pass.setFloatUniform("mirrorBoundary", if (key.mirrorBoundary) 1f else 0f)
       pass.setFloatUniform("rasterScale", scale)
       // No output bound inside the raster: the radius is zero where an area
       // meets the sharp scene, so the entrance fade already hides its padding.
