@@ -28,6 +28,8 @@ interface NativeProps extends ViewProps {
   frostLift?: CodegenTypes.Float;
   /** Fraction of the band over which the blur radius ramps (blur mode). */
   frostProgression?: CodegenTypes.Float;
+  /** Internal demo-only A/B switch. Not part of EdgeFadeViewProps. */
+  debugMirrorBoundary?: boolean;
   overlayColor?: ColorValue;
   overlayColorTop?: ColorValue;
   overlayColorBottom?: ColorValue;
