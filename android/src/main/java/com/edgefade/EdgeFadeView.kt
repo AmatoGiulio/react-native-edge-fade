@@ -45,6 +45,9 @@ class EdgeFadeView(context: Context) : FrameLayout(context) {
   /** Fraction of the band over which the radius reaches its maximum (`blurProgression`). */
   var frostProgression: Float = 1f
 
+  /** Demo-only A/B: mirror samples at exposed blur bounds instead of dropping them. */
+  internal var debugMirrorBoundary: Boolean = true
+
   var overlayColor: Int? = null
   var overlayColorTop: Int? = null
   var overlayColorBottom: Int? = null
