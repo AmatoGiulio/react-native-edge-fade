@@ -188,6 +188,13 @@ class EdgeFadeViewManager :
     view.frostProgression = value
   }
 
+  // Internal experiment prop. The renderer reads it in prepare(), so this only
+  // needs a redraw; it deliberately does not enter the public EdgeFade API.
+  @ReactProp(name = "debugMirrorBoundary", defaultBoolean = true)
+  override fun setDebugMirrorBoundary(view: EdgeFadeView, value: Boolean) {
+    view.debugMirrorBoundary = value
+  }
+
   companion object {
     const val NAME = "EdgeFadeView"
   }
