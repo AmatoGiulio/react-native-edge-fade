@@ -16,8 +16,8 @@
  *
  * The paired-tap blur kernel is adapted from AndroidX BlurShaders.kt,
  * inspected Git blob 9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd.
- * Changes: clamp-only bounds, strip-local extents, continuous tap support,
- * and a four-edge radius mask. This is a port, NOT the Compose binary.
+ * Changes: mirrored outer-bound sampling, strip-local extents, continuous tap
+ * support, and a four-edge radius mask. This is a port, NOT the Compose binary.
  * See android/PROGRESSIVE_BLUR_NOTICE.md.
  */
 package com.edgefade
@@ -75,8 +75,22 @@ internal object EdgeFadeBlurShaders {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
 
-      float inside(float2 p) {
-        return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
+      // Match the old RenderEffect MIRROR edge treatment: samples that leave
+      // the live raster are reflected back into it instead of being dropped.
+      // This keeps a full Gaussian footprint at exposed view edges/corners,
+      // where renormalizing only the surviving taps preserves too much local
+      // image structure.
+      float mirrorAxis(float v, float size) {
+        if (size <= 0.001) return 0.0;
+        float period = 2.0 * size;
+        float m = mod(v, period);
+        float reflected = m <= size ? m : period - m;
+        return clamp(reflected, 0.0, size - 0.001);
+      }
+
+      float2 mirrorSample(float2 p) {
+        p.$axis = mirrorAxis(p.$axis, extent.$axis);
+        return p;
       }
 
       half4 main(float2 coord) {
@@ -99,10 +113,11 @@ internal object EdgeFadeBlurShaders {
 
           float d = i + high / weight;
           float2 offset = $offset;
-          float2 a = coord - offset;
-          float2 b = coord + offset;
-          if (inside(a) > 0.0) { result += weight * float4(content.eval(a)); weightSum += weight; }
-          if (inside(b) > 0.0) { result += weight * float4(content.eval(b)); weightSum += weight; }
+          float2 a = mirrorSample(coord - offset);
+          float2 b = mirrorSample(coord + offset);
+          result += weight * float4(content.eval(a));
+          result += weight * float4(content.eval(b));
+          weightSum += 2.0 * weight;
         }
         return half4(result / weightSum * coverage);
       }
