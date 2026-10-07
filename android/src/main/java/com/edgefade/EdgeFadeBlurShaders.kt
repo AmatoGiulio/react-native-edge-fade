@@ -16,7 +16,7 @@
  *
  * The paired-tap blur kernel is adapted from AndroidX BlurShaders.kt,
  * inspected Git blob 9f2bfda9ce672c3d45d4f03cb54fd6641a3cbdcd.
- * Changes: mirrored outer-bound sampling, strip-local extents, continuous tap
+ * Changes: selectable outer-bound sampling, strip-local extents, continuous tap
  * support, and a four-edge radius mask. This is a port, NOT the Compose binary.
  * See android/PROGRESSIVE_BLUR_NOTICE.md.
  */
@@ -68,6 +68,7 @@ internal object EdgeFadeBlurShaders {
       uniform shader mask;
       uniform float blurRadius;
       uniform float2 extent;
+      uniform float mirrorBoundary;
       $compositeUniforms
       const float maxRadius = 150.0;
 
@@ -75,11 +76,13 @@ internal object EdgeFadeBlurShaders {
         return exp(-(x * x) / (2.0 * sigma * sigma));
       }
 
-      // Match the old RenderEffect MIRROR edge treatment: samples that leave
-      // the live raster are reflected back into it instead of being dropped.
-      // This keeps a full Gaussian footprint at exposed view edges/corners,
-      // where renormalizing only the surviving taps preserves too much local
-      // image structure.
+      float inside(float2 p) {
+        return step(0.0, p.$axis) * (1.0 - step(extent.$axis, p.$axis));
+      }
+
+      // Experimental path matching the old RenderEffect MIRROR edge treatment:
+      // reflect samples that leave the live raster so exposed corners retain a
+      // complete Gaussian footprint.
       float mirrorAxis(float v, float size) {
         if (size <= 0.001) return 0.0;
         float period = 2.0 * size;
@@ -113,11 +116,22 @@ internal object EdgeFadeBlurShaders {
 
           float d = i + high / weight;
           float2 offset = $offset;
-          float2 a = mirrorSample(coord - offset);
-          float2 b = mirrorSample(coord + offset);
-          result += weight * float4(content.eval(a));
-          result += weight * float4(content.eval(b));
-          weightSum += 2.0 * weight;
+          float2 a = coord - offset;
+          float2 b = coord + offset;
+          if (mirrorBoundary > 0.5) {
+            result += weight * float4(content.eval(mirrorSample(a)));
+            result += weight * float4(content.eval(mirrorSample(b)));
+            weightSum += 2.0 * weight;
+          } else {
+            if (inside(a) > 0.0) {
+              result += weight * float4(content.eval(a));
+              weightSum += weight;
+            }
+            if (inside(b) > 0.0) {
+              result += weight * float4(content.eval(b));
+              weightSum += weight;
+            }
+          }
         }
         return half4(result / weightSum * coverage);
       }
